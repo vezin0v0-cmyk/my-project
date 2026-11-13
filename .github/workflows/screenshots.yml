@@ -1,0 +1,44 @@
+name: Скриншоты до и после
+
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'config.json'
+      - 'tests/Take-Screenshots.ps1'
+      - '.github/workflows/screenshots.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    name: Снимки экрана Windows
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Разрешение экрана 1920x1080
+        shell: powershell
+        continue-on-error: true
+        run: Set-DisplayResolution -Width 1920 -Height 1080 -Force
+
+      - name: Снимки до Nova
+        shell: powershell
+        run: ./tests/Take-Screenshots.ps1 -Prefix before
+
+      - name: Применить Nova
+        shell: powershell
+        run: ./src/Nova.ps1 -Mode Apply -Yes -NoRestorePoint
+
+      - name: Снимки после Nova
+        shell: powershell
+        run: ./tests/Take-Screenshots.ps1 -Prefix after
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nova-screenshots
+          path: screenshots/
+          retention-days: 14
