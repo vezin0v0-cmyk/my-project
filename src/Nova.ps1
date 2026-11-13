@@ -157,9 +157,11 @@ function Invoke-NovaUndoFlow {
     }
     $latest = $backups[0]
     $doc = Read-NovaJson $latest.FullName
-    $count = @($doc.entries).Count
+    $entries = @(Get-NovaProp $doc 'entries' @())
+    $tweakCount = @($entries | ForEach-Object { Get-NovaProp $_ 'tweak' } | Where-Object { $_ } | Select-Object -Unique).Count
+    $appCount = @($entries | Where-Object { $_.type -eq 'appRemoved' -or $_.type -eq 'appInstalled' }).Count
     Write-Host ''
-    Write-Nova ('Последний запуск: {0}, изменений: {1}' -f $doc.created, $count) info
+    Write-Nova ('Последний запуск: {0}. Настроек: {1}, приложений: {2}' -f $doc.created, $tweakCount, $appCount) info
     if (-not (Confirm-NovaAction 'Вернуть всё, как было до этого запуска?')) {
         Write-Nova 'Отменено.' dim
         return 0
@@ -167,7 +169,11 @@ function Invoke-NovaUndoFlow {
     $result = Invoke-NovaUndo -BackupPath $latest.FullName
     if ($result.RestartExplorer) { Restart-NovaExplorer }
     Write-Host ''
-    Write-Nova ('Готово! Возвращено изменений: {0}.' -f $result.Restored) ok
+    if ($result.Failed -eq 0) {
+        Write-Nova 'Готово! Всё вернулось, как было до этого запуска.' ok
+    } else {
+        Write-Nova ('Вернуть не удалось: {0} — подробности выше. Остальное возвращено.' -f $result.Failed) warn
+    }
     if ($result.RemovedApps.Count -gt 0) {
         Write-Nova 'Удалённые приложения вернуть автоматически нельзя — при желании поставь их заново из Microsoft Store:' warn
         foreach ($name in $result.RemovedApps) { Write-Nova $name dim }
