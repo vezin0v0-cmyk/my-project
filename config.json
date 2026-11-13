@@ -14,6 +14,8 @@
     "recall-off": true,
     "feedback-off": true,
     "update-sharing-off": true,
+    "telemetry-tasks-off": true,
+    "error-reporting-off": true,
 
     "dark-theme": true,
     "show-extensions": true,
@@ -26,6 +28,9 @@
     "widgets-off": true,
     "end-task-button": true,
     "sticky-keys-off": true,
+    "context-menu-cleanup": true,
+    "notifications-off": false,
+    "transparency-off": false,
 
     "nova-wallpaper": true,
     "nova-accent": true,
@@ -38,7 +43,19 @@
     "mouse-acceleration-off": false,
     "high-performance-power": false,
     "hibernation-off": false,
-    "background-apps-off": false
+    "background-apps-off": false,
+    "gpu-scheduling-on": true,
+    "windowed-games-optimization": true,
+    "power-throttling-off": false,
+    "memory-integrity-off": false,
+
+    "background-services-trim": true,
+    "sysmain-off": false,
+    "search-indexing-off": false,
+    "printing-off": false,
+    "bluetooth-off": false,
+    "xbox-services-off": false,
+    "security-updates-only": false
   },
 
   "removeApps": {
@@ -68,7 +85,12 @@
     "Microsoft.MicrosoftStickyNotes": false,
     "Microsoft.ZuneMusic": false,
     "Microsoft.GamingApp": false,
-    "Microsoft.XboxGamingOverlay": false
+    "Microsoft.XboxGamingOverlay": false,
+    "MicrosoftCorporationII.MicrosoftFamily": true,
+    "Microsoft.Office.OneNote": true,
+    "Microsoft.Wallet": true,
+    "Microsoft.WindowsSoundRecorder": false,
+    "MicrosoftWindows.CrossDevice": false
   },
 
   "installApps": {

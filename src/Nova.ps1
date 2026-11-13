@@ -15,7 +15,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Menu', 'Preview', 'Apply', 'Undo')]
+    [ValidateSet('Menu', 'Preview', 'Apply', 'Undo', 'Measure')]
     [string]$Mode = 'Menu',
     [string]$ConfigPath,
     [switch]$Yes,
@@ -121,6 +121,12 @@ function Invoke-NovaApplyFlow {
         return 0
     }
 
+    if ($null -eq (Get-NovaProp (Read-NovaMeasureData) 'before')) {
+        Write-Host ''
+        Write-Nova 'Запоминаю, как Windows работает сейчас, — потом сравним «было → стало» (пункт 5 в меню)...' dim
+        [void](Save-NovaMeasurement -Label 'before')
+    }
+
     $wantRestorePoint = (-not $NoRestorePoint) -and [bool](Get-NovaProp $context.Config 'createRestorePoint' $true)
     if ($wantRestorePoint) {
         Write-Host ''
@@ -144,7 +150,26 @@ function Invoke-NovaApplyFlow {
     if ($result.Failed -gt 0) { Write-Nova ('С ошибками: {0} — подробности выше.' -f $result.Failed) warn }
     if ($result.BackupPath) { Write-Nova ('Как было до изменений, сохранено в {0}' -f $result.BackupPath) dim }
     Write-Nova 'Чтобы всё точно применилось, перезагрузи компьютер.' info
+    Write-Nova 'После перезагрузки открой Nova и выбери 5 — увидишь, что стало с процессами, службами и памятью.' info
     if ($result.Failed -gt 0) { return 1 }
+    return 0
+}
+
+function Invoke-NovaMeasureFlow {
+    Write-Host ''
+    Write-Nova 'Считаю процессы, службы, задачи и память...' dim
+    $data = Read-NovaMeasureData
+    if ($null -eq (Get-NovaProp $data 'before')) {
+        $m = Save-NovaMeasurement -Label 'before'
+        Write-Nova ('Сейчас: процессов {0}, служб {1}, задач {2}, занято памяти {3} МБ.' -f $m.processes, $m.services, $m.tasks, $m.memoryMB) ok
+        Write-Nova 'Это замер «до». Примени Nova, перезагрузи компьютер и замерь снова — увидишь разницу.' info
+        return 0
+    }
+    $after = Save-NovaMeasurement -Label 'after'
+    if ($after.uptimeMinutes -lt 3) {
+        Write-Nova 'Компьютер включён меньше 3 минут — Windows ещё загружается, цифры будут неточными. Лучше замерить чуть позже.' warn
+    }
+    Show-NovaMeasurement -Before $data.before -After $after
     return 0
 }
 
@@ -167,6 +192,7 @@ function Invoke-NovaUndoFlow {
         return 0
     }
     $result = Invoke-NovaUndo -BackupPath $latest.FullName
+    Clear-NovaMeasurement
     if ($result.RestartExplorer) { Restart-NovaExplorer }
     Write-Host ''
     if ($result.Failed -eq 0) {
@@ -196,6 +222,7 @@ function Start-NovaMenu {
         Write-Host '  2  Применить настройки' -ForegroundColor White
         Write-Host '  3  Отменить последний запуск' -ForegroundColor White
         Write-Host '  4  Открыть config.json — выбрать, что включать' -ForegroundColor White
+        Write-Host '  5  Замерить: было → стало (процессы, службы, память)' -ForegroundColor White
         Write-Host '  0  Выход' -ForegroundColor White
         Write-Host ''
         $choice = (Read-Host '  Выбери пункт').Trim()
@@ -205,6 +232,7 @@ function Start-NovaMenu {
                 '2' { [void](Invoke-NovaApplyFlow); Wait-NovaKey }
                 '3' { [void](Invoke-NovaUndoFlow); Wait-NovaKey }
                 '4' { Start-Process -FilePath 'notepad.exe' -ArgumentList ('"{0}"' -f $ConfigPath) }
+                '5' { [void](Invoke-NovaMeasureFlow); Wait-NovaKey }
                 '0' { return }
             }
         } catch {
@@ -230,6 +258,7 @@ try {
         'Preview' { Show-NovaBanner; Invoke-NovaPreviewFlow }
         'Apply' { Show-NovaBanner; $exitCode = Invoke-NovaApplyFlow }
         'Undo' { Show-NovaBanner; $exitCode = Invoke-NovaUndoFlow }
+        'Measure' { Show-NovaBanner; $exitCode = Invoke-NovaMeasureFlow }
     }
 } catch {
     Write-Nova ('Ошибка: {0}' -f $_.Exception.Message) err

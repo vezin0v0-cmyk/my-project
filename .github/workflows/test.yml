@@ -32,10 +32,15 @@ jobs:
         shell: powershell
         run: ./src/Nova.ps1 -Mode Preview
 
-      - name: Применение и отмена через меню-команды
+      - name: Замер, применение, замер и отмена через меню-команды
         shell: powershell
         run: |
+          ./src/Nova.ps1 -Mode Measure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./src/Nova.ps1 -Mode Apply -Yes -NoRestorePoint
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Start-Sleep -Seconds 20
+          ./src/Nova.ps1 -Mode Measure
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./src/Nova.ps1 -Mode Undo -Yes
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -118,6 +118,33 @@
       ]
     },
     {
+      "id": "telemetry-tasks-off",
+      "category": "privacy",
+      "title": "Отключить скрытые задачи сбора данных",
+      "description": "Windows по расписанию запускает задачи, которые собирают данные о программах, дисках и использовании. Отключаем их и службу отправки (dmwappushservice).",
+      "actions": [
+        { "type": "scheduledTask", "path": "\\Microsoft\\Windows\\Application Experience\\", "name": "Microsoft Compatibility Appraiser" },
+        { "type": "scheduledTask", "path": "\\Microsoft\\Windows\\Application Experience\\", "name": "ProgramDataUpdater" },
+        { "type": "scheduledTask", "path": "\\Microsoft\\Windows\\Customer Experience Improvement Program\\", "name": "Consolidator" },
+        { "type": "scheduledTask", "path": "\\Microsoft\\Windows\\Customer Experience Improvement Program\\", "name": "UsbCeip" },
+        { "type": "scheduledTask", "path": "\\Microsoft\\Windows\\DiskDiagnostic\\", "name": "Microsoft-Windows-DiskDiagnosticDataCollector" },
+        { "type": "scheduledTask", "path": "\\Microsoft\\Windows\\Feedback\\Siuf\\", "name": "DmClient" },
+        { "type": "scheduledTask", "path": "\\Microsoft\\Windows\\Feedback\\Siuf\\", "name": "DmClientOnScenarioDownload" },
+        { "type": "service", "name": "dmwappushservice", "startup": "Disabled" }
+      ]
+    },
+    {
+      "id": "error-reporting-off",
+      "category": "privacy",
+      "title": "Не отправлять отчёты об ошибках",
+      "description": "Когда программа падает, Windows больше не отправляет отчёт в Microsoft и не держит для этого службу.",
+      "actions": [
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Error Reporting", "name": "Disabled", "kind": "DWord", "value": 1 },
+        { "type": "scheduledTask", "path": "\\Microsoft\\Windows\\Windows Error Reporting\\", "name": "QueueReporting" },
+        { "type": "service", "name": "WerSvc", "startup": "Disabled" }
+      ]
+    },
+    {
       "id": "dark-theme",
       "category": "interface",
       "title": "Тёмная тема",
@@ -231,6 +258,38 @@
       ]
     },
     {
+      "id": "context-menu-cleanup",
+      "category": "interface",
+      "title": "Убрать лишнее из правой кнопки",
+      "description": "Убирает редко нужные пункты: «Поделиться», «Предоставить доступ», «Добавить в библиотеку», «Восстановить прежнюю версию» и «Спросить Copilot».",
+      "restartExplorer": true,
+      "actions": [
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Blocked", "name": "{e2bf9676-5f8f-435c-97eb-11607a5bedf7}", "kind": "String", "value": "" },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Blocked", "name": "{f81e9010-6ea4-11ce-a7ff-00aa003ca9f6}", "kind": "String", "value": "" },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Blocked", "name": "{3dad6c5d-2167-4cae-9914-f99e41c12cfa}", "kind": "String", "value": "" },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Blocked", "name": "{596AB062-B4D2-4215-9F74-E9109B0A8153}", "kind": "String", "value": "" },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Blocked", "name": "{CB3B0003-8088-4EDE-8769-8B354AB2FF8C}", "kind": "String", "value": "" }
+      ]
+    },
+    {
+      "id": "notifications-off",
+      "category": "interface",
+      "title": "Без всплывающих уведомлений",
+      "description": "Уведомления программ в углу экрана больше не появляются. Удобно в играх, но можно пропустить что-то важное.",
+      "actions": [
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications", "name": "ToastEnabled", "kind": "DWord", "value": 0 }
+      ]
+    },
+    {
+      "id": "transparency-off",
+      "category": "interface",
+      "title": "Без прозрачности окон",
+      "description": "Панель задач и меню становятся непрозрачными. Чуть меньше нагрузки на слабую видеокарту.",
+      "actions": [
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "name": "EnableTransparency", "kind": "DWord", "value": 0 }
+      ]
+    },
+    {
       "id": "nova-wallpaper",
       "category": "style",
       "title": "Обои Nova",
@@ -263,7 +322,7 @@
       "actions": [
         { "type": "copyFile", "from": "assets/oem/nova-logo.bmp", "to": "{NovaData}\\oem\\nova-logo.bmp" },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Manufacturer", "kind": "String", "value": "Nova" },
-        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Model", "kind": "String", "value": "Nova 0.2 · твоя Windows" },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Model", "kind": "String", "value": "Nova 0.3 · твоя Windows" },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "SupportURL", "kind": "String", "value": "https://github.com/vezin0v0-cmyk/my-project" },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Logo", "kind": "String", "value": "{NovaData}\\oem\\nova-logo.bmp" }
       ]
@@ -343,6 +402,116 @@
       "description": "Экономит память и батарею. Некоторые приложения из Store могут перестать присылать уведомления.",
       "actions": [
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy", "name": "LetAppsRunInBackground", "kind": "DWord", "value": 2 }
+      ]
+    },
+    {
+      "id": "gpu-scheduling-on",
+      "category": "performance",
+      "title": "Планирование GPU (меньше задержка)",
+      "description": "Видеокарта сама управляет своей памятью — это может снизить задержку в играх. Работает на современных видеокартах, начнёт действовать после перезагрузки.",
+      "actions": [
+        { "type": "registry", "path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers", "name": "HwSchMode", "kind": "DWord", "value": 2 }
+      ]
+    },
+    {
+      "id": "windowed-games-optimization",
+      "category": "performance",
+      "title": "Оптимизация игр в окне",
+      "description": "Игры в окне и без рамки работают почти как в полноэкранном режиме: меньше задержка и плавнее картинка.",
+      "actions": [
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences", "name": "DirectXUserGlobalSettings", "kind": "String", "value": "SwapEffectUpgradeEnable=1;" }
+      ]
+    },
+    {
+      "id": "power-throttling-off",
+      "category": "performance",
+      "title": "Без энергосбережения процессора",
+      "description": "Windows перестаёт замедлять фоновые программы ради экономии энергии. На ноутбуке батарея сядет быстрее.",
+      "actions": [
+        { "type": "registry", "path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power\\PowerThrottling", "name": "PowerThrottlingOff", "kind": "DWord", "value": 1 }
+      ]
+    },
+    {
+      "id": "memory-integrity-off",
+      "category": "performance",
+      "title": "Выключить «Целостность памяти»",
+      "description": "Microsoft сама пишет, что эта защита может снижать FPS в играх. Но это защита от вредоносных драйверов: выключай, только если понимаешь риск. Некоторые античиты требуют её включённой. Действует после перезагрузки.",
+      "actions": [
+        { "type": "registry", "path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity", "name": "Enabled", "kind": "DWord", "value": 0 }
+      ]
+    },
+    {
+      "id": "background-services-trim",
+      "category": "system",
+      "title": "Отключить ненужные фоновые службы",
+      "description": "Службы, которые обычному ПК не нужны: загрузка офлайн-карт, демо-режим для магазинов, факс, отслеживание ссылок в сети и сетевой доступ к медиатеке.",
+      "actions": [
+        { "type": "service", "name": "MapsBroker", "startup": "Disabled" },
+        { "type": "service", "name": "RetailDemo", "startup": "Disabled" },
+        { "type": "service", "name": "Fax", "startup": "Disabled" },
+        { "type": "service", "name": "TrkWks", "startup": "Disabled" },
+        { "type": "service", "name": "WMPNetworkSvc", "startup": "Disabled" },
+        { "type": "scheduledTask", "path": "\\Microsoft\\Windows\\Maps\\", "name": "MapsUpdateTask" },
+        { "type": "scheduledTask", "path": "\\Microsoft\\Windows\\Maps\\", "name": "MapsToastTask" }
+      ]
+    },
+    {
+      "id": "sysmain-off",
+      "category": "system",
+      "title": "Отключить SysMain (Superfetch)",
+      "description": "SysMain заранее загружает программы в память. На SSD пользы почти нет, а в фоне он нагружает диск и процессор. На старом жёстком диске программы могут открываться медленнее.",
+      "actions": [
+        { "type": "service", "name": "SysMain", "startup": "Disabled" }
+      ]
+    },
+    {
+      "id": "search-indexing-off",
+      "category": "system",
+      "title": "Отключить индексацию поиска",
+      "description": "Windows перестаёт постоянно сканировать файлы для быстрого поиска — меньше фоновой нагрузки. Поиск в «Пуске» и Проводнике по содержимому файлов станет медленнее.",
+      "actions": [
+        { "type": "service", "name": "WSearch", "startup": "Disabled" }
+      ]
+    },
+    {
+      "id": "printing-off",
+      "category": "system",
+      "title": "Отключить печать",
+      "description": "Если у тебя нет принтера — служба печати не нужна. Включится обратно при отмене.",
+      "actions": [
+        { "type": "service", "name": "Spooler", "startup": "Disabled" }
+      ]
+    },
+    {
+      "id": "bluetooth-off",
+      "category": "system",
+      "title": "Отключить Bluetooth",
+      "description": "Если не пользуешься беспроводными наушниками, мышью или геймпадом по Bluetooth. С ними включать нельзя — перестанут подключаться.",
+      "actions": [
+        { "type": "service", "name": "bthserv", "startup": "Disabled" },
+        { "type": "service", "name": "BthAvctpSvc", "startup": "Disabled" }
+      ]
+    },
+    {
+      "id": "xbox-services-off",
+      "category": "system",
+      "title": "Отключить службы Xbox",
+      "description": "Если не играешь через Xbox и Game Pass. Игры из Steam и Epic Games это не затронет.",
+      "actions": [
+        { "type": "service", "name": "XblAuthManager", "startup": "Disabled" },
+        { "type": "service", "name": "XblGameSave", "startup": "Disabled" },
+        { "type": "service", "name": "XboxNetApiSvc", "startup": "Disabled" }
+      ]
+    },
+    {
+      "id": "security-updates-only",
+      "category": "system",
+      "title": "Только обновления безопасности",
+      "description": "Windows продолжит ставить исправления безопасности, но не будет сама переходить на новую большую версию (например, с 24H2 на следующую) и ломать твои настройки. Работает на Pro и выше.",
+      "actions": [
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate", "name": "ProductVersion", "kind": "String", "value": "{WindowsName}" },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate", "name": "TargetReleaseVersion", "kind": "DWord", "value": 1 },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate", "name": "TargetReleaseVersionInfo", "kind": "String", "value": "{DisplayVersion}" }
       ]
     }
   ]

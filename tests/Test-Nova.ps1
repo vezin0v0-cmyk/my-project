@@ -53,6 +53,12 @@ function Get-Snapshot {
                     $path = Expand-NovaText $action.to
                     $snapshot["file|$path"] = [string](Get-NovaFileHash $path)
                 }
+                'scheduledTask' {
+                    $state = Get-NovaTaskState $action.path $action.name
+                    # Running и Ready — это одно и то же «включена»: задача могла просто запуститься.
+                    if ($state -eq 'Running') { $state = 'Ready' }
+                    $snapshot["task|$($action.path)$($action.name)"] = [string]$state
+                }
             }
         }
     }

@@ -4,13 +4,15 @@
 
 $ErrorActionPreference = 'Stop'
 
-$script:NovaVersion = '0.2.0'
+$script:NovaVersion = '0.3.0'
 $script:Categories = [ordered]@{
     privacy     = 'ПРИВАТНОСТЬ'
     interface   = 'ИНТЕРФЕЙС'
     style       = 'ОФОРМЛЕНИЕ NOVA'
     performance = 'СКОРОСТЬ И ИГРЫ'
+    system      = 'СИСТЕМА И ФОН'
 }
+$script:SystemInfo = $null
 # Папка проекта (где лежат assets). Задаётся в Get-NovaContext.
 $script:NovaRoot = Split-Path -Parent $PSScriptRoot
 $script:RegistryKinds = @('DWord', 'QWord', 'String', 'ExpandString', 'MultiString', 'Binary')
@@ -55,12 +57,19 @@ function Get-NovaDataDir {
     return $dir
 }
 
-# Подставляет пути в текст настроек: {NovaData} — C:\ProgramData\Nova, {NovaRoot} — папка проекта.
+# Подставляет значения в текст настроек:
+# {NovaData} — C:\ProgramData\Nova, {NovaRoot} — папка проекта,
+# {WindowsName} — «Windows 11» или «Windows 10», {DisplayVersion} — версия Windows, например 24H2.
 function Expand-NovaText {
     param([string]$Text)
-    if ($null -eq $Text) { return $Text }
-    $dataDir = (Get-NovaDataDir).TrimEnd('\')
-    return $Text.Replace('{NovaData}', $dataDir).Replace('{NovaRoot}', $script:NovaRoot.TrimEnd('\'))
+    if ($null -eq $Text -or $Text.IndexOf('{') -lt 0) { return $Text }
+    if ($null -eq $script:SystemInfo) { $script:SystemInfo = Get-NovaSystemInfo }
+    $windowsName = 'Windows 10'
+    if ($script:SystemInfo.Build -ge 22000) { $windowsName = 'Windows 11' }
+    $result = $Text.Replace('{NovaData}', (Get-NovaDataDir).TrimEnd('\'))
+    $result = $result.Replace('{NovaRoot}', $script:NovaRoot.TrimEnd('\'))
+    $result = $result.Replace('{WindowsName}', $windowsName)
+    return $result.Replace('{DisplayVersion}', [string]$script:SystemInfo.Version)
 }
 
 # Путь к файлу из папки проекта (например, assets\wallpaper\nova-dark.jpg).
@@ -349,6 +358,18 @@ function Copy-NovaFile {
 
 #endregion
 
+#region Задачи по расписанию
+
+# Состояние задачи: Ready / Disabled / Running … или $null, если такой задачи нет.
+function Get-NovaTaskState {
+    param([string]$TaskPath, [string]$TaskName)
+    $task = Get-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($null -eq $task) { return $null }
+    return $task.State.ToString()
+}
+
+#endregion
+
 #region Действия: проверить, применить, отменить
 
 function New-NovaState {
@@ -365,6 +386,7 @@ function Get-NovaActionLabel {
         'hibernate' { return 'гибернация' }
         'wallpaper' { return 'обои рабочего стола' }
         'copyFile' { return "файл $(Expand-NovaText $Action.to)" }
+        'scheduledTask' { return "задача $($Action.path)$($Action.name)" }
     }
     return [string]$Action.type
 }
@@ -393,6 +415,11 @@ function Get-NovaActionState {
             $shown = $current
             if (-not $shown) { $shown = 'без обоев' }
             return New-NovaState (-not $same) $shown $target ''
+        }
+        'scheduledTask' {
+            $current = Get-NovaTaskState $Action.path $Action.name
+            if ($null -eq $current) { return New-NovaState $false 'нет' 'Disabled' 'задачи нет в этой системе' }
+            return New-NovaState ($current -ne 'Disabled') $current 'Disabled' ''
         }
         'copyFile' {
             $to = Expand-NovaText $Action.to
@@ -442,6 +469,13 @@ function Invoke-NovaAction {
             Set-NovaRegValue -Path $script:DesktopKey -Name 'WallpaperStyle' -Value '10' -Kind 'String'
             Set-NovaRegValue -Path $script:DesktopKey -Name 'TileWallpaper' -Value '0' -Kind 'String'
             Set-NovaWallpaper -Path $target
+            return
+        }
+        'scheduledTask' {
+            $before = Get-NovaTaskState $Action.path $Action.name
+            if ($null -eq $before) { return }
+            [void]$Journal.Add([pscustomobject]@{ type = 'scheduledTask'; tweak = $Tweak; path = $Action.path; name = $Action.name; state = $before })
+            Disable-ScheduledTask -TaskPath $Action.path -TaskName $Action.name | Out-Null
             return
         }
         'copyFile' {
@@ -550,6 +584,10 @@ function Undo-NovaEntry {
             }
             return
         }
+        'scheduledTask' {
+            if ($Entry.state -ne 'Disabled') { Enable-ScheduledTask -TaskPath $Entry.path -TaskName $Entry.name | Out-Null }
+            return
+        }
         'appRemoved' { return }
         'appInstalled' { return }
     }
@@ -601,6 +639,9 @@ function Test-NovaDefinition {
                 if ([string](Get-NovaProp $action 'guid') -notmatch '^[0-9a-fA-F-]{36}$') { $problems.Add("tweaks.json: у '$id' неверный guid схемы питания") }
             } elseif ($type -eq 'hibernate') {
                 if (@('on', 'off') -notcontains (Get-NovaProp $action 'state')) { $problems.Add("tweaks.json: у '$id' state должен быть on или off") }
+            } elseif ($type -eq 'scheduledTask') {
+                if ([string](Get-NovaProp $action 'path') -notmatch '^\\.*\\$') { $problems.Add("tweaks.json: у '$id' путь задачи должен начинаться и заканчиваться на \") }
+                if (-not (Get-NovaProp $action 'name')) { $problems.Add("tweaks.json: у '$id' не указано имя задачи") }
             } elseif ($type -eq 'wallpaper') {
                 $file = [string](Get-NovaProp $action 'file')
                 if (-not $file -or -not (Test-Path -LiteralPath (Resolve-NovaAsset $file))) { $problems.Add("tweaks.json: у '$id' не найден файл обоев '$file'") }
@@ -642,10 +683,11 @@ function Get-NovaContext {
     $tweaksDoc = Read-NovaJson $TweaksPath
     $tweaks = @(Get-NovaProp $tweaksDoc 'tweaks' @())
     $problems = @(Test-NovaDefinition -Config $config -Tweaks $tweaks)
+    $script:SystemInfo = Get-NovaSystemInfo
     return [pscustomobject]@{
         Config     = $config
         Tweaks     = $tweaks
-        System     = (Get-NovaSystemInfo)
+        System     = $script:SystemInfo
         Problems   = $problems
         ConfigPath = $ConfigPath
     }
@@ -935,6 +977,82 @@ function Invoke-NovaApply {
     }
     return $result
 }
+
+#region Замер «было → стало»
+
+# Сколько всего работает в Windows прямо сейчас.
+function Get-NovaMeasurement {
+    $os = Get-CimInstance -ClassName Win32_OperatingSystem
+    $running = @(Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Running' }).Count
+    $tasks = @(Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.State -ne 'Disabled' }).Count
+    $startup = @(Get-CimInstance -ClassName Win32_StartupCommand -ErrorAction SilentlyContinue).Count
+    $apps = @(Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object { -not $_.IsFramework }).Count
+    return [pscustomobject]@{
+        time          = (Get-Date).ToString('yyyy-MM-dd HH:mm')
+        uptimeMinutes = [int][math]::Round(((Get-Date) - $os.LastBootUpTime).TotalMinutes)
+        processes     = @(Get-Process).Count
+        services      = $running
+        tasks         = $tasks
+        memoryMB      = [int][math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1024)
+        totalMB       = [int][math]::Round($os.TotalVisibleMemorySize / 1024)
+        startup       = $startup
+        apps          = $apps
+    }
+}
+
+function Get-NovaMeasureFile { return (Join-Path (Get-NovaDataDir) 'measure.json') }
+
+function Read-NovaMeasureData {
+    $file = Get-NovaMeasureFile
+    if (-not (Test-Path -LiteralPath $file)) { return $null }
+    return (Read-NovaJson $file)
+}
+
+function Save-NovaMeasurement {
+    param([Parameter(Mandatory)][ValidateSet('before', 'after')][string]$Label)
+    $data = Read-NovaMeasureData
+    if ($null -eq $data) { $data = [pscustomobject]@{ before = $null; after = $null } }
+    $measurement = Get-NovaMeasurement
+    $data.$Label = $measurement
+    if ($Label -eq 'before') { $data.after = $null }
+    $json = $data | ConvertTo-Json -Depth 4
+    [System.IO.File]::WriteAllText((Get-NovaMeasureFile), $json, (New-Object System.Text.UTF8Encoding($false)))
+    return $measurement
+}
+
+function Clear-NovaMeasurement {
+    $file = Get-NovaMeasureFile
+    if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force }
+}
+
+# Таблица «было → стало». Зелёным — где стало меньше.
+function Show-NovaMeasurement {
+    param([Parameter(Mandatory)]$Before, [Parameter(Mandatory)]$After)
+    $rows = @(
+        @('Процессов запущено', 'processes', ''),
+        @('Служб работает', 'services', ''),
+        @('Задач по расписанию включено', 'tasks', ''),
+        @('Занято оперативной памяти', 'memoryMB', ' МБ'),
+        @('Программ в автозагрузке', 'startup', ''),
+        @('Приложений из Store', 'apps', '')
+    )
+    Write-Host ''
+    Write-Host ('  {0}{1}{2}{3}' -f 'ПАРАМЕТР'.PadRight(34), 'ДО'.PadLeft(10), 'ПОСЛЕ'.PadLeft(10), 'РАЗНИЦА'.PadLeft(12)) -ForegroundColor Cyan
+    foreach ($row in $rows) {
+        $b = [int](Get-NovaProp $Before $row[1] 0)
+        $a = [int](Get-NovaProp $After $row[1] 0)
+        $diff = $a - $b
+        $color = 'Gray'
+        if ($diff -lt 0) { $color = 'Green' } elseif ($diff -gt 0) { $color = 'Yellow' }
+        $diffText = '{0:+#;-#;0}{1}' -f $diff, $row[2]
+        Write-Host ('  {0}{1}{2}{3}' -f $row[0].PadRight(34), ('{0}{1}' -f $b, $row[2]).PadLeft(10), ('{0}{1}' -f $a, $row[2]).PadLeft(10), $diffText.PadLeft(12)) -ForegroundColor $color
+    }
+    Write-Host ''
+    Write-Nova ('Замер «до»: {0} (после включения прошло {1} мин), «после»: {2} (прошло {3} мин).' -f $Before.time, $Before.uptimeMinutes, $After.time, $After.uptimeMinutes) dim
+    Write-Nova 'Память и процессы сильно зависят от того, что открыто. Честнее всего сравнивать сразу после включения, когда ничего не запущено.' dim
+}
+
+#endregion
 
 # Резервные копии, которые ещё не отменяли (новые — первыми).
 function Get-NovaBackup {
