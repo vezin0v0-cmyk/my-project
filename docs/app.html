@@ -139,9 +139,9 @@
     background: rgba(255,201,64,.1); border: 1px solid rgba(255,201,64,.35); transition: color .4s, background .4s, border-color .4s; }
   .badge-ic svg.i { width: 22px; height: 22px; }
   .card.success .badge-ic { color: var(--ok); background: rgba(61,220,132,.1); border-color: rgba(61,220,132,.4); }
-  .otp { position: relative; display: flex; justify-content: center; align-items: center; gap: 12px; height: 70px; margin: 6px 0 8px; transition: height .55s cubic-bezier(.6,0,.2,1); }
+  .otp { position: relative; display: flex; justify-content: center; align-items: center; gap: 9px; height: 70px; margin: 6px 0 8px; transition: height .55s cubic-bezier(.6,0,.2,1); }
   .otp.tall { height: 176px; }
-  .otp input { width: 58px; height: 64px; padding: 0; border-radius: 15px; text-align: center; font: 700 26px/1 var(--mono); background: rgba(0,0,0,.42);
+  .otp input { width: 50px; min-width: 0; flex: 0 1 auto; height: 62px; padding: 0; border-radius: 14px; text-align: center; font: 700 24px/1 var(--mono); background: rgba(0,0,0,.42);
     border: 1px solid rgba(255,255,255,.12); outline: none; caret-color: var(--gold);
     transition: transform .7s cubic-bezier(.6,0,.2,1), opacity .45s, border-color .2s, box-shadow .2s, background .3s; }
   .otp input:focus { border-color: var(--gold); box-shadow: 0 0 0 4px rgba(255,201,64,.14); }
@@ -318,8 +318,8 @@
     .stats { gap: 12px; }
     .stat { padding: 14px; }
     .stat .num { font-size: 26px; }
-    .otp { gap: 10px; }
-    .otp input { width: 54px; height: 60px; }
+    .otp { gap: 7px; }
+    .otp input { width: 44px; height: 56px; font-size: 22px; border-radius: 12px; }
     .dtop .actions { width: 100%; }
     .dtop .actions > * { flex: 1; }
     .brand { left: 18px; }
@@ -373,7 +373,7 @@
     <div class="emblem" id="emblem"><svg viewBox="0 0 24 24"><use href="#i-nova" fill="url(#gold-g)"/></svg></div>
     <section class="card glass" id="card">
       <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
-      <div class="chip"><svg class="i" style="width:13px;height:13px"><use href="#i-nova"/></svg>Демо · аккаунты скоро</div>
+      <div class="chip"><svg class="i" style="width:13px;height:13px"><use href="#i-nova"/></svg><span id="mode-chip">Демо · аккаунты скоро</span></div>
 
       <!-- Вход -->
       <div class="view" id="view-login" hidden>
@@ -453,12 +453,14 @@
       <div class="view center" id="view-verify" hidden>
         <div class="badge-ic" id="v-badge"><svg class="i"><use href="#i-key"/></svg></div>
         <h1 id="v-title">Подтверди <span class="gold-text">почту</span></h1>
-        <p class="sub" id="v-sub">Мы отправили 4-значный код на <b id="v-email"></b></p>
+        <p class="sub" id="v-sub">Мы отправили 6-значный код на <b id="v-email"></b></p>
         <div class="otp" id="otp">
           <input inputmode="numeric" autocomplete="one-time-code" aria-label="Цифра 1" pattern="[0-9]*">
           <input inputmode="numeric" aria-label="Цифра 2" pattern="[0-9]*">
           <input inputmode="numeric" aria-label="Цифра 3" pattern="[0-9]*">
           <input inputmode="numeric" aria-label="Цифра 4" pattern="[0-9]*">
+          <input inputmode="numeric" aria-label="Цифра 5" pattern="[0-9]*">
+          <input inputmode="numeric" aria-label="Цифра 6" pattern="[0-9]*">
           <div class="done" id="done"><svg class="i"><use href="#i-check"/></svg></div>
         </div>
         <p class="otp-err" id="otp-err" aria-live="polite"></p>
@@ -468,7 +470,7 @@
       </div>
     </section>
   </div>
-  <p class="foot">Демо-версия: пароли и почта никуда не отправляются.</p>
+  <p class="foot" id="mode-foot">Демо-версия: пароли и почта никуда не отправляются.</p>
 </main>
 
 <!-- ================= КАБИНЕТ ================= -->
@@ -500,7 +502,7 @@
         <p class="date" id="today"></p>
       </div>
       <div class="actions">
-        <span class="demo-chip">демо · данные только в этом браузере</span>
+        <span class="demo-chip" id="dash-chip">демо · данные только в этом браузере</span>
       </div>
     </header>
 
@@ -580,6 +582,15 @@
   var SITE = {
     download: 'https://github.com/vezin0v0-cmyk/my-project/archive/refs/heads/main.zip'
   };
+
+  // Настоящие аккаунты: код подтверждения приходит на почту.
+  // Ключи берутся в Supabase: Project Settings → API (как получить — docs/AUTH-SETUP.md).
+  // Оба значения публичные, их можно хранить на сайте. Пока они пустые, кабинет работает в демо-режиме.
+  var AUTH = {
+    supabaseUrl: '',
+    supabaseKey: ''
+  };
+  var REAL = !!(AUTH.supabaseUrl && AUTH.supabaseKey);
 
   var CATS = [
     { id: 'privacy', name: 'Приватность', icon: 'shield', sec: 'tweaks' },
@@ -746,12 +757,19 @@
     f.classList.toggle('invalid', !!msg);
     f.querySelector('.err').textContent = msg || '';
   }
-  function busy(btn, text, done) {
+  // Крутилка на кнопке. Возвращает функцию, которая убирает её.
+  function spin(btn, text) {
     var html = btn.innerHTML;
     btn.classList.add('loading');
+    btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span><span>' + text + '</span>';
-    setTimeout(function () { btn.classList.remove('loading'); btn.innerHTML = html; done(); }, reduce ? 150 : 950);
+    return function () { btn.classList.remove('loading'); btn.disabled = false; btn.innerHTML = html; };
   }
+  function busy(btn, text, done) {
+    var stop = spin(btn, text);
+    setTimeout(function () { stop(); done(); }, reduce ? 150 : 950);
+  }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, reduce ? 0 : ms); }); }
   function nameFromEmail(email) {
     var n = email.split('@')[0].replace(/[._\-0-9]+/g, ' ').trim();
     if (!n) return 'Друг';
@@ -762,6 +780,78 @@
     writeJSON(remember ? 'local' : 'session', 'nova.user', user);
     writeJSON(remember ? 'session' : 'local', 'nova.user', null);
   }
+  function signOutLocal() {
+    state.user = null;
+    writeJSON('local', 'nova.user', null); writeJSON('session', 'nova.user', null);
+  }
+
+  // ---------- Сервер аккаунтов (Supabase) ----------
+  // Сессия лежит в localStorage, если отмечено «Запомнить меня», иначе — до закрытия вкладки.
+  var authStore = {
+    getItem: function (k) { try { return localStorage.getItem(k) || sessionStorage.getItem(k); } catch (e) { return null; } },
+    setItem: function (k, v) {
+      try {
+        var keep = localStorage.getItem('nova.remember') !== '0';
+        (keep ? localStorage : sessionStorage).setItem(k, v);
+        (keep ? sessionStorage : localStorage).removeItem(k);
+      } catch (e) { /* хранилище недоступно */ }
+    },
+    removeItem: function (k) { try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch (e) { /* ничего */ } }
+  };
+  function setRemember(on) { try { localStorage.setItem('nova.remember', on ? '1' : '0'); } catch (e) { /* ничего */ } }
+  function remembered() { try { return localStorage.getItem('nova.remember') !== '0'; } catch (e) { return false; } }
+
+  var clientPromise = null;
+  function sb() {
+    if (clientPromise) return clientPromise;
+    clientPromise = new Promise(function (resolve, reject) {
+      function make() {
+        resolve(window.supabase.createClient(AUTH.supabaseUrl, AUTH.supabaseKey, {
+          auth: { storage: authStore, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+        }));
+      }
+      if (window.supabase && window.supabase.createClient) { make(); return; }
+      var s = document.createElement('script');
+      s.src = 'vendor/supabase-2.119.0.js';
+      s.onload = function () { if (window.supabase && window.supabase.createClient) make(); else reject(new Error('Failed to load auth library')); };
+      s.onerror = function () { reject(new Error('Failed to load auth library')); };
+      document.head.appendChild(s);
+    });
+    clientPromise.catch(function () { clientPromise = null; });
+    return clientPromise;
+  }
+  // Supabase возвращает { data, error }. Превращаем ошибку в исключение, чтобы ловить в одном месте.
+  function call(fn) {
+    return sb().then(function (c) { return fn(c.auth); }).then(function (res) {
+      if (res && res.error) throw res.error;
+      return res ? res.data : null;
+    });
+  }
+  function userFrom(u) {
+    var meta = (u && u.user_metadata) || {};
+    var email = (u && u.email) || '';
+    return { name: meta.name || nameFromEmail(email), email: email };
+  }
+  // Понятный текст вместо английской ошибки сервера.
+  function authError(err) {
+    var code = String((err && err.code) || '');
+    var msg = String((err && err.message) || '');
+    var status = err && err.status;
+    var secs = /after (\d+) second/i.exec(msg);
+    if (code === 'user_already_exists' || code === 'email_exists' || /already (been )?registered/i.test(msg)) return { field: 'email', text: 'Эта почта уже зарегистрирована. Войди в аккаунт.' };
+    if (code === 'invalid_credentials' || /invalid login credentials/i.test(msg)) return { field: 'password', text: 'Неверная почта или пароль' };
+    if (code === 'email_not_confirmed' || /email not confirmed/i.test(msg)) return { unconfirmed: true, text: 'Почта ещё не подтверждена' };
+    if (code === 'otp_expired' || /token has expired|otp.*(expired|invalid)|invalid.*(token|otp)/i.test(msg)) return { text: 'Код не подошёл или устарел. Проверь последнее письмо или запроси новый код.' };
+    if (code === 'weak_password' || /password should/i.test(msg)) return { field: 'password', text: 'Пароль слишком простой: добавь цифры и большие буквы' };
+    if (code === 'email_address_invalid' || /email address .*invalid/i.test(msg)) return { field: 'email', text: 'Такая почта не подходит. Проверь адрес.' };
+    if (code === 'signup_disabled' || /signups not allowed/i.test(msg)) return { text: 'Регистрация сейчас закрыта. Загляни позже.' };
+    if (secs) return { text: 'Новое письмо можно отправить через ' + secs[1] + ' сек.' };
+    if (code === 'over_email_send_rate_limit' || /email rate limit/i.test(msg)) return { text: 'Письма временно не отправляются: слишком много за последний час. Попробуй позже.' };
+    if (status === 429 || /rate limit|too many/i.test(msg)) return { text: 'Слишком много попыток. Подожди минуту и попробуй снова.' };
+    if ((err && err.name === 'AuthRetryableFetchError') || /fetch|network|load/i.test(msg)) return { text: 'Нет связи с сервером. Проверь интернет и попробуй ещё раз.' };
+    return { text: 'Что-то пошло не так. Попробуй ещё раз через минуту.' };
+  }
+  function errToast(info) { toast({ title: 'Не получилось', text: info.text, icon: 'lock' }); }
 
   $$('.eye').forEach(function (btn) {
     btn.addEventListener('click', function () {
@@ -775,12 +865,12 @@
 
   $$('[data-oauth]').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      toast({ title: 'Вход через ' + btn.getAttribute('data-oauth'), text: 'Появится, когда подключим настоящие аккаунты. Пока можно войти по почте.', icon: 'lock' });
+      toast({ title: 'Вход через ' + btn.getAttribute('data-oauth'), text: REAL ? 'Скоро появится. Пока можно войти по почте.' : 'Появится, когда подключим настоящие аккаунты. Пока можно войти по почте.', icon: 'lock' });
     });
   });
   $$('[data-toast="forgot"]').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      toast({ title: 'Восстановление пароля', text: 'Появится вместе с настоящими аккаунтами. В демо подойдёт любой пароль от 8 символов.', icon: 'key' });
+      toast({ title: 'Восстановление пароля', text: REAL ? 'Скоро появится: код для смены пароля тоже будет приходить на почту.' : 'Появится вместе с настоящими аккаунтами. В демо подойдёт любой пароль от 8 символов.', icon: 'key' });
     });
   });
 
@@ -791,7 +881,9 @@
     if (!EMAIL_RE.test(email)) { setErr(loginForm.email, 'Введи почту, например name@mail.ru'); ok = false; } else setErr(loginForm.email, '');
     if (pass.length < 8) { setErr(loginForm.password, 'Пароль — минимум 8 символов'); ok = false; } else setErr(loginForm.password, '');
     if (!ok) return;
-    busy(loginForm.querySelector('[type=submit]'), 'Входим…', function () {
+    var btn = loginForm.querySelector('[type=submit]');
+    if (REAL) { realLogin(btn, email, pass, loginForm.remember.checked); return; }
+    busy(btn, 'Входим…', function () {
       var known = readJSON('local', 'nova.known') || {};
       signIn({ name: known[email.toLowerCase()] || nameFromEmail(email), email: email }, loginForm.remember.checked);
       loginForm.reset();
@@ -799,6 +891,43 @@
       go('dashboard');
     });
   });
+
+  function realLogin(btn, email, pass, remember) {
+    var stop = spin(btn, 'Входим…');
+    setRemember(remember);
+    call(function (a) { return a.signInWithPassword({ email: email, password: pass }); })
+      .then(function (data) {
+        stop();
+        signIn(userFrom(data.user), remember);
+        loginForm.reset();
+        log('Вход в кабинет');
+        go('dashboard');
+      })
+      .catch(function (err) {
+        var info = authError(err);
+        if (!info.unconfirmed) {
+          stop();
+          if (info.field) setErr(info.field === 'email' ? loginForm.email : loginForm.password, info.text);
+          else errToast(info);
+          return;
+        }
+        // Аккаунт есть, но почту не подтвердили: отправляем новый код и открываем ввод кода.
+        var known = readJSON('local', 'nova.known') || {};
+        call(function (a) { return a.resend({ type: 'signup', email: email }); })
+          .catch(function (e2) { var i2 = authError(e2); if (!/сек\./.test(i2.text)) errToast(i2); })
+          .then(function () {
+            stop();
+            loginForm.reset();
+            setPending({ name: known[email.toLowerCase()] || nameFromEmail(email), email: email });
+            toast({ title: 'Почта ещё не подтверждена', text: 'Мы отправили код ещё раз — введи его, и вход завершится.', icon: 'mail' });
+            go('verify');
+          });
+      });
+  }
+  function setPending(p) {
+    state.pending = p;
+    writeJSON('session', 'nova.pending', p);
+  }
 
   var regForm = $('#form-register');
   function strength(p) {
@@ -826,29 +955,64 @@
     $('#terms-label').classList.toggle('invalid', !f.terms.checked);
     if (!f.terms.checked) ok = false;
     if (!ok) return;
-    busy(f.querySelector('[type=submit]'), 'Создаём…', function () {
-      state.pending = { name: name, email: email };
-      writeJSON('session', 'nova.pending', state.pending);
+    var btn = f.querySelector('[type=submit]');
+    function finish() {
       var known = readJSON('local', 'nova.known') || {};
       known[email.toLowerCase()] = name;
       writeJSON('local', 'nova.known', known);
       f.reset();
       regForm.password.dispatchEvent(new Event('input'));
-      go('verify');
-    });
+    }
+    if (!REAL) {
+      busy(btn, 'Создаём…', function () {
+        setPending({ name: name, email: email });
+        finish();
+        go('verify');
+      });
+      return;
+    }
+    var stop = spin(btn, 'Создаём…');
+    setRemember(true);
+    call(function (a) { return a.signUp({ email: email, password: f.password.value, options: { data: { name: name } } }); })
+      .then(function (data) {
+        stop();
+        var u = data && data.user;
+        // Если почта уже подтверждена кем-то, Supabase не говорит об этом прямо, а возвращает пустой список identities.
+        if (u && Array.isArray(u.identities) && u.identities.length === 0) {
+          setErr(f.email, 'Эта почта уже зарегистрирована. Войди в аккаунт.');
+          return;
+        }
+        finish();
+        if (data.session) {
+          // В Supabase выключено подтверждение почты — аккаунт готов сразу.
+          signIn(userFrom(u), true);
+          log('Аккаунт создан');
+          go('dashboard');
+          return;
+        }
+        setPending({ name: name, email: email });
+        go('verify');
+      })
+      .catch(function (err) {
+        stop();
+        var info = authError(err);
+        if (info.field === 'email') setErr(f.email, info.text);
+        else if (info.field === 'password') setErr(f.password, info.text);
+        else errToast(info);
+      });
   });
   regForm.terms.addEventListener('change', function () { $('#terms-label').classList.remove('invalid'); });
 
   // ---------- Код подтверждения ----------
   var otp = $('#otp'), digits = $$('#otp input'), done = $('#done'), verifyBtn = $('#verify-btn'), otpErr = $('#otp-err'), resend = $('#resend');
-  var verifying = false, orbitCenter = 0;
+  var verifying = false, orbitCenter = 0, N = digits.length;
   var verifyBtnHtml = verifyBtn.innerHTML;
 
   function enterVerify() {
     verifying = false;
     $('#v-email').textContent = state.pending ? state.pending.email : '';
     $('#v-title').innerHTML = 'Подтверди <span class="gold-text">почту</span>';
-    $('#v-sub').firstChild.textContent = 'Мы отправили 4-значный код на ';
+    $('#v-sub').firstChild.textContent = 'Мы отправили ' + N + '-значный код на ';
     $('#v-badge').innerHTML = use('key');
     $('#view-verify').classList.remove('verifying');
     otp.className = 'otp';
@@ -865,13 +1029,23 @@
   }
 
   function sendCode() {
-    state.code = String(Math.floor(1000 + Math.random() * 9000));
+    closeMail();
+    if (REAL) {
+      // Письмо уже отправил сервер при регистрации. Здесь только подсказка.
+      state.mailClose = toast({
+        title: 'Письмо отправлено', icon: 'mail', ms: 9000,
+        text: 'Код придёт на ' + state.pending.email + ' в течение минуты. Не видно — проверь папку «Спам».'
+      });
+      return;
+    }
+    var min = Math.pow(10, N - 1);
+    state.code = String(Math.floor(min + Math.random() * 9 * min));
     var code = state.code;
     setTimeout(function () {
       if (state.view !== 'verify' || state.code !== code) return;
       closeMail();
       state.mailClose = toast({
-        title: 'Письмо от Nova', icon: 'mail', code: code.split('').join(' '),
+        title: 'Письмо от Nova', icon: 'mail', code: code.replace(/(\d{3})(?=\d)/g, '$1 '),
         text: 'Твой код подтверждения', ms: 12000,
         demo: 'Демо: настоящее письмо придёт, когда подключим сервер',
         action: { label: 'Вставить код', run: function () { fillFrom(code, 0); } }
@@ -883,28 +1057,39 @@
   function pad2(n) { return n < 10 ? '0' + n : String(n); }
   function startTimer() {
     stopTimer();
-    state.left = 39;
+    // Supabase разрешает новое письмо раз в 60 секунд.
+    state.left = REAL ? 59 : 39;
     tick();
     state.timer = setInterval(tick, 1000);
   }
   function tick() {
     if (state.left <= 0) { stopTimer(); resend.disabled = false; resend.textContent = 'Отправить снова'; return; }
     resend.disabled = true;
-    resend.textContent = 'Отправить снова через 00:' + pad2(state.left);
+    resend.textContent = 'Отправить снова через ' + pad2(Math.floor(state.left / 60)) + ':' + pad2(state.left % 60);
     state.left--;
   }
   function stopTimer() { if (state.timer) { clearInterval(state.timer); state.timer = null; } }
   resend.addEventListener('click', function () {
-    sendCode(); startTimer();
-    toast({ title: 'Код отправлен ещё раз', text: 'Проверь почту через пару секунд.', icon: 'send' });
+    if (!REAL) {
+      sendCode(); startTimer();
+      toast({ title: 'Код отправлен ещё раз', text: 'Проверь почту через пару секунд.', icon: 'send' });
+      return;
+    }
+    resend.disabled = true;
+    call(function (a) { return a.resend({ type: 'signup', email: state.pending.email }); })
+      .then(function () {
+        startTimer();
+        toast({ title: 'Код отправлен ещё раз', text: 'Введи код из последнего письма — прошлый больше не подойдёт.', icon: 'send' });
+      })
+      .catch(function (err) { resend.disabled = false; errToast(authError(err)); });
   });
 
   function codeValue() { return digits.map(function (d) { return d.value; }).join(''); }
   function fillFrom(str, start) {
     var ds = String(str).replace(/\D/g, '').split('');
-    for (var k = 0; k < ds.length && start + k < 4; k++) { digits[start + k].value = ds[k]; digits[start + k].classList.add('filled'); }
-    var next = Math.min(start + ds.length, 3);
-    if (codeValue().length === 4) verify(); else digits[next].focus();
+    for (var k = 0; k < ds.length && start + k < N; k++) { digits[start + k].value = ds[k]; digits[start + k].classList.add('filled'); }
+    var next = Math.min(start + ds.length, N - 1);
+    if (codeValue().length === N) verify(); else digits[next].focus();
   }
   digits.forEach(function (inp, i) {
     inp.addEventListener('input', function () {
@@ -913,14 +1098,14 @@
       if (v.length > 1) { inp.value = ''; fillFrom(v, i); return; }
       inp.value = v;
       inp.classList.toggle('filled', !!v);
-      if (v && i < 3) digits[i + 1].focus();
-      if (codeValue().length === 4) verify();
+      if (v && i < N - 1) digits[i + 1].focus();
+      if (codeValue().length === N) verify();
     });
     inp.addEventListener('keydown', function (e) {
       if (e.key === 'Backspace' && !inp.value && i > 0) {
         e.preventDefault(); digits[i - 1].value = ''; digits[i - 1].classList.remove('filled'); digits[i - 1].focus();
       } else if (e.key === 'ArrowLeft' && i > 0) { digits[i - 1].focus(); }
-      else if (e.key === 'ArrowRight' && i < 3) { digits[i + 1].focus(); }
+      else if (e.key === 'ArrowRight' && i < N - 1) { digits[i + 1].focus(); }
       else if (e.key === 'Enter') { verify(); }
     });
     inp.addEventListener('paste', function (e) {
@@ -933,8 +1118,8 @@
   function verify() {
     if (verifying) return;
     var v = codeValue();
-    if (v.length < 4) {
-      otpErr.textContent = 'Введи все 4 цифры';
+    if (v.length < N) {
+      otpErr.textContent = 'Введи все ' + N + ' цифр';
       otp.classList.remove('error'); void otp.offsetWidth; otp.classList.add('error');
       return;
     }
@@ -946,7 +1131,17 @@
     verifyBtn.classList.add('loading');
     verifyBtn.innerHTML = '<span class="spinner"></span><span>Проверяю код…</span>';
     startOrbit();
-    setTimeout(function () { if (v === state.code) success(); else fail(); }, reduce ? 300 : 2100);
+    // Анимация идёт не меньше minMs, даже если сервер ответил быстрее.
+    var t0 = Date.now(), minMs = reduce ? 300 : (REAL ? 1600 : 2100);
+    function later(fn) { setTimeout(fn, Math.max(0, minMs - (Date.now() - t0))); }
+    var check = REAL
+      ? call(function (a) { return a.verifyOtp({ email: state.pending.email, token: v, type: 'email' }); })
+      : (v === state.code ? Promise.resolve(null) : Promise.reject(null));
+    check.then(function (data) {
+      later(function () { success(data && data.user ? userFrom(data.user) : null); });
+    }, function (err) {
+      later(function () { fail(err ? authError(err).text : null); });
+    });
   }
 
   // Цифры собираются в кольцо и крутятся, пока идёт проверка.
@@ -956,7 +1151,7 @@
     orbitCenter = width / 2;
     var r = width < 300 ? 50 : 56;
     digits.forEach(function (d, i) {
-      var a = -Math.PI / 2 + i * Math.PI / 2;
+      var a = -Math.PI / 2 + i * 2 * Math.PI / N;
       var cxInput = d.offsetLeft + d.offsetWidth / 2;
       var tx = orbitCenter + r * Math.cos(a) - cxInput;
       var ty = r * Math.sin(a);
@@ -970,14 +1165,14 @@
     digits.forEach(function (d) { d.style.transform = ''; });
   }
 
-  function fail() {
+  function fail(text) {
     stopOrbit();
     setTimeout(function () {
       otp.classList.remove('tall');
       $('#view-verify').classList.remove('verifying');
       digits.forEach(function (d) { d.disabled = false; d.value = ''; d.classList.remove('filled'); });
       otp.classList.remove('error'); void otp.offsetWidth; otp.classList.add('error');
-      otpErr.textContent = 'Код не подошёл. Проверь письмо и попробуй ещё раз.';
+      otpErr.textContent = text || 'Код не подошёл. Проверь письмо и попробуй ещё раз.';
       verifyBtn.classList.remove('loading');
       verifyBtn.innerHTML = verifyBtnHtml;
       verifying = false;
@@ -985,7 +1180,8 @@
     }, reduce ? 0 : 650);
   }
 
-  function success() {
+  function success(realUser) {
+    var user = realUser || state.pending;
     otp.classList.remove('spin');
     digits.forEach(function (d) {
       var cxInput = d.offsetLeft + d.offsetWidth / 2;
@@ -998,16 +1194,14 @@
       $('#v-badge').innerHTML = use('shield-check');
       $('#v-title').innerHTML = 'Почта <span class="ok-text">подтверждена</span>';
       $('#v-sub').firstChild.textContent = 'Аккаунт защищён. Добро пожаловать, ';
-      $('#v-email').textContent = state.pending.name;
+      $('#v-email').textContent = user.name;
       $('.resend').hidden = true;
       $('#v-back').parentNode.hidden = true;
       verifyBtn.className = 'btn-green wide';
       verifyBtn.innerHTML = use('shield-check') + '<span>Подтверждено и защищено</span>';
       stopTimer();
-      var user = state.pending;
-      state.pending = null;
-      writeJSON('session', 'nova.pending', null);
-      signIn(user, true);
+      setPending(null);
+      signIn(user, !REAL || remembered());
       log('Аккаунт создан');
       log('Почта подтверждена');
       setTimeout(function () {
@@ -1304,8 +1498,8 @@
   $$('[data-show-config]').forEach(function (b) { b.addEventListener('click', showConfig); });
   $$('[data-logout]').forEach(function (b) {
     b.addEventListener('click', function () {
-      state.user = null;
-      writeJSON('local', 'nova.user', null); writeJSON('session', 'nova.user', null);
+      signOutLocal();
+      if (REAL) call(function (a) { return a.signOut({ scope: 'local' }); }).catch(function () { /* сессия всё равно удалена из браузера */ });
       toast({ title: 'Ты вышел из кабинета', text: 'Сборка сохранена в этом браузере.', icon: 'logout' });
       go('login');
     });
@@ -1389,6 +1583,24 @@
 
   window.addEventListener('hashchange', route);
   route();
+
+  // Настоящие аккаунты: другие надписи и проверка, жива ли сессия на сервере.
+  if (REAL) {
+    $('#mode-chip').textContent = 'Аккаунт Nova';
+    $('#mode-foot').textContent = 'Пароль хранится на сервере в зашифрованном виде. Код подтверждения приходит на почту.';
+    $('#dash-chip').textContent = 'аккаунт Nova · почта подтверждена';
+    call(function (a) { return a.getSession(); }).then(function (data) {
+      var s = data && data.session;
+      if (s && s.user) {
+        signIn(userFrom(s.user), remembered());
+        if (state.view === 'dashboard') { state.view = null; show('dashboard'); }
+        else if (state.view === 'login' || state.view === 'register') go('dashboard');
+      } else if (state.user) {
+        signOutLocal();
+        if (state.view === 'dashboard') go('login');
+      }
+    }).catch(function () { /* нет связи — оставляем как есть */ });
+  }
 })();
 </script>
 </body>
