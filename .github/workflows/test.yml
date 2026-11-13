@@ -1,0 +1,37 @@
+name: Проверка Nova
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Тесты на Windows
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Синтаксис, кодировка и стиль кода
+        shell: pwsh
+        run: ./tests/Lint.ps1
+
+      - name: Применить всё и отменить (проверка, что система возвращается как было)
+        shell: powershell
+        run: ./tests/Test-Nova.ps1
+
+      - name: Режим просмотра
+        shell: powershell
+        run: ./src/Nova.ps1 -Mode Preview
+
+      - name: Применение и отмена через меню-команды
+        shell: powershell
+        run: |
+          ./src/Nova.ps1 -Mode Apply -Yes -NoRestorePoint
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./src/Nova.ps1 -Mode Undo -Yes
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
