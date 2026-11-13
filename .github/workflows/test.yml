@@ -28,6 +28,10 @@ jobs:
         shell: powershell
         run: ./tests/Test-Nova.ps1
 
+      - name: Проверка системы
+        shell: powershell
+        run: ./src/Nova.ps1 -Mode Check
+
       - name: Режим просмотра
         shell: powershell
         run: ./src/Nova.ps1 -Mode Preview

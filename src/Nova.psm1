@@ -1192,4 +1192,157 @@ function New-NovaRestorePoint {
 
 #endregion
 
+#region Проверка системы
+
+# Одна строчка проверки. Status: ok — всё хорошо, info — к сведению, warn — лучше поправить, stop — Nova не запустится.
+function New-NovaCheck {
+    param([string]$Name, [ValidateSet('ok', 'info', 'warn', 'stop')][string]$Status, [string]$Text, [string]$Hint = '', [string]$Id = '')
+    return [pscustomobject]@{ Id = $Id; Name = $Name; Status = $Status; Text = $Text; Hint = $Hint }
+}
+
+# Проверяет, готова ли Windows к Nova: версия, перезагрузка после обновлений, место на диске, ноутбук и т. д.
+function Get-NovaHealth {
+    param($Context)
+    $config = $null
+    $tweaks = @()
+    if ($Context) { $config = $Context.Config; $tweaks = @($Context.Tweaks) }
+    $toggles = Get-NovaProp $config 'tweaks'
+    $checks = New-Object System.Collections.Generic.List[object]
+
+    # Windows
+    $sys = Get-NovaSystemInfo
+    $label = '{0} {1}, сборка {2}' -f $sys.Name, $sys.Version, $sys.Build
+    if ($sys.Build -lt 10240) {
+        $checks.Add((New-NovaCheck 'Windows' 'stop' ($label + ' — Nova работает только на Windows 10 и 11.') -Id 'windows'))
+    } elseif ($sys.IsServer) {
+        $checks.Add((New-NovaCheck 'Windows' 'warn' ($label + ' — это серверная Windows.') 'Nova рассчитана на Windows 10/11: часть настроек здесь не сработает.' 'windows'))
+    } elseif ($sys.Build -lt 19044) {
+        $checks.Add((New-NovaCheck 'Windows' 'warn' ($label + ' — устаревшая версия.') 'Обнови Windows через «Параметры → Центр обновления Windows» и запусти Nova снова.' 'windows'))
+    } elseif ($sys.Build -lt 22000) {
+        $checks.Add((New-NovaCheck 'Windows' 'info' ($label + '. Обычная поддержка Windows 10 закончилась.') 'Если компьютер подходит для Windows 11, лучше поставить её — она получает обновления безопасности.' 'windows'))
+    } else {
+        $checks.Add((New-NovaCheck 'Windows' 'ok' $label -Id 'windows'))
+    }
+
+    # Редакция Home: часть политик работает только на Pro
+    if ($sys.Edition -like 'Core*' -and [bool](Get-NovaProp $toggles 'security-updates-only' $false)) {
+        $checks.Add((New-NovaCheck 'Редакция' 'warn' 'Windows Home: пункт «Только обновления безопасности» здесь не сработает.' 'Он работает на Pro и выше. Выключи его в config.json или просто пропусти — остальное применится.' 'edition'))
+    }
+
+    # Перезагрузка после обновлений
+    $cbs = Get-NovaRegValue -Path 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending' -Name 'Nova'
+    $wu = Get-NovaRegValue -Path 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired' -Name 'Nova'
+    if ($cbs.KeyExists -or $wu.KeyExists) {
+        $checks.Add((New-NovaCheck 'Перезагрузка' 'warn' 'Windows ждёт перезагрузки после обновлений.' 'Перезагрузи компьютер и запусти Nova снова — так настройки лягут надёжнее.' 'reboot'))
+    } else {
+        $checks.Add((New-NovaCheck 'Перезагрузка' 'ok' 'Не нужна.' -Id 'reboot'))
+    }
+
+    # Место на системном диске
+    try {
+        $drive = Get-CimInstance -ClassName Win32_LogicalDisk -Filter ("DeviceID='{0}'" -f $env:SystemDrive) -ErrorAction Stop
+        $freeGB = [math]::Round([double]$drive.FreeSpace / 1GB, 1)
+        $diskName = 'Диск ' + $env:SystemDrive
+        if ($freeGB -lt 2) {
+            $checks.Add((New-NovaCheck $diskName 'stop' ('Свободно всего {0} ГБ.' -f $freeGB) 'Освободи место: «Параметры → Система → Память → Временные файлы». Нужно хотя бы 2 ГБ.' 'disk'))
+        } elseif ($freeGB -lt 10) {
+            $checks.Add((New-NovaCheck $diskName 'warn' ('Свободно {0} ГБ — маловато.' -f $freeGB) 'Точке восстановления и обновлениям нужно место. Почисти временные файлы.' 'disk'))
+        } else {
+            $checks.Add((New-NovaCheck $diskName 'ok' ('Свободно {0} ГБ.' -f $freeGB) -Id 'disk'))
+        }
+    } catch {
+        $checks.Add((New-NovaCheck 'Диск' 'info' 'Не удалось узнать, сколько места свободно.' -Id 'disk'))
+    }
+
+    # Насколько система свежая
+    $installed = Get-NovaRegValue -Path 'HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name 'InstallDate'
+    if ($installed.Exists -and [int64]$installed.Value -gt 0) {
+        $date = [DateTimeOffset]::FromUnixTimeSeconds([int64]$installed.Value).LocalDateTime
+        $days = [int][math]::Floor(((Get-Date) - $date).TotalDays)
+        if ($days -le 7) {
+            $checks.Add((New-NovaCheck 'Установка' 'ok' 'Windows установлена недавно — лучшее время для Nova.' -Id 'fresh'))
+        } else {
+            $checks.Add((New-NovaCheck 'Установка' 'info' ('Windows установлена или крупно обновлялась {0}.' -f $date.ToString('d MMMM yyyy', [Globalization.CultureInfo]'ru-RU')) 'Nova работает и на такой системе. На чистой Windows разница заметнее всего.' 'fresh'))
+        }
+    }
+
+    # Nova уже запускали
+    $backups = @(Get-NovaBackup)
+    if ($backups.Count -gt 0) {
+        $checks.Add((New-NovaCheck 'Nova' 'info' ('Nova уже применялась на этом компьютере (запусков: {0}).' -f $backups.Count) 'Новый запуск изменит только то, что ещё не настроено. Отменять можно по одному запуску.' 'nova'))
+    }
+
+    # Ноутбук: настройки, которые быстрее сажают батарею
+    try {
+        $battery = @(Get-CimInstance -ClassName Win32_Battery -ErrorAction Stop)
+    } catch {
+        $battery = @()
+    }
+    if ($battery.Count -gt 0) {
+        $hungry = @(foreach ($id in @('high-performance-power', 'power-throttling-off')) {
+                if ([bool](Get-NovaProp $toggles $id $false)) {
+                    $t = $tweaks | Where-Object { $_.id -eq $id } | Select-Object -First 1
+                    if ($t) { $t.title } else { $id }
+                }
+            })
+        if ($hungry.Count -gt 0) {
+            $checks.Add((New-NovaCheck 'Ноутбук' 'warn' ('Включено то, что быстрее сажает батарею: {0}.' -f ($hungry -join ', ')) 'Если важна батарея — выключи эти пункты в config.json.' 'battery'))
+        } else {
+            $checks.Add((New-NovaCheck 'Ноутбук' 'ok' 'Настройки, которые сажают батарею, выключены.' -Id 'battery'))
+        }
+    }
+
+    # Установка программ: нужен winget и интернет
+    $installApps = Get-NovaProp $config 'installApps'
+    $wanted = @()
+    if ($installApps) { $wanted = @($installApps.PSObject.Properties | Where-Object { $_.Value -eq $true }) }
+    if ($wanted.Count -gt 0) {
+        if (-not (Get-Command winget.exe -ErrorAction SilentlyContinue)) {
+            $checks.Add((New-NovaCheck 'Программы' 'warn' 'winget не найден — программы из списка installApps не установятся.' 'Обнови «Установщик приложений» (App Installer) в Microsoft Store.' 'winget'))
+        } elseif (-not [System.Net.NetworkInformation.NetworkInterface]::GetIsNetworkAvailable()) {
+            $checks.Add((New-NovaCheck 'Программы' 'warn' 'Нет подключения к сети — программы из installApps не скачаются.' 'Подключись к интернету перед применением.' 'winget'))
+        } else {
+            $checks.Add((New-NovaCheck 'Программы' 'ok' ('Установлю программ: {0}.' -f $wanted.Count) -Id 'winget'))
+        }
+    }
+
+    return $checks.ToArray()
+}
+
+function Get-NovaHealthSummary {
+    param($Checks)
+    $stop = @($Checks | Where-Object { $_.Status -eq 'stop' }).Count
+    $warn = @($Checks | Where-Object { $_.Status -eq 'warn' }).Count
+    return [pscustomobject]@{ Stop = $stop; Warn = $warn; Ready = ($stop -eq 0) }
+}
+
+function Show-NovaHealth {
+    param($Checks, [switch]$ProblemsOnly)
+    Write-Host ''
+    Write-Nova 'ПРОВЕРКА СИСТЕМЫ' title
+    $shown = 0
+    foreach ($check in $Checks) {
+        if ($ProblemsOnly -and ($check.Status -eq 'ok' -or $check.Status -eq 'info')) { continue }
+        $shown++
+        $line = '{0}: {1}' -f $check.Name, $check.Text
+        switch ($check.Status) {
+            'ok' { Write-Nova $line ok }
+            'info' { Write-Nova ('i ' + $line) info }
+            'warn' { Write-Nova $line warn }
+            'stop' { Write-Nova $line err }
+        }
+        if ($check.Hint -and $check.Status -ne 'ok') { Write-Nova ('    ' + $check.Hint) dim }
+    }
+    if ($ProblemsOnly -and $shown -eq 0) { Write-Nova 'Всё в порядке.' ok }
+    $summary = Get-NovaHealthSummary $Checks
+    if ($summary.Stop -gt 0) {
+        Write-Nova 'Nova не сможет работать, пока это не исправлено.' err
+    } elseif (-not $ProblemsOnly -and $summary.Warn -eq 0) {
+        Write-Nova 'Система готова к Nova.' ok
+    }
+    return $summary
+}
+
+#endregion
+
 Export-ModuleMember -Function *

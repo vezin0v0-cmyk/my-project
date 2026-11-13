@@ -12,10 +12,11 @@
     .\Nova.ps1 -Mode Preview      # только посмотреть, что изменится
     .\Nova.ps1 -Mode Apply -Yes   # применить без вопросов
     .\Nova.ps1 -Mode Undo -Yes    # отменить последний запуск
+    .\Nova.ps1 -Mode Check        # проверить, готова ли система
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Menu', 'Preview', 'Apply', 'Undo', 'Measure')]
+    [ValidateSet('Menu', 'Preview', 'Apply', 'Undo', 'Measure', 'Check')]
     [string]$Mode = 'Menu',
     [string]$ConfigPath,
     [switch]$Yes,
@@ -85,17 +86,40 @@ function Import-NovaSettings {
     return $context
 }
 
-function Show-NovaSystem {
-    param($Context)
-    $system = $Context.System
-    Write-Nova ('Система: {0} {1}, сборка {2} ({3})' -f $system.Name, $system.Version, $system.Build, $system.Edition) dim
-    if ($system.Build -lt 10240) { throw 'Nova работает только на Windows 10 и Windows 11.' }
-    if ($system.IsServer) { Write-Nova 'Это Windows Server. Nova рассчитана на Windows 10/11 — часть настроек может не сработать.' warn }
+# Проверка системы: версия Windows, перезагрузка после обновлений, место на диске, ноутбук.
+function Invoke-NovaCheckFlow {
+    $context = $null
+    try { $context = Import-NovaSettings } catch { Write-Nova 'Проверяю систему без config.json.' dim }
+    $summary = Show-NovaHealth (Get-NovaHealth -Context $context)
+    if ($summary.Stop -gt 0) { return 1 }
+    return 0
+}
+
+# Короткий итог проверки для главного меню.
+function Show-NovaHealthLine {
+    try {
+        $context = $null
+        try { $context = Get-NovaContext -ConfigPath $ConfigPath -TweaksPath $tweaksPath } catch { $context = $null }
+        $checks = Get-NovaHealth -Context $context
+        $summary = Get-NovaHealthSummary $checks
+        $system = Get-NovaSystemInfo
+        $name = '{0} {1}' -f $system.Name, $system.Version
+        if ($summary.Stop -gt 0) {
+            Write-Nova ('{0} — Nova не сможет работать, подробности в пункте 6' -f $name) err
+        } elseif ($summary.Warn -gt 0) {
+            Write-Nova ('{0} — есть замечания ({1}), подробности в пункте 6' -f $name, $summary.Warn) warn
+        } else {
+            Write-Nova ('{0} — система готова' -f $name) ok
+        }
+    } catch {
+        Write-Nova 'Не удалось проверить систему — пункт 6 покажет подробности.' dim
+    }
 }
 
 function Invoke-NovaPreviewFlow {
     $context = Import-NovaSettings
-    Show-NovaSystem $context
+    $summary = Show-NovaHealth (Get-NovaHealth -Context $context)
+    if ($summary.Stop -gt 0) { throw 'Сначала исправь то, что отмечено красным.' }
     Write-Host ''
     Write-Nova 'Проверяю, что изменится...' dim
     $plan = @(Get-NovaPlan -Context $context)
@@ -106,7 +130,15 @@ function Invoke-NovaPreviewFlow {
 
 function Invoke-NovaApplyFlow {
     $context = Import-NovaSettings
-    Show-NovaSystem $context
+    $checks = Get-NovaHealth -Context $context
+    $health = Show-NovaHealth $checks -ProblemsOnly
+    if ($health.Stop -gt 0) { throw 'Сначала исправь то, что отмечено красным.' }
+    if (@($checks | Where-Object { $_.Id -eq 'reboot' -and $_.Status -eq 'warn' }).Count -gt 0) {
+        if (-not (Confirm-NovaAction 'Windows ждёт перезагрузки. Всё равно применить сейчас?')) {
+            Write-Nova 'Хорошо. Перезагрузи компьютер и запусти Nova снова.' dim
+            return 0
+        }
+    }
     Write-Host ''
     Write-Nova 'Проверяю, что изменится...' dim
     $plan = @(Get-NovaPlan -Context $context)
@@ -217,12 +249,14 @@ function Invoke-NovaUndoFlow {
 function Start-NovaMenu {
     while ($true) {
         Show-NovaBanner -Clear
+        Show-NovaHealthLine
         Write-Host ''
         Write-Host '  1  Посмотреть, что изменится (ничего не меняет)' -ForegroundColor White
         Write-Host '  2  Применить настройки' -ForegroundColor White
         Write-Host '  3  Отменить последний запуск' -ForegroundColor White
         Write-Host '  4  Открыть config.json — выбрать, что включать' -ForegroundColor White
         Write-Host '  5  Замерить: было → стало (процессы, службы, память)' -ForegroundColor White
+        Write-Host '  6  Проверить систему' -ForegroundColor White
         Write-Host '  0  Выход' -ForegroundColor White
         Write-Host ''
         $choice = (Read-Host '  Выбери пункт').Trim()
@@ -233,6 +267,7 @@ function Start-NovaMenu {
                 '3' { [void](Invoke-NovaUndoFlow); Wait-NovaKey }
                 '4' { Start-Process -FilePath 'notepad.exe' -ArgumentList ('"{0}"' -f $ConfigPath) }
                 '5' { [void](Invoke-NovaMeasureFlow); Wait-NovaKey }
+                '6' { [void](Invoke-NovaCheckFlow); Wait-NovaKey }
                 '0' { return }
             }
         } catch {
@@ -259,6 +294,7 @@ try {
         'Apply' { Show-NovaBanner; $exitCode = Invoke-NovaApplyFlow }
         'Undo' { Show-NovaBanner; $exitCode = Invoke-NovaUndoFlow }
         'Measure' { Show-NovaBanner; $exitCode = Invoke-NovaMeasureFlow }
+        'Check' { Show-NovaBanner; $exitCode = Invoke-NovaCheckFlow }
     }
 } catch {
     Write-Nova ('Ошибка: {0}' -f $_.Exception.Message) err
