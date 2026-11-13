@@ -75,3 +75,16 @@ Start-Sleep -Seconds 3
 Save-Screen 'menu'
 [NovaInput]::Key(0x1B)
 Start-Sleep -Seconds 1
+
+# 4. Чистый рабочий стол (видно обои). Служебные окна сервера сворачиваем.
+$shell.MinimizeAll()
+Get-Process -Name SystemPropertiesPerformance, SystemPropertiesAdvanced -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
+Save-Screen 'desktop'
+
+# 5. «Параметры → Система → О системе».
+Start-Process 'ms-settings:about'
+Start-Sleep -Seconds 8
+Save-Screen 'about'
+Get-Process -Name SystemSettings -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 1

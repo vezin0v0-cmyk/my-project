@@ -27,6 +27,10 @@
     "end-task-button": true,
     "sticky-keys-off": true,
 
+    "nova-wallpaper": true,
+    "nova-accent": true,
+    "nova-about": true,
+
     "game-mode-on": true,
     "game-dvr-off": true,
     "faster-menus": true,

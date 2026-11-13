@@ -42,6 +42,17 @@ function Get-Snapshot {
                 'service' { $snapshot["service|$($action.name)"] = [string](Get-NovaServiceStartup $action.name) }
                 'powerScheme' { $snapshot['power'] = [string](Get-NovaActivePowerScheme) }
                 'hibernate' { $snapshot['hibernate'] = Get-NovaHibernateState }
+                'wallpaper' {
+                    $snapshot['wallpaper'] = Get-NovaCurrentWallpaper
+                    foreach ($name in @('WallpaperStyle', 'TileWallpaper')) {
+                        $state = Get-NovaRegValue -Path 'HKCU\Control Panel\Desktop' -Name $name
+                        $snapshot["desktop|$name"] = '{0}|{1}' -f $state.Exists, $state.Value
+                    }
+                }
+                'copyFile' {
+                    $path = Expand-NovaText $action.to
+                    $snapshot["file|$path"] = [string](Get-NovaFileHash $path)
+                }
             }
         }
     }

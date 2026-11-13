@@ -4,12 +4,15 @@
 
 $ErrorActionPreference = 'Stop'
 
-$script:NovaVersion = '0.1.0'
+$script:NovaVersion = '0.2.0'
 $script:Categories = [ordered]@{
     privacy     = 'ПРИВАТНОСТЬ'
     interface   = 'ИНТЕРФЕЙС'
+    style       = 'ОФОРМЛЕНИЕ NOVA'
     performance = 'СКОРОСТЬ И ИГРЫ'
 }
+# Папка проекта (где лежат assets). Задаётся в Get-NovaContext.
+$script:NovaRoot = Split-Path -Parent $PSScriptRoot
 $script:RegistryKinds = @('DWord', 'QWord', 'String', 'ExpandString', 'MultiString', 'Binary')
 $script:ServiceStartups = @('Automatic', 'Manual', 'Disabled')
 
@@ -50,6 +53,20 @@ function Get-NovaDataDir {
         if (-not (Test-Path -LiteralPath $path)) { New-Item -ItemType Directory -Path $path -Force | Out-Null }
     }
     return $dir
+}
+
+# Подставляет пути в текст настроек: {NovaData} — C:\ProgramData\Nova, {NovaRoot} — папка проекта.
+function Expand-NovaText {
+    param([string]$Text)
+    if ($null -eq $Text) { return $Text }
+    $dataDir = (Get-NovaDataDir).TrimEnd('\')
+    return $Text.Replace('{NovaData}', $dataDir).Replace('{NovaRoot}', $script:NovaRoot.TrimEnd('\'))
+}
+
+# Путь к файлу из папки проекта (например, assets\wallpaper\nova-dark.jpg).
+function Resolve-NovaAsset {
+    param([string]$RelativePath)
+    return (Join-Path $script:NovaRoot ($RelativePath -replace '/', '\'))
 }
 
 # Запуск обычной программы (powercfg, winget). Ошибки программы не роняют скрипт — смотрим код возврата.
@@ -286,6 +303,52 @@ function Get-NovaHibernateState {
 
 #endregion
 
+#region Обои и файлы
+
+$script:DesktopKey = 'HKCU\Control Panel\Desktop'
+
+function Get-NovaWallpaperTarget {
+    param($Action)
+    $name = Split-Path -Leaf ([string]$Action.file)
+    return (Join-Path (Join-Path (Get-NovaDataDir) 'wallpaper') $name)
+}
+
+function Get-NovaCurrentWallpaper {
+    $state = Get-NovaRegValue -Path $script:DesktopKey -Name 'Wallpaper'
+    if ($state.Exists) { return [string]$state.Value }
+    return ''
+}
+
+# Ставит обои сразу, без перезагрузки (SystemParametersInfo).
+function Set-NovaWallpaper {
+    param([string]$Path)
+    if (-not ('NovaNative.Desktop' -as [type])) {
+        Add-Type -Namespace NovaNative -Name Desktop -MemberDefinition @'
+[DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+public static extern bool SystemParametersInfo(int uiAction, int uiParam, string pvParam, int fWinIni);
+'@
+    }
+    # SPI_SETDESKWALLPAPER = 0x14, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE = 0x03
+    if (-not [NovaNative.Desktop]::SystemParametersInfo(0x14, 0, $Path, 0x03)) {
+        throw "Windows не смогла поставить обои: $Path"
+    }
+}
+
+function Get-NovaFileHash {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return $null }
+    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
+}
+
+function Copy-NovaFile {
+    param([string]$From, [string]$To)
+    $dir = Split-Path -Parent $To
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    Copy-Item -LiteralPath $From -Destination $To -Force
+}
+
+#endregion
+
 #region Действия: проверить, применить, отменить
 
 function New-NovaState {
@@ -300,8 +363,17 @@ function Get-NovaActionLabel {
         'service' { return "служба $($Action.name)" }
         'powerScheme' { return 'схема питания' }
         'hibernate' { return 'гибернация' }
+        'wallpaper' { return 'обои рабочего стола' }
+        'copyFile' { return "файл $(Expand-NovaText $Action.to)" }
     }
     return [string]$Action.type
+}
+
+# Значение для реестра с подставленными путями ({NovaData} и т.п.).
+function Get-NovaRegTarget {
+    param($Action)
+    if (@('String', 'ExpandString') -contains $Action.kind) { return (Expand-NovaText ([string]$Action.value)) }
+    return $Action.value
 }
 
 # Смотрит, как сейчас настроено, и нужно ли что-то менять.
@@ -310,8 +382,25 @@ function Get-NovaActionState {
     switch ($Action.type) {
         'registry' {
             $state = Get-NovaRegValue -Path $Action.path -Name $Action.name
-            $same = $state.Exists -and ($state.Kind -eq $Action.kind) -and (Test-NovaRegValueEqual $state.Value $Action.value $Action.kind)
-            return New-NovaState (-not $same) (Format-NovaRegValue $state) (Format-NovaData $Action.value $Action.kind) ''
+            $target = Get-NovaRegTarget $Action
+            $same = $state.Exists -and ($state.Kind -eq $Action.kind) -and (Test-NovaRegValueEqual $state.Value $target $Action.kind)
+            return New-NovaState (-not $same) (Format-NovaRegValue $state) (Format-NovaData $target $Action.kind) ''
+        }
+        'wallpaper' {
+            $target = Get-NovaWallpaperTarget $Action
+            $current = Get-NovaCurrentWallpaper
+            $same = ($current -eq $target) -and ((Get-NovaFileHash $target) -eq (Get-NovaFileHash (Resolve-NovaAsset $Action.file)))
+            $shown = $current
+            if (-not $shown) { $shown = 'без обоев' }
+            return New-NovaState (-not $same) $shown $target ''
+        }
+        'copyFile' {
+            $to = Expand-NovaText $Action.to
+            $same = (Get-NovaFileHash $to) -eq (Get-NovaFileHash (Resolve-NovaAsset $Action.from))
+            $current = 'нет'
+            if (Test-Path -LiteralPath $to) { $current = 'другая версия' }
+            if ($same) { $current = 'есть' }
+            return New-NovaState (-not $same) $current 'есть' ''
         }
         'service' {
             $current = Get-NovaServiceStartup $Action.name
@@ -336,9 +425,39 @@ function Get-NovaActionState {
 function Invoke-NovaAction {
     param($Action, [System.Collections.ArrayList]$Journal, [string]$Tweak)
     switch ($Action.type) {
+        'wallpaper' {
+            $target = Get-NovaWallpaperTarget $Action
+            $style = Get-NovaRegValue -Path $script:DesktopKey -Name 'WallpaperStyle'
+            $tile = Get-NovaRegValue -Path $script:DesktopKey -Name 'TileWallpaper'
+            [void]$Journal.Add([pscustomobject]@{
+                    type      = 'wallpaper'
+                    tweak     = $Tweak
+                    path      = (Get-NovaCurrentWallpaper)
+                    style     = $(if ($style.Exists) { [string]$style.Value } else { $null })
+                    tile      = $(if ($tile.Exists) { [string]$tile.Value } else { $null })
+                    installed = $target
+                })
+            Copy-NovaFile -From (Resolve-NovaAsset $Action.file) -To $target
+            # 10 = «Заполнение»: картинка закрывает весь экран без полос.
+            Set-NovaRegValue -Path $script:DesktopKey -Name 'WallpaperStyle' -Value '10' -Kind 'String'
+            Set-NovaRegValue -Path $script:DesktopKey -Name 'TileWallpaper' -Value '0' -Kind 'String'
+            Set-NovaWallpaper -Path $target
+            return
+        }
+        'copyFile' {
+            $to = Expand-NovaText $Action.to
+            $backup = $null
+            if (Test-Path -LiteralPath $to) {
+                $backup = $to + '.nova-backup'
+                Copy-Item -LiteralPath $to -Destination $backup -Force
+            }
+            [void]$Journal.Add([pscustomobject]@{ type = 'copyFile'; tweak = $Tweak; path = $to; backup = $backup })
+            Copy-NovaFile -From (Resolve-NovaAsset $Action.from) -To $to
+            return
+        }
         'registry' {
             $before = Get-NovaRegValue -Path $Action.path -Name $Action.name
-            Set-NovaRegValue -Path $Action.path -Name $Action.name -Value $Action.value -Kind $Action.kind -Journal $Journal -Tweak $Tweak
+            Set-NovaRegValue -Path $Action.path -Name $Action.name -Value (Get-NovaRegTarget $Action) -Kind $Action.kind -Journal $Journal -Tweak $Tweak
             [void]$Journal.Add([pscustomobject]@{
                     type    = 'registry'
                     tweak   = $Tweak
@@ -409,6 +528,28 @@ function Undo-NovaEntry {
             if ($result.Code -ne 0) { throw "powercfg не смог вернуть гибернацию: $($result.Output.Trim())" }
             return
         }
+        'wallpaper' {
+            foreach ($pair in @(@('WallpaperStyle', $Entry.style), @('TileWallpaper', $Entry.tile))) {
+                if ($null -ne $pair[1]) {
+                    Set-NovaRegValue -Path $script:DesktopKey -Name $pair[0] -Value $pair[1] -Kind 'String'
+                } else {
+                    Remove-NovaRegValue -Path $script:DesktopKey -Name $pair[0]
+                }
+            }
+            Set-NovaWallpaper -Path ([string]$Entry.path)
+            if ($Entry.installed -and $Entry.installed -ne $Entry.path -and (Test-Path -LiteralPath $Entry.installed)) {
+                Remove-Item -LiteralPath $Entry.installed -Force -ErrorAction SilentlyContinue
+            }
+            return
+        }
+        'copyFile' {
+            if ($Entry.backup -and (Test-Path -LiteralPath $Entry.backup)) {
+                Move-Item -LiteralPath $Entry.backup -Destination $Entry.path -Force
+            } elseif (Test-Path -LiteralPath $Entry.path) {
+                Remove-Item -LiteralPath $Entry.path -Force
+            }
+            return
+        }
         'appRemoved' { return }
         'appInstalled' { return }
     }
@@ -460,6 +601,13 @@ function Test-NovaDefinition {
                 if ([string](Get-NovaProp $action 'guid') -notmatch '^[0-9a-fA-F-]{36}$') { $problems.Add("tweaks.json: у '$id' неверный guid схемы питания") }
             } elseif ($type -eq 'hibernate') {
                 if (@('on', 'off') -notcontains (Get-NovaProp $action 'state')) { $problems.Add("tweaks.json: у '$id' state должен быть on или off") }
+            } elseif ($type -eq 'wallpaper') {
+                $file = [string](Get-NovaProp $action 'file')
+                if (-not $file -or -not (Test-Path -LiteralPath (Resolve-NovaAsset $file))) { $problems.Add("tweaks.json: у '$id' не найден файл обоев '$file'") }
+            } elseif ($type -eq 'copyFile') {
+                $from = [string](Get-NovaProp $action 'from')
+                if (-not $from -or -not (Test-Path -LiteralPath (Resolve-NovaAsset $from))) { $problems.Add("tweaks.json: у '$id' не найден файл '$from'") }
+                if ([string](Get-NovaProp $action 'to') -notlike '{NovaData}*') { $problems.Add("tweaks.json: у '$id' файл можно копировать только в {NovaData}") }
             } else {
                 $problems.Add("tweaks.json: у '$id' неизвестный тип действия '$type'")
             }
@@ -489,6 +637,7 @@ function Test-NovaDefinition {
 
 function Get-NovaContext {
     param([Parameter(Mandatory)][string]$ConfigPath, [Parameter(Mandatory)][string]$TweaksPath)
+    $script:NovaRoot = Split-Path -Parent (Split-Path -Parent (Resolve-Path -LiteralPath $TweaksPath).ProviderPath)
     $config = Read-NovaJson $ConfigPath
     $tweaksDoc = Read-NovaJson $TweaksPath
     $tweaks = @(Get-NovaProp $tweaksDoc 'tweaks' @())

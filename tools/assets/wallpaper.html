@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Nova — генератор обоев</title>
+<!--
+  Генератор обоев и логотипа Nova. Рисует картинку в браузере, её снимает tools/make-assets.js:
+    node tools/make-assets.js
+  Параметры: ?w=3840&h=2160 (размер) и ?mode=logo (квадратный логотип).
+-->
+<style>
+  html, body { margin: 0; background: #040404; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+  var q = new URLSearchParams(location.search);
+  var W = +(q.get('w') || 1920), H = +(q.get('h') || 1080), mode = q.get('mode') || 'wallpaper';
+  var c = document.getElementById('c'), ctx = c.getContext('2d');
+  c.width = W; c.height = H;
+  c.style.width = W + 'px'; c.style.height = H + 'px';
+
+  // Детерминированный «случай», чтобы картинка всегда получалась одинаковой.
+  var seed = 7;
+  function rnd() { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }
+
+  function star(cx, cy, r, fill) {
+    ctx.beginPath();
+    var pts = [[0, -1], [0.2, -0.2], [1, 0], [0.2, 0.2], [0, 1], [-0.2, 0.2], [-1, 0], [-0.2, -0.2]];
+    pts.forEach(function (p, i) { var x = cx + p[0] * r, y = cy + p[1] * r; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+
+  function goldGradient(x0, y0, x1, y1) {
+    var g = ctx.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, '#fff1b8');
+    g.addColorStop(0.45, '#ffc940');
+    g.addColorStop(1, '#d9860f');
+    return g;
+  }
+
+  if (mode === 'logo') {
+    var bg = ctx.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0, '#1a1508'); bg.addColorStop(1, '#050505');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    ctx.shadowColor = 'rgba(255,190,60,.8)'; ctx.shadowBlur = W * 0.12;
+    star(W / 2, H / 2, W * 0.36, goldGradient(0, 0, W, H));
+  } else {
+    // Фон: глубокий чёрный с тёплым светом.
+    ctx.fillStyle = '#040404';
+    ctx.fillRect(0, 0, W, H);
+    var glow = ctx.createRadialGradient(W * 0.62, H * 0.42, 0, W * 0.62, H * 0.42, W * 0.7);
+    glow.addColorStop(0, 'rgba(120,80,20,.35)');
+    glow.addColorStop(0.5, 'rgba(40,25,5,.25)');
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+
+    // Золотые шёлковые ленты.
+    ctx.globalCompositeOperation = 'lighter';
+    var ribbons = [
+      { y: 0.30, tilt: 0.55, amp: 0.10, f: 0.75, w: 0.13, ph: 0.4, a: 0.9, hue: 40 },
+      { y: 0.62, tilt: 0.40, amp: 0.08, f: 0.95, w: 0.20, ph: 2.1, a: 0.75, hue: 36 },
+      { y: 0.88, tilt: 0.30, amp: 0.07, f: 1.20, w: 0.10, ph: 4.0, a: 0.6, hue: 44 },
+      { y: 0.08, tilt: 0.45, amp: 0.06, f: 1.40, w: 0.07, ph: 1.2, a: 0.45, hue: 46 }
+    ];
+    ribbons.forEach(function (r) {
+      var strands = 70, steps = 160;
+      for (var k = 0; k < strands; k++) {
+        var pos = k / (strands - 1) - 0.5;
+        var edge = 1 - Math.abs(pos) * 2;
+        var alpha = r.a * Math.pow(edge, 1.4) * 0.3 + 0.006;
+        ctx.beginPath();
+        for (var s = 0; s <= steps; s++) {
+          var u = s / steps;
+          var x = -0.1 * W + u * 1.2 * W;
+          var twist = Math.sin(u * 2.6 + r.ph) * 0.5 + 0.5;
+          var y = H * r.y + (u - 0.5) * H * r.tilt
+            + Math.sin(u * r.f * Math.PI * 2 + r.ph + pos * 0.8) * H * r.amp
+            + pos * H * r.w * (0.35 + twist);
+          if (s) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+        }
+        ctx.strokeStyle = 'hsla(' + r.hue + ', 95%, ' + (55 + pos * 30) + '%, ' + alpha.toFixed(4) + ')';
+        ctx.lineWidth = Math.max(1, W / 1600);
+        ctx.stroke();
+      }
+    });
+
+    // Искры.
+    for (var i = 0; i < 260; i++) {
+      var sx = rnd() * W, sy = rnd() * H, sr = rnd() * W / 1400 + 0.3;
+      ctx.fillStyle = 'rgba(255,210,120,' + (rnd() * 0.5).toFixed(3) + ')';
+      ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Затемнение краёв.
+    ctx.globalCompositeOperation = 'source-over';
+    var vig = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.75);
+    vig.addColorStop(0, 'rgba(0,0,0,0)');
+    vig.addColorStop(1, 'rgba(0,0,0,.75)');
+    ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+
+    // Логотип: звезда и надпись NOVA.
+    var cx = W * 0.5, cy = H * 0.47, size = H * 0.085;
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,190,60,.75)'; ctx.shadowBlur = size * 0.9;
+    star(cx, cy - size * 1.05, size * 0.55, goldGradient(cx - size, cy - size * 2, cx + size, cy));
+    ctx.restore();
+    ctx.font = '700 ' + Math.round(size) + 'px "DejaVu Sans", "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    var spaced = 'N O V A';
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,190,60,.35)'; ctx.shadowBlur = size * 0.5;
+    ctx.fillStyle = goldGradient(cx - size * 3, cy, cx + size * 3, cy + size);
+    ctx.fillText(spaced, cx, cy + size * 0.35);
+    ctx.restore();
+    ctx.font = '400 ' + Math.round(size * 0.24) + 'px "DejaVu Sans Mono", Consolas, monospace';
+    ctx.fillStyle = 'rgba(255,230,180,.55)';
+    ctx.fillText('ТВОЯ WINDOWS · БЕЗ ЛИШНЕГО', cx, cy + size * 1.25);
+  }
+  document.title = 'ready';
+</script>
+</body>
+</html>

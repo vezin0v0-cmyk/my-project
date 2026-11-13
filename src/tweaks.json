@@ -231,6 +231,44 @@
       ]
     },
     {
+      "id": "nova-wallpaper",
+      "category": "style",
+      "title": "Обои Nova",
+      "description": "Тёмные обои с золотыми линиями и логотипом Nova. Ставятся сразу, без перезагрузки. Старые обои вернутся при отмене.",
+      "actions": [
+        { "type": "wallpaper", "file": "assets/wallpaper/nova-dark.jpg" }
+      ]
+    },
+    {
+      "id": "nova-accent",
+      "category": "style",
+      "title": "Золотой цвет акцента",
+      "description": "Выделения, переключатели и кнопки в Windows становятся золотыми, как у Nova.",
+      "restartExplorer": true,
+      "actions": [
+        { "type": "registry", "path": "HKCU\\Control Panel\\Desktop", "name": "AutoColorization", "kind": "DWord", "value": 0 },
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Accent", "name": "AccentPalette", "kind": "Binary", "value": [255, 233, 168, 0, 255, 217, 106, 0, 255, 201, 64, 0, 243, 176, 33, 0, 201, 138, 12, 0, 143, 95, 5, 0, 90, 58, 2, 0, 247, 99, 12, 0] },
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Accent", "name": "AccentColorMenu", "kind": "DWord", "value": 4280398067 },
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Accent", "name": "StartColorMenu", "kind": "DWord", "value": 4279012041 },
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\DWM", "name": "AccentColor", "kind": "DWord", "value": 4280398067 },
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\DWM", "name": "ColorizationColor", "kind": "DWord", "value": 3304304673 },
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\DWM", "name": "ColorizationAfterglow", "kind": "DWord", "value": 3304304673 }
+      ]
+    },
+    {
+      "id": "nova-about",
+      "category": "style",
+      "title": "Nova в «О системе»",
+      "description": "В «Параметры → Система → О системе» появятся название и версия Nova, а в «Поддержке» — ссылка на проект. Если там были данные производителя ПК, они вернутся при отмене.",
+      "actions": [
+        { "type": "copyFile", "from": "assets/oem/nova-logo.bmp", "to": "{NovaData}\\oem\\nova-logo.bmp" },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Manufacturer", "kind": "String", "value": "Nova" },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Model", "kind": "String", "value": "Nova 0.2 · твоя Windows" },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "SupportURL", "kind": "String", "value": "https://github.com/vezin0v0-cmyk/my-project" },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Logo", "kind": "String", "value": "{NovaData}\\oem\\nova-logo.bmp" }
+      ]
+    },
+    {
       "id": "game-mode-on",
       "category": "performance",
       "title": "Игровой режим",
