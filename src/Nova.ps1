@@ -13,15 +13,19 @@
     .\Nova.ps1 -Mode Apply -Yes   # применить без вопросов
     .\Nova.ps1 -Mode Undo -Yes    # отменить последний запуск
     .\Nova.ps1 -Mode Check        # проверить, готова ли система
+    .\Nova.ps1 -Mode Fps          # замер FPS в игре: до и после Nova
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Menu', 'Preview', 'Apply', 'Undo', 'Measure', 'Check')]
+    [ValidateSet('Menu', 'Preview', 'Apply', 'Undo', 'Measure', 'Check', 'Fps')]
     [string]$Mode = 'Menu',
     [string]$ConfigPath,
     [switch]$Yes,
     [switch]$NoRestorePoint,
-    [switch]$PauseAtEnd
+    [switch]$PauseAtEnd,
+    # Замер FPS: сколько секунд записывать и через сколько начать.
+    [ValidateRange(5, 600)][int]$Seconds = 60,
+    [ValidateRange(0, 120)][int]$Delay = 10
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,6 +53,7 @@ if (-not (Test-NovaAdmin)) {
         '-Mode', $Mode, '-ConfigPath', ('"{0}"' -f $ConfigPath), '-PauseAtEnd')
     if ($Yes) { $argumentList += '-Yes' }
     if ($NoRestorePoint) { $argumentList += '-NoRestorePoint' }
+    if ($Mode -eq 'Fps') { $argumentList += @('-Seconds', $Seconds, '-Delay', $Delay) }
     try {
         Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $argumentList
     } catch {
@@ -216,6 +221,73 @@ function Invoke-NovaMeasureFlow {
     return 0
 }
 
+# Замер FPS в игре. «До» или «после» Nova определяется само: применена ли Nova сейчас.
+function Invoke-NovaFpsFlow {
+    $applied = @(Get-NovaBackup).Count -gt 0
+    $label = 'before'
+    $labelText = 'до Nova'
+    if ($applied) { $label = 'after'; $labelText = 'после Nova' }
+    $runs = @(Read-NovaFpsRuns)
+    if (-not $Yes) {
+        Write-Host ''
+        Write-Nova 'ЗАМЕР FPS В ИГРЕ' title
+        Write-Nova 'Nova запишет, как часто игра выдаёт кадры, и посчитает средний FPS и просадки (1% low).' info
+        if ($applied) { Write-Nova ('Nova сейчас применена — это будет замер «{0}».' -f $labelText) info }
+        else { Write-Nova ('Nova сейчас не применена — это будет замер «{0}».' -f $labelText) info }
+        if ($runs.Count -gt 0) {
+            Write-Host ''
+            Write-Host '  1  Новый замер' -ForegroundColor White
+            Write-Host '  2  Сравнить «до» и «после»' -ForegroundColor White
+            Write-Host '  3  Стереть все замеры' -ForegroundColor White
+            Write-Host '  0  Назад' -ForegroundColor White
+            $choice = (Read-Host '  Выбери пункт').Trim()
+            if ($choice -eq '2') {
+                foreach ($game in @($runs | ForEach-Object { $_.game } | Select-Object -Unique)) { Show-NovaFpsReport -Game $game }
+                return 0
+            }
+            if ($choice -eq '3') {
+                if (Confirm-NovaAction 'Стереть все замеры FPS?') { Clear-NovaFpsRuns; Write-Nova 'Замеры стёрты.' ok }
+                return 0
+            }
+            if ($choice -ne '1') { return 0 }
+        }
+        Write-Host ''
+        Write-Nova 'Как мерить честно:' title
+        Write-Nova '- одна и та же игра, то же место на карте (лучше встроенный бенчмарк игры) и те же настройки графики;' info
+        Write-Nova '- перед замером перезагрузи компьютер и закрой лишние программы;' info
+        Write-Nova '- сделай по 3 замера «до» и «после» — Nova сравнит средние и учтёт разброс.' info
+    }
+    if (-not (Test-NovaPresentMon (Get-NovaPresentMonPath))) {
+        Write-Host ''
+        Write-Nova 'Для замера нужна программа PresentMon от Intel: бесплатная, с открытым кодом, около 1 МБ.' info
+        if (-not (Confirm-NovaAction 'Скачать её с GitHub (github.com/GameTechDev/PresentMon)?')) { return 0 }
+        Write-Nova 'Скачиваю и проверяю контрольную сумму...' dim
+        [void](Install-NovaPresentMon)
+        Write-Nova 'PresentMon готов.' ok
+    }
+    Write-Host ''
+    Write-Nova ('Запусти игру. Когда будешь готов, нажми Enter и сразу переключись в игру (Alt+Tab).') info
+    Write-Nova ('Через {0} с начнётся запись на {1} с — играй как обычно. В конце прозвучит сигнал.' -f $Delay, $Seconds) info
+    if (-not $Yes) { [void](Read-Host '  Enter — начать') }
+    Write-Nova 'Записываю кадры...' dim
+    $csv = Invoke-NovaFpsCapture -Seconds $Seconds -Delay $Delay
+    try { [Console]::Beep(880, 250); [Console]::Beep(1320, 250) } catch { Write-Verbose 'Нет звука.' }
+    $byApp = Read-NovaFpsCsv $csv
+    Remove-Item -LiteralPath $csv -Force -ErrorAction SilentlyContinue
+    $game = Select-NovaFpsGame $byApp
+    if (-not $game) { throw 'Во время записи ни одна игра не рисовала кадры. Игра точно была открыта на экране?' }
+    $stats = Get-NovaFpsStats ([double[]]$byApp[$game].ToArray())
+    if ($null -eq $stats) { throw ('Слишком мало кадров от {0}, чтобы что-то посчитать. Попробуй мерить дольше.' -f $game) }
+    Save-NovaFpsRun ([pscustomobject]@{
+            game = $game; label = $label; time = (Get-Date).ToString('yyyy-MM-dd HH:mm')
+            avg = $stats.Avg; low1 = $stats.Low1; low01 = $stats.Low01; frames = $stats.Frames; seconds = $stats.Seconds
+        })
+    Write-Host ''
+    Write-Nova ('{0}, замер «{1}»: средний FPS {2}, 1% low {3}, 0.1% low {4} ({5} кадров за {6} с).' -f $game, $labelText, $stats.Avg, $stats.Low1, $stats.Low01, $stats.Frames, $stats.Seconds) ok
+    Show-NovaFpsReport -Game $game
+    return 0
+}
+
 function Invoke-NovaUndoFlow {
     $backups = @(Get-NovaBackup)
     if ($backups.Count -eq 0) {
@@ -268,6 +340,7 @@ function Start-NovaMenu {
         Write-Host '  4  Открыть config.json — выбрать, что включать' -ForegroundColor White
         Write-Host '  5  Замерить: было → стало (процессы, службы, память)' -ForegroundColor White
         Write-Host '  6  Проверить систему' -ForegroundColor White
+        Write-Host '  7  Замерить FPS в игре: до и после Nova' -ForegroundColor White
         Write-Host '  0  Выход' -ForegroundColor White
         Write-Host ''
         $choice = (Read-Host '  Выбери пункт').Trim()
@@ -279,6 +352,7 @@ function Start-NovaMenu {
                 '4' { Start-Process -FilePath 'notepad.exe' -ArgumentList ('"{0}"' -f $ConfigPath) }
                 '5' { [void](Invoke-NovaMeasureFlow); Wait-NovaKey }
                 '6' { [void](Invoke-NovaCheckFlow); Wait-NovaKey }
+                '7' { [void](Invoke-NovaFpsFlow); Wait-NovaKey }
                 '0' { return }
             }
         } catch {
@@ -306,6 +380,7 @@ try {
         'Undo' { Show-NovaBanner; $exitCode = Invoke-NovaUndoFlow }
         'Measure' { Show-NovaBanner; $exitCode = Invoke-NovaMeasureFlow }
         'Check' { Show-NovaBanner; $exitCode = Invoke-NovaCheckFlow }
+        'Fps' { Show-NovaBanner; $exitCode = Invoke-NovaFpsFlow }
     }
 } catch {
     Write-Nova ('Ошибка: {0}' -f $_.Exception.Message) err

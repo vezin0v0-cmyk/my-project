@@ -20,43 +20,32 @@ jobs:
       - uses: actions/checkout@v5
 
       # Only ASCII in run blocks: GitHub saves them without BOM, Windows PowerShell 5.1 would misread Cyrillic.
-      - name: PresentMon release info
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $headers = @{ 'User-Agent' = 'nova-ci'; Authorization = "Bearer $env:GH_TOKEN" }
-          $releases = Invoke-RestMethod 'https://api.github.com/repos/GameTechDev/PresentMon/releases?per_page=5' -Headers $headers
-          foreach ($rel in $releases) {
-            Write-Host ('== {0} prerelease={1} published={2}' -f $rel.tag_name, $rel.prerelease, $rel.published_at)
-            foreach ($a in $rel.assets) { Write-Host ('   {0}  {1}  {2}' -f $a.name, $a.size, $a.digest) }
-          }
-          $rel = $releases | Where-Object { -not $_.prerelease } | Select-Object -First 1
-          $asset = $rel.assets | Where-Object { $_.name -match '^PresentMon-[\d\.]+-x64\.exe$' } | Select-Object -First 1
-          Write-Host ('Chosen: {0}' -f $asset.browser_download_url)
-          Invoke-WebRequest $asset.browser_download_url -OutFile "$env:RUNNER_TEMP\pm.exe"
-          Write-Host ('SHA256: {0}' -f (Get-FileHash "$env:RUNNER_TEMP\pm.exe" -Algorithm SHA256).Hash)
-          & "$env:RUNNER_TEMP\pm.exe" --help 2>&1 | Select-Object -First 120 | ForEach-Object { Write-Host $_ }
-
-      - name: Capture frames from an animated browser window
-        shell: pwsh
+      - name: Animated window for PresentMon to measure
+        shell: powershell
         run: |
           $html = Join-Path $env:RUNNER_TEMP 'spin.html'
-          Set-Content -LiteralPath $html -Encoding utf8 -Value '<!doctype html><canvas id=c width=800 height=600></canvas><script>const c=document.getElementById("c").getContext("2d");let a=0;(function f(){a+=0.05;c.fillStyle="#123";c.fillRect(0,0,800,600);c.fillStyle="#fc4";c.save();c.translate(400,300);c.rotate(a);c.fillRect(-120,-120,240,240);c.restore();requestAnimationFrame(f);})();</script>'
+          Set-Content -LiteralPath $html -Encoding Ascii -Value '<!doctype html><canvas id=c width=900 height=600></canvas><script>const c=document.getElementById("c").getContext("2d");let a=0;(function f(){a+=0.05;c.fillStyle="#123";c.fillRect(0,0,900,600);c.fillStyle="#fc4";c.save();c.translate(450,300);c.rotate(a);c.fillRect(-150,-150,300,300);c.restore();requestAnimationFrame(f);})();</script>'
           $edge = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
-          $p = Start-Process -FilePath $edge -ArgumentList @('--new-window', '--no-first-run', "--user-data-dir=$env:RUNNER_TEMP\edge", "file:///$($html -replace '\\','/')") -PassThru
+          Start-Process -FilePath $edge -ArgumentList @('--new-window', '--no-first-run', '--start-maximized', "--user-data-dir=$env:RUNNER_TEMP\edge", "file:///$($html -replace '\\','/')")
           Start-Sleep -Seconds 8
-          $csv = Join-Path $env:RUNNER_TEMP 'pm.csv'
-          & "$env:RUNNER_TEMP\pm.exe" --output_file $csv --timed 10 --terminate_after_timed --stop_existing_session --no_console_stats 2>&1 | ForEach-Object { Write-Host $_ }
-          Write-Host ('exit: {0}' -f $LASTEXITCODE)
-          if (Test-Path $csv) {
-            $lines = Get-Content $csv
-            Write-Host ('rows: {0}' -f $lines.Count)
-            $lines | Select-Object -First 4 | ForEach-Object { Write-Host $_ }
-            $data = Import-Csv $csv
-            $data | Group-Object Application | Sort-Object Count -Descending | Select-Object -First 8 | ForEach-Object { Write-Host ('{0}: {1}' -f $_.Name, $_.Count) }
-          } else {
-            Write-Host 'no csv'
-            Get-ChildItem $env:RUNNER_TEMP -Filter 'pm*' | ForEach-Object { Write-Host $_.FullName }
-          }
+
+      - name: Raw capture through Nova (downloads PresentMon, checks SHA256)
+        shell: powershell
+        run: |
+          Import-Module ./src/Nova.psm1 -Force -DisableNameChecking
+          $csv = Invoke-NovaFpsCapture -Seconds 8 -Delay 1
+          Get-Content -LiteralPath $csv -TotalCount 3 | ForEach-Object { Write-Host $_ }
+          $byApp = Read-NovaFpsCsv $csv
+          foreach ($app in $byApp.Keys) { Write-Host ('{0}: {1} frames' -f $app, $byApp[$app].Count) }
+          Write-Host ('Game picked: {0}' -f (Select-NovaFpsGame $byApp))
+
+      - name: Full Nova FPS flow (-Mode Fps)
+        shell: powershell
+        run: |
+          ./src/Nova.ps1 -Mode Fps -Seconds 10 -Delay 1 -Yes
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $data = Get-Content -LiteralPath (Join-Path $env:ProgramData 'Nova\fps.json') -Raw | ConvertFrom-Json
+          $run = @($data.runs)[-1]
+          Write-Host ('Saved run: game={0} label={1} avg={2} low1={3} frames={4}' -f $run.game, $run.label, $run.avg, $run.low1, $run.frames)
+          if ($run.frames -lt 100) { throw 'Too few frames captured.' }
           Stop-Process -Name msedge -Force -ErrorAction SilentlyContinue

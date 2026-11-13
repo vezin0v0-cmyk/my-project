@@ -1382,6 +1382,214 @@ function New-NovaRestorePoint {
 
 #endregion
 
+#region Замер FPS
+
+# PresentMon — бесплатная программа Intel с открытым кодом (github.com/GameTechDev/PresentMon).
+# Ею меряют FPS в обзорах видеокарт. Версия и контрольная сумма закреплены здесь:
+# скачанный файл должен совпасть байт в байт, иначе Nova его удалит и не запустит.
+$script:PresentMon = @{
+    Version = '2.6.0'
+    Url     = 'https://github.com/GameTechDev/PresentMon/releases/download/v2.6.0/PresentMon-2.6.0-x64.exe'
+    Sha256  = 'B2A706BC6AD475749E3B7E3409263AA1E6906D45BDCF993F6DBC0F660188F1AF'
+}
+
+# Программы, которые рисуют кадры, но игрой не являются.
+$script:FpsIgnore = @('dwm.exe', 'explorer.exe', 'shellexperiencehost.exe', 'startmenuexperiencehost.exe', 'searchhost.exe',
+    'searchapp.exe', 'textinputhost.exe', 'lockapp.exe', 'applicationframehost.exe', 'powershell.exe', 'pwsh.exe', 'conhost.exe',
+    'windowsterminal.exe', 'openconsole.exe', 'msedgewebview2.exe', 'steamwebhelper.exe', 'nvidia overlay.exe', 'nvcontainer.exe',
+    'gamebar.exe', 'gamebarftserver.exe', 'widgets.exe', 'phoneexperiencehost.exe', 'presentmon-2.6.0-x64.exe', '<error>', '')
+
+function Get-NovaPresentMonPath {
+    return (Join-Path (Get-NovaDataDir) ('tools\PresentMon-{0}-x64.exe' -f $script:PresentMon.Version))
+}
+
+function Test-NovaPresentMon {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return $false }
+    return ((Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash -eq $script:PresentMon.Sha256)
+}
+
+function Install-NovaPresentMon {
+    $path = Get-NovaPresentMonPath
+    if (Test-NovaPresentMon $path) { return $path }
+    $dir = Split-Path -Parent $path
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    $temp = $path + '.download'
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $progress = $ProgressPreference
+    try {
+        $ProgressPreference = 'SilentlyContinue'
+        Invoke-WebRequest -Uri $script:PresentMon.Url -OutFile $temp -UseBasicParsing
+    } catch {
+        Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+        throw ('Не удалось скачать PresentMon: {0}. Проверь интернет.' -f $_.Exception.Message)
+    } finally {
+        $ProgressPreference = $progress
+    }
+    if ((Get-FileHash -LiteralPath $temp -Algorithm SHA256).Hash -ne $script:PresentMon.Sha256) {
+        Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+        throw 'Скачанный PresentMon не совпал с оригиналом (контрольная сумма). Файл удалён, ничего не запущено.'
+    }
+    Move-Item -LiteralPath $temp -Destination $path -Force
+    return $path
+}
+
+# Записывает кадры всех программ и возвращает путь к CSV.
+function Invoke-NovaFpsCapture {
+    param([int]$Seconds = 60, [int]$Delay = 10)
+    $exe = Install-NovaPresentMon
+    $dir = Join-Path (Get-NovaDataDir) 'fps'
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    $csv = Join-Path $dir ('capture-{0}.csv' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    $arguments = @('--output_file', $csv, '--delay', [string]$Delay, '--timed', [string]$Seconds, '--terminate_after_timed',
+        '--stop_existing_session', '--session_name', 'NovaFps', '--no_console_stats', '--v1_metrics')
+    $run = Invoke-NovaNative $exe $arguments
+    if (-not (Test-Path -LiteralPath $csv)) {
+        throw ('PresentMon не записал ни одного кадра (код {0}). Игра точно была открыта во время замера?' -f $run.Code)
+    }
+    return $csv
+}
+
+# Время между кадрами (мс) для каждой программы из CSV PresentMon.
+function Read-NovaFpsCsv {
+    param([Parameter(Mandatory)][string]$Path)
+    $byApp = @{}
+    $invariant = [Globalization.CultureInfo]::InvariantCulture
+    foreach ($row in (Import-Csv -LiteralPath $Path)) {
+        $raw = $row.MsBetweenPresents
+        if ($null -eq $raw) { $raw = $row.FrameTime }
+        $value = 0.0
+        if (-not [double]::TryParse([string]$raw, [Globalization.NumberStyles]::Float, $invariant, [ref]$value)) { continue }
+        $app = [string]$row.Application
+        if (-not $byApp.ContainsKey($app)) { $byApp[$app] = New-Object System.Collections.Generic.List[double] }
+        $byApp[$app].Add($value)
+    }
+    return $byApp
+}
+
+# Средний FPS, 1% low и 0.1% low по времени кадров.
+# 1% low — FPS, медленнее которого был только 1% кадров: это и есть «фризы» и подлагивания.
+function Get-NovaFpsStats {
+    param([double[]]$FrameTimes)
+    $valid = @($FrameTimes | Where-Object { $_ -gt 0 -and $_ -lt 1000 })
+    if ($valid.Count -lt 30) { return $null }
+    $sum = 0.0
+    foreach ($t in $valid) { $sum += $t }
+    $sorted = [double[]]@($valid | Sort-Object)
+    $at = {
+        param([double]$Share)
+        $index = [int][math]::Ceiling($Share * $sorted.Count) - 1
+        $sorted[[math]::Max(0, [math]::Min($sorted.Count - 1, $index))]
+    }
+    return [pscustomobject]@{
+        Frames  = $valid.Count
+        Seconds = [math]::Round($sum / 1000, 1)
+        Avg     = [math]::Round(1000.0 * $valid.Count / $sum, 1)
+        Low1    = [math]::Round(1000.0 / (& $at 0.99), 1)
+        Low01   = [math]::Round(1000.0 / (& $at 0.999), 1)
+    }
+}
+
+# Какая программа — игра: больше всего кадров среди всего, что не системное.
+function Select-NovaFpsGame {
+    param($ByApp)
+    $best = $null
+    foreach ($app in $ByApp.Keys) {
+        if ($script:FpsIgnore -contains $app.ToLowerInvariant()) { continue }
+        if ($null -eq $best -or $ByApp[$app].Count -gt $ByApp[$best].Count) { $best = $app }
+    }
+    return $best
+}
+
+function Get-NovaFpsFile { return (Join-Path (Get-NovaDataDir) 'fps.json') }
+
+function Read-NovaFpsRuns {
+    $path = Get-NovaFpsFile
+    if (-not (Test-Path -LiteralPath $path)) { return @() }
+    return @(Get-NovaProp (Read-NovaJson $path) 'runs' @())
+}
+
+function Save-NovaFpsRun {
+    param([Parameter(Mandatory)]$Run)
+    $runs = @(Read-NovaFpsRuns) + @($Run)
+    $json = [pscustomobject]@{ runs = $runs } | ConvertTo-Json -Depth 5
+    [System.IO.File]::WriteAllText((Get-NovaFpsFile), $json, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Clear-NovaFpsRuns {
+    $path = Get-NovaFpsFile
+    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+}
+
+# Сравнение «до» и «после» для одной игры. Разницу считаем настоящей, только если она больше,
+# чем разброс между замерами (и не меньше 3%): иначе это обычная случайность.
+function Compare-NovaFps {
+    param([object[]]$Before, [object[]]$After)
+    $mean = {
+        param($list, $name)
+        $s = 0.0
+        foreach ($r in $list) { $s += [double]$r.$name }
+        $s / [math]::Max(1, @($list).Count)
+    }
+    $spread = {
+        param($list, $name)
+        if (@($list).Count -lt 2) { return 0.0 }
+        $values = @($list | ForEach-Object { [double]$_.$name })
+        $m = ($values | Measure-Object -Average).Average
+        if ($m -le 0) { return 0.0 }
+        (($values | Measure-Object -Maximum).Maximum - ($values | Measure-Object -Minimum).Minimum) / $m
+    }
+    $result = [ordered]@{}
+    foreach ($metric in @('avg', 'low1', 'low01')) {
+        $b = & $mean $Before $metric
+        $a = & $mean $After $metric
+        $floor = 0.03
+        if ($metric -ne 'avg') { $floor = 0.05 }
+        $noise = [math]::Max($floor, [math]::Max((& $spread $Before $metric), (& $spread $After $metric)))
+        $change = 0.0
+        if ($b -gt 0) { $change = ($a - $b) / $b }
+        $verdict = 'same'
+        if ($change -gt $noise) { $verdict = 'better' } elseif ($change -lt -$noise) { $verdict = 'worse' }
+        $result[$metric] = [pscustomobject]@{ Before = [math]::Round($b, 1); After = [math]::Round($a, 1); Change = $change; Noise = $noise; Verdict = $verdict }
+    }
+    return [pscustomobject]$result
+}
+
+function Show-NovaFpsReport {
+    param([string]$Game)
+    $runs = @(Read-NovaFpsRuns | Where-Object { $_.game -eq $Game })
+    $before = @($runs | Where-Object { $_.label -eq 'before' })
+    $after = @($runs | Where-Object { $_.label -eq 'after' })
+    Write-Host ''
+    Write-Nova ('FPS: {0}' -f $Game) title
+    if ($before.Count -eq 0 -or $after.Count -eq 0) {
+        Write-Nova ('Замеров «до Nova»: {0}, «после Nova»: {1}. Для сравнения нужны оба.' -f $before.Count, $after.Count) info
+        return
+    }
+    $cmp = Compare-NovaFps -Before $before -After $after
+    Write-Host ('  {0,-14}{1,14}{2,14}{3,11}' -f '', ('до ({0})' -f $before.Count), ('после ({0})' -f $after.Count), 'разница')
+    foreach ($row in @(@('avg', 'Средний FPS'), @('low1', '1% low'), @('low01', '0.1% low'))) {
+        $m = $cmp.($row[0])
+        $color = 'Gray'
+        if ($m.Verdict -eq 'better') { $color = 'Green' } elseif ($m.Verdict -eq 'worse') { $color = 'Red' }
+        Write-Host ('  {0,-14}{1,14}{2,14}{3,10:+0.0;-0.0;0.0}%' -f $row[1], $m.Before, $m.After, ($m.Change * 100)) -ForegroundColor $color
+    }
+    Write-Host ''
+    $avg = $cmp.avg
+    $pct = [math]::Round([math]::Abs($avg.Change) * 100, 1)
+    $noise = [math]::Round($avg.Noise * 100, 1)
+    switch ($avg.Verdict) {
+        'better' { Write-Nova ('Средний FPS вырос на {0}% — это больше разброса между замерами ({1}%). Ускорение настоящее.' -f $pct, $noise) ok }
+        'worse' { Write-Nova ('Средний FPS упал на {0}%. Если так и останется — отмени Nova (пункт 3) или выключи игровые пункты в config.json.' -f $pct) warn }
+        default { Write-Nova ('Разницы в среднем FPS нет: {0}% — меньше разброса между замерами ({1}%). Честно: в этой игре на этом ПК Nova на средний FPS не влияет.' -f $pct, $noise) info }
+    }
+    if ($cmp.low1.Verdict -eq 'better') { Write-Nova ('Зато просадки стали меньше: 1% low вырос на {0}%.' -f [math]::Round($cmp.low1.Change * 100, 1)) ok }
+    if ($cmp.low1.Verdict -eq 'worse') { Write-Nova ('Просадки стали сильнее: 1% low упал на {0}%.' -f [math]::Round([math]::Abs($cmp.low1.Change) * 100, 1)) warn }
+    if ($before.Count -lt 3 -or $after.Count -lt 3) { Write-Nova 'Для точности сделай по 3 замера «до» и «после» в одном и том же месте игры.' dim }
+}
+
+#endregion
+
 #region Проверка системы
 
 # Одна строчка проверки. Status: ok — всё хорошо, info — к сведению, warn — лучше поправить, stop — Nova не запустится.

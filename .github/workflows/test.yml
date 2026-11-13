@@ -28,6 +28,10 @@ jobs:
         shell: powershell
         run: ./tests/Test-Nova.ps1
 
+      - name: Расчёты замера FPS
+        shell: powershell
+        run: ./tests/Test-Fps.ps1
+
       - name: Проверка системы
         shell: powershell
         run: ./src/Nova.ps1 -Mode Check
