@@ -175,6 +175,8 @@
   details p { margin: 0 0 20px; color: var(--muted); max-width: 52em; }
 
   footer { border-top: 1px solid var(--line); padding: 30px 0 44px; color: var(--dim); font: 12px/1.7 var(--mono); }
+  footer a { color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+  footer a:hover { color: var(--accent); }
   footer .wrap { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
 
   .reveal { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s ease; }
@@ -456,7 +458,7 @@
 <footer>
   <div class="wrap">
     <span>NOVA — открытый проект. Не связан с Microsoft.</span>
-    <span>Windows — товарный знак Microsoft Corporation.</span>
+    <span><a href="privacy.html">Конфиденциальность и условия</a> · Windows — товарный знак Microsoft Corporation.</span>
   </div>
 </footer>
 

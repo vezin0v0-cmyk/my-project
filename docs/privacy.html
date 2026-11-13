@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<!-- Защита от «невидимой рамки» (кликджекинга): на настоящем сайте страницу нельзя открыть внутри чужой. -->
+<style id="nova-frame-guard">html { display: none !important; }</style>
+<script>
+  (function () {
+    var guard = document.getElementById('nova-frame-guard');
+    var ours = /\.github\.io$/.test(location.hostname);
+    if (self === top || !ours) { guard.parentNode.removeChild(guard); return; }
+    try { top.location = self.location; } catch (e) { /* остаётся скрытой */ }
+  })();
+</script>
+<title>Nova — конфиденциальность и условия</title>
+<meta name="description" content="Какие данные хранит аккаунт Nova, где они лежат и как их удалить. Условия использования Nova.">
+<meta name="theme-color" content="#07080b">
+<style>
+  :root {
+    --bg: #07080b; --panel: #0d0f14; --line: #1c2029; --text: #e9e6df; --muted: #9a9ea8; --dim: #5b606b;
+    --accent: #f5b54a; --accent-soft: rgba(245, 181, 74, 0.12); --ok: #7bd88f; --bad: #ff6b5b;
+    --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.65 var(--sans); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { width: min(760px, 100% - 36px); margin: 0 auto; }
+  header { border-bottom: 1px solid var(--line); }
+  header .wrap { display: flex; justify-content: space-between; align-items: center; height: 60px; gap: 16px; }
+  .brand { font: 700 14px var(--mono); letter-spacing: 4px; color: var(--text); display: inline-flex; align-items: center; gap: 9px; }
+  .brand::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px rgba(245,181,74,.6); }
+  .brand:hover { text-decoration: none; }
+  header nav { display: flex; gap: 18px; font-size: 14px; }
+  main { padding: 40px 0 56px; }
+  .kicker { font: 12px var(--mono); letter-spacing: 2px; text-transform: uppercase; color: var(--accent); margin: 0 0 10px; }
+  h1 { font-size: clamp(28px, 6vw, 40px); line-height: 1.15; margin: 0 0 14px; letter-spacing: -0.5px; }
+  .lead { color: var(--muted); font-size: 17px; margin: 0 0 8px; }
+  .date { color: var(--dim); font: 12.5px var(--mono); margin: 0 0 28px; }
+  .short { background: var(--accent-soft); border: 1px solid rgba(245,181,74,.3); border-radius: 12px; padding: 18px 20px; margin: 0 0 36px; }
+  .short h2 { margin: 0 0 8px; font-size: 17px; }
+  .short ul { margin: 0; padding-left: 20px; }
+  .short li { margin: 4px 0; }
+  section { margin: 0 0 34px; }
+  h2 { font-size: 21px; margin: 0 0 12px; letter-spacing: -0.2px; }
+  h2 .n { color: var(--accent); font: 600 14px var(--mono); margin-right: 8px; vertical-align: 2px; }
+  p { margin: 0 0 12px; }
+  ul { margin: 0 0 12px; padding-left: 22px; }
+  li { margin: 6px 0; }
+  .muted { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0 14px; font-size: 15px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  td:first-child { white-space: nowrap; font-weight: 600; }
+  .no { color: var(--ok); font-weight: 600; }
+  code { font: 14px var(--mono); background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
+  footer { border-top: 1px solid var(--line); padding: 26px 0 40px; color: var(--dim); font: 12px/1.7 var(--mono); }
+  footer .wrap { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+  @media (max-width: 560px) {
+    td:first-child { white-space: normal; }
+    th, td { padding: 9px 6px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <a class="brand" href="index.html">NOVA</a>
+    <nav><a href="index.html">Главная</a><a href="app.html">Кабинет</a></nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <p class="kicker">Конфиденциальность и условия</p>
+  <h1>Что Nova знает о тебе</h1>
+  <p class="lead">Коротко: почти ничего. Ниже простыми словами — что хранится, где и как это удалить.</p>
+  <p class="date">Обновлено 13 ноября 2026</p>
+
+  <div class="short">
+    <h2>Самое главное</h2>
+    <ul>
+      <li>Программа Nova на компьютере <b>ничего не отправляет</b> ни нам, ни кому-то ещё. Аккаунт для неё не нужен.</li>
+      <li>Аккаунт на сайте хранит только почту, пароль (в зашифрованном виде) и то, что ты сам написал в профиле.</li>
+      <li>На сайте нет рекламы, счётчиков посещений и чужих скриптов.</li>
+      <li>Удалить аккаунт можно в любой момент: <b>Профиль → Удалить аккаунт</b>. Данные стираются сразу.</li>
+    </ul>
+  </div>
+
+  <section id="account">
+    <h2><span class="n">01</span>Аккаунт на сайте</h2>
+    <p>Аккаунт нужен только для кабинета на сайте. Когда ты его создаёшь, на сервере сохраняется:</p>
+    <table>
+      <tr><th>Что</th><th>Зачем</th></tr>
+      <tr><td>Почта</td><td>Чтобы войти и получить код подтверждения или код для нового пароля.</td></tr>
+      <tr><td>Пароль</td><td>Хранится в зашифрованном виде (хэш). Узнать его не может никто, даже автор Nova.</td></tr>
+      <tr><td>Имя, «о себе», цвет</td><td>То, что ты сам написал в профиле. Можно изменить в любой момент.</td></tr>
+      <tr><td>Фото профиля</td><td>Только если загрузишь. Фото открывается по прямой ссылке — не загружай то, что не хочешь показывать.</td></tr>
+      <tr><td>Даты и вход</td><td>Когда создан аккаунт и когда был последний вход. Для каждого открытого входа — IP-адрес и название браузера: так можно закрыть чужие входы при смене пароля.</td></tr>
+    </table>
+    <p>Мы <span class="no">не собираем</span> телефон, адрес, данные карты, контакты и историю посещений. Nova никогда не попросит прислать код из письма или пароль.</p>
+  </section>
+
+  <section id="where">
+    <h2><span class="n">02</span>Где лежат данные</h2>
+    <ul>
+      <li><b>Supabase</b> — сервис, который хранит аккаунты и фото профилей. Серверы находятся во Франкфурте (Германия).</li>
+      <li><b>Gmail (Google)</b> — через него уходят письма с кодом. Google видит адрес получателя и текст письма, как у любого письма.</li>
+      <li><b>GitHub Pages</b> — здесь размещён сам сайт. Как любой хостинг, GitHub видит IP-адрес посетителя.</li>
+    </ul>
+    <p>Служебные журналы сервера (время запроса, IP-адрес) хранятся около суток и удаляются автоматически.</p>
+    <p>Мы никому не продаём и не передаём данные. Их видят только перечисленные сервисы — без них сайт не работает.</p>
+  </section>
+
+  <section id="browser">
+    <h2><span class="n">03</span>Что хранится в твоём браузере</h2>
+    <ul>
+      <li>Сессия входа — чтобы не вводить пароль каждый раз. Если не отметить «Запомнить меня», она пропадёт, когда закроешь вкладку.</li>
+      <li>Сборка из конструктора и список последних действий. Они лежат <b>только в браузере</b> и на сервер не отправляются.</li>
+    </ul>
+    <p>Рекламных и следящих cookie нет.</p>
+  </section>
+
+  <section id="program">
+    <h2><span class="n">04</span>Программа Nova на компьютере</h2>
+    <ul>
+      <li>Nova меняет настройки Windows только на твоём компьютере и <b>ничего не отправляет</b>: ни отчётов, ни статистики.</li>
+      <li>Резервная копия, журнал и замеры FPS хранятся в папке Nova на твоём диске.</li>
+      <li>Голосовые команды распознаются прямо на компьютере. Звук с микрофона никуда не уходит.</li>
+      <li>Интернет нужен, только чтобы скачать то, что ты сам выбрал: программы через winget (Microsoft), PresentMon для замера FPS (GitHub), движок голосовых команд (GitHub и alphacephei.com). Каждый файл проверяется по контрольной сумме.</li>
+    </ul>
+  </section>
+
+  <section id="delete">
+    <h2><span class="n">05</span>Твои права и удаление</h2>
+    <ul>
+      <li><b>Посмотреть и исправить</b> данные — в кабинете, раздел «Профиль».</li>
+      <li><b>Удалить аккаунт</b> — Профиль → Удалить аккаунт. Нужно ввести пароль. С сервера сразу удаляются почта, пароль, профиль, фото и все входы. Вернуть их нельзя.</li>
+      <li><b>Забыл пароль</b> — на странице входа нажми «Забыли пароль?»: придёт код на почту.</li>
+      <li><b>Вопросы</b> — пиши в <a href="https://github.com/vezin0v0-cmyk/my-project/issues" rel="noopener">обсуждения проекта на GitHub</a>. Не публикуй там почту и пароль.</li>
+    </ul>
+  </section>
+
+  <section id="terms">
+    <h2><span class="n">06</span>Условия использования</h2>
+    <ul>
+      <li>Nova бесплатна и распространяется «как есть», без гарантий.</li>
+      <li>Ты сам решаешь, что менять в своей Windows. Nova заранее показывает каждое изменение, создаёт точку восстановления и резервную копию, а любой запуск можно отменить из меню. Но отвечать за последствия на конкретном компьютере мы не можем.</li>
+      <li>Nova не связана с Microsoft. Windows — товарный знак Microsoft Corporation.</li>
+      <li>Нельзя использовать сайт для спама, взлома или регистрации на чужую почту. Такие аккаунты удаляются.</li>
+      <li>Если правила изменятся, здесь поменяется дата вверху страницы.</li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>NOVA — открытый проект. Не связан с Microsoft.</span>
+    <span><a href="index.html">На главную</a></span>
+  </div>
+</footer>
+</body>
+</html>

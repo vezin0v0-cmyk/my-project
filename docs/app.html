@@ -338,6 +338,18 @@
   .p-meta b { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
   .p-meta .ok { color: var(--ok); font-weight: 600; }
   .crop { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .p-sec { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: rgba(0,0,0,.25); margin: -6px 0 16px; }
+  .p-sec-t { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13.5px; }
+  .p-sec-t svg.i { width: 15px; height: 15px; color: var(--gold); }
+  .p-sec .row-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn-glass.bad { color: var(--bad); }
+  .btn-glass.bad:hover { border-color: rgba(255,107,107,.45); background: rgba(255,107,107,.08); }
+  .btn-bad { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; border: 0; cursor: pointer; font-weight: 700; color: #2a0505; background: linear-gradient(180deg, #ff8f8f, #e64a4a); box-shadow: 0 10px 26px rgba(230,74,74,.28), inset 0 1px 0 rgba(255,255,255,.4); }
+  .btn-bad:disabled { opacity: .7; cursor: default; }
+  .p-pane h3 { margin: 0 0 6px; font-size: 19px; }
+  .p-pane h3.bad-t { color: var(--bad); }
+  .p-pane > p { margin: 0 0 14px; color: var(--muted); font-size: 14px; line-height: 1.55; }
+  .p-pane .hint { margin: -6px 0 14px; font-size: 13px; }
   .crop canvas { width: 280px; height: 280px; max-width: 100%; border-radius: 20px; background: #000; touch-action: none; cursor: grab; }
   .crop canvas:active { cursor: grabbing; }
   .crop .zoom { display: flex; align-items: center; gap: 10px; width: min(280px, 100%); color: var(--dim); font-size: 13px; }
@@ -450,7 +462,7 @@
           </div>
           <div class="row-between">
             <label class="check"><input type="checkbox" name="remember"><i></i>Запомнить меня</label>
-            <button class="link" type="button" data-toast="forgot">Забыли пароль?</button>
+            <a class="link" href="#forgot">Забыли пароль?</a>
           </div>
           <button class="btn-gold wide" type="submit"><span>Войти</span><svg class="i"><use href="#i-arrow"/></svg></button>
           <div class="or">или</div>
@@ -494,7 +506,7 @@
             </div>
           </div>
           <div class="row-between">
-            <label class="check" id="terms-label"><input type="checkbox" name="terms"><i></i>Согласен с условиями и политикой конфиденциальности</label>
+            <label class="check" id="terms-label"><input type="checkbox" name="terms"><i></i><span>Согласен с <a class="link" href="privacy.html" target="_blank" rel="noopener">условиями и политикой конфиденциальности</a></span></label>
           </div>
           <button class="btn-gold wide" type="submit"><span>Создать аккаунт</span><svg class="i"><use href="#i-arrow"/></svg></button>
           <div class="or">или</div>
@@ -524,6 +536,42 @@
         <p class="resend">Не пришёл код? <button class="link" type="button" id="resend" disabled>Отправить снова</button></p>
         <button class="btn-gold wide" type="button" id="verify-btn"><span>Подтвердить</span><svg class="i"><use href="#i-arrow"/></svg></button>
         <p class="switch"><a class="link" href="#register" id="v-back">← Изменить почту</a></p>
+      </div>
+
+      <!-- Забыли пароль -->
+      <div class="view" id="view-forgot" hidden>
+        <h1>Новый <span class="gold-text">пароль</span></h1>
+        <p class="sub">Пришлём код на почту. С ним задашь новый пароль, а все чужие входы в аккаунт закроются.</p>
+        <form id="form-forgot" novalidate>
+          <div class="field">
+            <label for="f-email">Почта аккаунта</label>
+            <div class="input"><svg class="i lead"><use href="#i-mail"/></svg><input id="f-email" name="email" type="email" autocomplete="email" placeholder="name@mail.ru" inputmode="email"></div>
+            <small class="err" aria-live="polite"></small>
+          </div>
+          <button class="btn-gold wide" type="submit"><span>Получить код</span><svg class="i"><use href="#i-arrow"/></svg></button>
+          <p class="switch">Вспомнил пароль? <a class="link" href="#login">Войти</a></p>
+        </form>
+      </div>
+
+      <!-- Новый пароль после кода -->
+      <div class="view" id="view-newpass" hidden>
+        <h1>Придумай <span class="gold-text">новый пароль</span></h1>
+        <p class="sub">Для <b id="np-email"></b>. Латинские буквы и цифры, от 8 символов.</p>
+        <form id="form-newpass" novalidate>
+          <div class="field">
+            <label for="np-pass">Новый пароль</label>
+            <div class="input"><svg class="i lead"><use href="#i-lock"/></svg><input id="np-pass" name="password" type="password" autocomplete="new-password" placeholder="8+ символов, буквы и цифры">
+              <button class="eye" type="button" aria-label="Показать пароль"><svg class="i"><use href="#i-eye"/></svg></button></div>
+            <small class="err" aria-live="polite"></small>
+          </div>
+          <div class="field">
+            <label for="np-pass2">Повтори пароль</label>
+            <div class="input"><svg class="i lead"><use href="#i-lock"/></svg><input id="np-pass2" name="password2" type="password" autocomplete="new-password" placeholder="Ещё раз">
+              <button class="eye" type="button" aria-label="Показать пароль"><svg class="i"><use href="#i-eye"/></svg></button></div>
+            <small class="err" aria-live="polite"></small>
+          </div>
+          <button class="btn-gold wide" type="submit"><span>Сохранить пароль</span><svg class="i"><use href="#i-check"/></svg></button>
+        </form>
       </div>
     </section>
   </div>
@@ -720,6 +768,7 @@
   var state = {
     user: readJSON('local', 'nova.user') || readJSON('session', 'nova.user'),
     pending: readJSON('session', 'nova.pending'),
+    recovery: !!readJSON('session', 'nova.recovery'),
     builder: loadBuilder(),
     activity: readJSON('local', 'nova.activity') || [],
     steps: readJSON('local', 'nova.steps') || {},
@@ -760,13 +809,15 @@
   }
 
   // ---------- Переходы между экранами ----------
-  var AUTH_VIEWS = ['login', 'register', 'verify'];
+  var AUTH_VIEWS = ['login', 'register', 'verify', 'forgot', 'newpass'];
   var morphing = false;
 
   function route() {
     var name = location.hash.replace('#', '');
     if (name === 'verify' && !state.pending) name = 'register';
     if (name === 'dashboard' && !state.user) name = 'login';
+    // Новый пароль задают только сразу после кода из письма «Забыли пароль?».
+    if (name === 'newpass' && !(state.user && state.recovery)) name = state.user ? 'dashboard' : 'login';
     if (AUTH_VIEWS.indexOf(name) === -1 && name !== 'dashboard') name = state.user ? 'dashboard' : 'login';
     show(name);
   }
@@ -797,8 +848,10 @@
   function setView(name) {
     $$('.view', card).forEach(function (v) { v.hidden = v.id !== 'view-' + name; });
     card.classList.remove('success');
-    document.title = { login: 'Nova — вход', register: 'Nova — регистрация', verify: 'Nova — подтверждение почты' }[name];
+    document.title = { login: 'Nova — вход', register: 'Nova — регистрация', verify: 'Nova — подтверждение почты', forgot: 'Nova — восстановление пароля', newpass: 'Nova — новый пароль' }[name];
     if (name === 'verify') enterVerify(); else stopTimer();
+    if (name === 'forgot' && !forgotForm.email.value) forgotForm.email.value = loginForm.email.value.trim() || (state.user && state.user.email) || '';
+    if (name === 'newpass') $('#np-email').textContent = state.user ? state.user.email : '';
   }
 
   function morph(name) {
@@ -915,6 +968,8 @@
     if (code === 'invalid_credentials' || /invalid login credentials/i.test(msg)) return { field: 'password', text: 'Неверная почта или пароль' };
     if (code === 'email_not_confirmed' || /email not confirmed/i.test(msg)) return { unconfirmed: true, text: 'Почта ещё не подтверждена' };
     if (code === 'otp_expired' || /token has expired|otp.*(expired|invalid)|invalid.*(token|otp)/i.test(msg)) return { text: 'Код не подошёл или устарел. Проверь последнее письмо или запроси новый код.' };
+    if (code === 'same_password' || /different from the old password/i.test(msg)) return { field: 'password', text: 'Новый пароль должен отличаться от старого' };
+    if (code === 'reauthentication_needed' || /requires reauthentication/i.test(msg)) return { text: 'Для смены пароля войди в кабинет заново.' };
     if (code === 'weak_password' || /password should/i.test(msg)) return { field: 'password', text: 'Пароль слишком простой: нужны латинские буквы и цифры, от 8 символов' };
     if (code === 'email_address_invalid' || /email address .*invalid/i.test(msg)) return { field: 'email', text: 'Такая почта не подходит. Проверь адрес.' };
     if (code === 'signup_disabled' || /signups not allowed/i.test(msg)) return { text: 'Регистрация сейчас закрыта. Загляни позже.' };
@@ -926,7 +981,7 @@
   }
   function errToast(info) { toast({ title: 'Не получилось', text: info.text, icon: 'lock' }); }
 
-  $$('.eye').forEach(function (btn) {
+  function bindEye(btn) {
     btn.addEventListener('click', function () {
       var input = btn.parentNode.querySelector('input');
       var showIt = input.type === 'password';
@@ -934,16 +989,12 @@
       btn.innerHTML = use(showIt ? 'eye-off' : 'eye');
       btn.setAttribute('aria-label', showIt ? 'Скрыть пароль' : 'Показать пароль');
     });
-  });
+  }
+  $$('.eye').forEach(bindEye);
 
   $$('[data-oauth]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       toast({ title: 'Вход через ' + btn.getAttribute('data-oauth'), text: REAL ? 'Скоро появится. Пока можно войти по почте.' : 'Появится, когда подключим настоящие аккаунты. Пока можно войти по почте.', icon: 'lock' });
-    });
-  });
-  $$('[data-toast="forgot"]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      toast({ title: 'Восстановление пароля', text: REAL ? 'Скоро появится: код для смены пароля тоже будет приходить на почту.' : 'Появится вместе с настоящими аккаунтами. В демо подойдёт любой пароль от 8 символов.', icon: 'key' });
     });
   });
 
@@ -1023,10 +1074,9 @@
     var name = f.fullname.value.trim(), email = f.email.value.trim();
     if (name.length < 2) { setErr(f.fullname, 'Напиши имя — хотя бы 2 буквы'); ok = false; } else setErr(f.fullname, '');
     if (!EMAIL_RE.test(email)) { setErr(f.email, 'Введи почту, например name@mail.ru'); ok = false; } else setErr(f.email, '');
-    var pv = f.password.value;
-    if (pv.length < 8) { setErr(f.password, 'Минимум 8 символов'); ok = false; }
-    else if (!/[A-Za-z]/.test(pv) || !/[0-9]/.test(pv)) { setErr(f.password, 'Нужны латинские буквы и хотя бы одна цифра'); ok = false; }
-    else setErr(f.password, '');
+    var perr = passwordProblem(f.password.value);
+    setErr(f.password, perr);
+    if (perr) ok = false;
     if (f.password2.value !== f.password.value || !f.password2.value) { setErr(f.password2, 'Пароли не совпадают'); ok = false; } else setErr(f.password2, '');
     $('#terms-label').classList.toggle('invalid', !f.terms.checked);
     if (!f.terms.checked) ok = false;
@@ -1079,15 +1129,83 @@
   });
   regForm.terms.addEventListener('change', function () { $('#terms-label').classList.remove('invalid'); });
 
+  function passwordProblem(pv) {
+    if (pv.length < 8) return 'Минимум 8 символов';
+    if (!/[A-Za-z]/.test(pv) || !/[0-9]/.test(pv)) return 'Нужны латинские буквы и хотя бы одна цифра';
+    return '';
+  }
+  // Новый пароль, а потом выход на всех других устройствах: там мог оказаться чужой.
+  function changePassword(pv) {
+    return call(function (a) { return a.updateUser({ password: pv }); }).then(function (data) {
+      if (data && data.user) signIn(userFrom(data.user), remembered());
+      return call(function (a) { return a.signOut({ scope: 'others' }); }).catch(function () { /* пароль уже сменён */ });
+    });
+  }
+  function passwordChangedToast() {
+    toast({ title: 'Пароль изменён', text: REAL ? 'Все другие входы в аккаунт закрыты. На почту придёт письмо об этом.' : 'Демо: пароль нигде не сохраняется.', icon: 'shield-check', kind: 'ok' });
+  }
+
+  // ---------- Забыли пароль ----------
+  function setRecovery(on) { state.recovery = !!on; writeJSON('session', 'nova.recovery', on ? 1 : null); }
+  function sendRecovery(email) { return call(function (a) { return a.resetPasswordForEmail(email); }); }
+  var forgotForm = $('#form-forgot');
+  forgotForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var email = forgotForm.email.value.trim();
+    if (!EMAIL_RE.test(email)) { setErr(forgotForm.email, 'Введи почту, например name@mail.ru'); return; }
+    setErr(forgotForm.email, '');
+    var btn = forgotForm.querySelector('[type=submit]');
+    function next() {
+      forgotForm.reset();
+      setPending({ name: nameFromEmail(email), email: email, kind: 'recovery' });
+      go('verify');
+    }
+    if (!REAL) { busy(btn, 'Отправляем…', next); return; }
+    var stop = spin(btn, 'Отправляем…');
+    sendRecovery(email).then(function () { stop(); next(); }, function (err) {
+      stop();
+      var info = authError(err);
+      if (info.field === 'email') setErr(forgotForm.email, info.text); else errToast(info);
+    });
+  });
+
+  var npForm = $('#form-newpass');
+  npForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var pv = npForm.password.value, ok = true;
+    var perr = passwordProblem(pv);
+    setErr(npForm.password, perr);
+    if (perr) ok = false;
+    if (npForm.password2.value !== pv || !pv) { setErr(npForm.password2, 'Пароли не совпадают'); ok = false; } else setErr(npForm.password2, '');
+    if (!ok) return;
+    var btn = npForm.querySelector('[type=submit]');
+    function finish() {
+      npForm.reset();
+      setRecovery(false);
+      log('Пароль изменён');
+      passwordChangedToast();
+      go('dashboard');
+    }
+    if (!REAL) { busy(btn, 'Сохраняю…', finish); return; }
+    var stop = spin(btn, 'Сохраняю…');
+    changePassword(pv).then(function () { stop(); finish(); }, function (err) {
+      stop();
+      var info = authError(err);
+      if (info.field === 'password') setErr(npForm.password, info.text); else errToast(info);
+    });
+  });
+
   // ---------- Код подтверждения ----------
   var otp = $('#otp'), digits = $$('#otp input'), done = $('#done'), verifyBtn = $('#verify-btn'), otpErr = $('#otp-err'), resend = $('#resend');
   var verifying = false, orbitCenter = 0, N = digits.length;
   var verifyBtnHtml = verifyBtn.innerHTML;
 
+  function isRecovery() { return !!(state.pending && state.pending.kind === 'recovery'); }
   function enterVerify() {
     verifying = false;
     $('#v-email').textContent = state.pending ? state.pending.email : '';
-    $('#v-title').innerHTML = 'Подтверди <span class="gold-text">почту</span>';
+    $('#v-title').innerHTML = isRecovery() ? 'Код для <span class="gold-text">нового пароля</span>' : 'Подтверди <span class="gold-text">почту</span>';
+    $('#v-back').setAttribute('href', isRecovery() ? '#forgot' : '#register');
     $('#v-sub').firstChild.textContent = 'Мы отправили ' + N + '-значный код на ';
     $('#v-badge').innerHTML = use('key');
     $('#view-verify').classList.remove('verifying');
@@ -1107,10 +1225,13 @@
   function sendCode() {
     closeMail();
     if (REAL) {
-      // Письмо уже отправил сервер при регистрации. Здесь только подсказка.
+      // Письмо уже отправил сервер. Здесь только подсказка.
+      // Есть ли такой аккаунт, сервер не говорит — чтобы по сайту нельзя было проверять чужие почты.
       state.mailClose = toast({
         title: 'Письмо отправлено', icon: 'mail', ms: 9000,
-        text: 'Код придёт на ' + state.pending.email + ' в течение минуты. Не видно — проверь папку «Спам».'
+        text: isRecovery()
+          ? 'Если аккаунт с почтой ' + state.pending.email + ' есть, код придёт в течение минуты. Не видно — проверь папку «Спам».'
+          : 'Код придёт на ' + state.pending.email + ' в течение минуты. Не видно — проверь папку «Спам».'
       });
       return;
     }
@@ -1122,7 +1243,7 @@
       closeMail();
       state.mailClose = toast({
         title: 'Письмо от Nova', icon: 'mail', code: code.replace(/(\d{3})(?=\d)/g, '$1 '),
-        text: 'Твой код подтверждения', ms: 12000,
+        text: isRecovery() ? 'Код для нового пароля' : 'Твой код подтверждения', ms: 12000,
         demo: 'Демо: настоящее письмо придёт, когда подключим сервер',
         action: { label: 'Вставить код', run: function () { fillFrom(code, 0); } }
       });
@@ -1152,7 +1273,10 @@
       return;
     }
     resend.disabled = true;
-    call(function (a) { return a.resend({ type: 'signup', email: state.pending.email }); })
+    var again = isRecovery()
+      ? sendRecovery(state.pending.email)
+      : call(function (a) { return a.resend({ type: 'signup', email: state.pending.email }); });
+    again
       .then(function () {
         startTimer();
         toast({ title: 'Код отправлен ещё раз', text: 'Введи код из последнего письма — прошлый больше не подойдёт.', icon: 'send' });
@@ -1211,7 +1335,7 @@
     var t0 = Date.now(), minMs = reduce ? 300 : (REAL ? 1600 : 2100);
     function later(fn) { setTimeout(fn, Math.max(0, minMs - (Date.now() - t0))); }
     var check = REAL
-      ? call(function (a) { return a.verifyOtp({ email: state.pending.email, token: v, type: 'email' }); })
+      ? call(function (a) { return a.verifyOtp({ email: state.pending.email, token: v, type: isRecovery() ? 'recovery' : 'email' }); })
       : (v === state.code ? Promise.resolve(null) : Promise.reject(null));
     check.then(function (data) {
       later(function () { success(data && data.user ? userFrom(data.user) : null); });
@@ -1257,7 +1381,8 @@
   }
 
   function success(realUser) {
-    var user = realUser || state.pending;
+    var recovery = isRecovery();
+    var user = realUser || { name: state.pending.name, email: state.pending.email };
     otp.classList.remove('spin');
     digits.forEach(function (d) {
       var cxInput = d.offsetLeft + d.offsetWidth / 2;
@@ -1268,19 +1393,31 @@
       card.classList.add('success');
       done.classList.add('show');
       $('#v-badge').innerHTML = use('shield-check');
-      $('#v-title').innerHTML = 'Почта <span class="ok-text">подтверждена</span>';
-      $('#v-sub').firstChild.textContent = 'Аккаунт защищён. Добро пожаловать, ';
-      $('#v-email').textContent = user.name;
+      if (recovery) {
+        $('#v-title').innerHTML = 'Код <span class="ok-text">подошёл</span>';
+        $('#v-sub').firstChild.textContent = 'Осталось придумать новый пароль для ';
+        $('#v-email').textContent = user.email;
+      } else {
+        $('#v-title').innerHTML = 'Почта <span class="ok-text">подтверждена</span>';
+        $('#v-sub').firstChild.textContent = 'Аккаунт защищён. Добро пожаловать, ';
+        $('#v-email').textContent = user.name;
+      }
       $('.resend').hidden = true;
       $('#v-back').parentNode.hidden = true;
       verifyBtn.className = 'btn-green wide';
-      verifyBtn.innerHTML = use('shield-check') + '<span>Подтверждено и защищено</span>';
+      verifyBtn.innerHTML = use('shield-check') + '<span>' + (recovery ? 'Это точно ты' : 'Подтверждено и защищено') + '</span>';
       stopTimer();
       setPending(null);
       signIn(user, !REAL || remembered());
-      log('Аккаунт создан');
-      log('Почта подтверждена');
+      if (recovery) {
+        setRecovery(true);
+        log('Вход по коду из письма');
+      } else {
+        log('Аккаунт создан');
+        log('Почта подтверждена');
+      }
       setTimeout(function () {
+        if (recovery) { verifying = false; go('newpass'); return; }
         verifyBtn.className = 'btn-gold wide';
         verifyBtn.innerHTML = '<span>Перейти в кабинет</span>' + use('arrow');
         verifyBtn.onclick = function () { go('dashboard'); };
@@ -1446,7 +1583,9 @@
     var msg = String((err && err.message) || '');
     if (/too large|payload|exceeded the maximum/i.test(msg)) return 'Фото слишком большое. Выбери другое.';
     if (/mime|content type|not supported/i.test(msg)) return 'Такой формат не подходит. Нужна картинка JPG или PNG.';
-    if (/row-level security|unauthorized|jwt|403/i.test(msg)) return 'Сессия устарела. Выйди и войди в кабинет заново.';
+    if (/reauthentication required/i.test(msg)) return 'Подтверждение устарело. Введи пароль ещё раз.';
+    if (/could not find the function|PGRST202/i.test(msg + ' ' + String((err && err.code) || ''))) return 'Удаление аккаунта ещё не включено на сервере (supabase/account.sql).';
+    if (/row-level security|unauthorized|jwt|403|permission denied/i.test(msg)) return 'Сессия устарела. Выйди и войди в кабинет заново.';
     return authError(err).text;
   }
 
@@ -1469,13 +1608,78 @@
           '<div class="field"><label for="p-bio">О себе <span class="count" id="p-count"></span></label><textarea id="p-bio" maxlength="120" rows="2" placeholder="Например: играю в CS2 и настраиваю Windows под себя"></textarea></div>' +
           '<div class="field"><label>Цвет профиля</label><div class="swatches" role="radiogroup" aria-label="Цвет профиля"></div></div>' +
           '<div class="p-meta"><span>Почта: <b class="p-mail"></b> <span class="ok">· подтверждена</span></span><span class="p-since"></span></div>' +
+          '<div class="p-sec"><span class="p-sec-t">' + use('shield') + 'Безопасность</span><div class="row-btns">' +
+            '<button class="btn-glass sm" type="button" data-pane="pass">' + use('key') + '<span>Сменить пароль</span></button>' +
+            '<button class="btn-glass sm bad" type="button" data-pane="del">' + use('trash') + '<span>Удалить аккаунт</span></button></div></div>' +
           '<div class="row"><button class="btn-glass sm" type="button" data-close>Отмена</button><button class="btn-gold sm" type="button" data-save>' + use('check') + '<span>Сохранить</span></button></div>' +
         '</div>' +
+        '<div class="p-pane" id="pane-pass" hidden><h3>Сменить пароль</h3>' +
+          '<p>Сначала текущий пароль: так мы убедимся, что это ты. После смены все другие входы в аккаунт закроются.</p>' +
+          pwField('pp-cur', 'Текущий пароль', 'current-password', '') +
+          '<p class="hint"><a class="link" href="#forgot" data-close>Не помню пароль</a></p>' +
+          pwField('pp-new', 'Новый пароль', 'new-password', '8+ символов, буквы и цифры') +
+          pwField('pp-new2', 'Повтори новый пароль', 'new-password', 'Ещё раз') +
+          '<div class="row"><button class="btn-glass sm" type="button" data-pane-back>Назад</button><button class="btn-gold sm" type="button" data-pass-ok>' + use('check') + '<span>Сменить</span></button></div></div>' +
+        '<div class="p-pane" id="pane-del" hidden><h3 class="bad-t">Удалить аккаунт</h3>' +
+          '<p>' + (REAL ? 'С сервера сразу и навсегда удалятся почта, пароль, имя, «о себе» и фото. Вернуть их не получится.' : 'Демо: удалятся данные профиля в этом браузере.') +
+          ' Программа Nova на компьютере продолжит работать: ей аккаунт не нужен.</p>' +
+          pwField('pd-pass', 'Пароль — подтверди, что это ты', 'current-password', '') +
+          '<div class="row"><button class="btn-glass sm" type="button" data-pane-back>Не удалять</button><button class="btn-bad sm" type="button" data-del-ok>' + use('trash') + '<span>Удалить навсегда</span></button></div></div>' +
         '<div class="crop" hidden><p>Двигай фото пальцем, увеличивай ползунком.</p><div class="crop-stage"></div>' +
           '<div class="row" style="align-self:stretch"><button class="btn-glass sm" type="button" data-crop-back>Назад</button><button class="btn-gold sm" type="button" data-crop-ok>' + use('check') + '<span>Готово</span></button></div></div>' +
         '<input type="file" accept="image/*" hidden>' +
       '</div>';
     var form = $('.p-form', m), crop = $('.crop', m), file = $('input[type=file]', m), ava = $('#p-ava', m);
+    $$('.eye', m).forEach(bindEye);
+    function showPane(name) {
+      form.hidden = !!name; crop.hidden = true;
+      $$('.p-pane', m).forEach(function (pane) {
+        pane.hidden = pane.id !== 'pane-' + name;
+        $$('input', pane).forEach(function (i) { i.value = ''; setErr(i, ''); });
+      });
+      var first = name && $('#pane-' + name + ' input', m);
+      if (first) first.focus();
+    }
+    $$('[data-pane]', m).forEach(function (b) { b.addEventListener('click', function () { showPane(b.getAttribute('data-pane')); }); });
+    $$('[data-pane-back]', m).forEach(function (b) { b.addEventListener('click', function () { showPane(null); }); });
+
+    $('[data-pass-ok]', m).addEventListener('click', function () {
+      var cur = $('#pp-cur', m), nw = $('#pp-new', m), nw2 = $('#pp-new2', m), ok = true;
+      if (!cur.value) { setErr(cur, 'Введи текущий пароль'); ok = false; } else setErr(cur, '');
+      var perr = passwordProblem(nw.value);
+      if (!perr && nw.value === cur.value) perr = 'Новый пароль должен отличаться от старого';
+      setErr(nw, perr);
+      if (perr) ok = false;
+      if (nw2.value !== nw.value || !nw2.value) { setErr(nw2, 'Пароли не совпадают'); ok = false; } else setErr(nw2, '');
+      if (!ok) return;
+      var stop = spin(this, 'Меняю…');
+      reauth(cur.value)
+        .then(function () { return REAL ? changePassword(nw.value) : wait(300); })
+        .then(function () { stop(); close(); log('Пароль изменён'); passwordChangedToast(); }, function (err) {
+          stop();
+          if (err && err.wrongPassword) { setErr(cur, 'Текущий пароль неверный'); cur.focus(); return; }
+          var info = authError(err);
+          if (info.field === 'password') setErr(nw, info.text); else errToast(info);
+        });
+    });
+
+    $('[data-del-ok]', m).addEventListener('click', function () {
+      var pw = $('#pd-pass', m);
+      if (!pw.value) { setErr(pw, 'Введи пароль'); pw.focus(); return; }
+      setErr(pw, '');
+      var stop = spin(this, 'Удаляю…');
+      var email = u.email;
+      reauth(pw.value).then(deleteAccount).then(function () {
+        stop(); close();
+        forgetLocal(email);
+        toast({ title: 'Аккаунт удалён', text: REAL ? 'Почта, пароль и профиль стёрты с сервера.' : 'Демо: профиль стёрт из этого браузера.', icon: 'trash' });
+        go('register');
+      }, function (err) {
+        stop();
+        if (err && err.wrongPassword) { setErr(pw, 'Пароль неверный'); pw.focus(); return; }
+        toast({ title: 'Не получилось удалить', text: storageError(err), icon: 'trash' });
+      });
+    });
     var nameIn = $('#p-name', m), bioIn = $('#p-bio', m), count = $('#p-count', m);
     nameIn.value = u.name || '';
     bioIn.value = u.bio || '';
@@ -1560,6 +1764,53 @@
     preview();
     document.body.appendChild(m);
     nameIn.blur();
+  }
+
+  function pwField(id, label, ac, ph) {
+    return '<div class="field"><label for="' + id + '">' + label + '</label><div class="input"><svg class="i lead"><use href="#i-lock"/></svg>' +
+      '<input id="' + id + '" type="password" autocomplete="' + ac + '" placeholder="' + ph + '">' +
+      '<button class="eye" type="button" aria-label="Показать пароль">' + use('eye') + '</button></div><small class="err" aria-live="polite"></small></div>';
+  }
+  // Перед опасным действием ещё раз спрашиваем пароль. Свежий вход проверяет и сервер (supabase/account.sql).
+  function reauth(pass) {
+    if (!REAL) return pass.length >= 8 ? wait(400) : Promise.reject({ wrongPassword: true });
+    return call(function (a) { return a.signInWithPassword({ email: state.user.email, password: pass }); })
+      .then(function (data) { if (data && data.user) signIn(userFrom(data.user), remembered()); }, function (err) {
+        if (authError(err).field === 'password') throw { wrongPassword: true };
+        throw err;
+      });
+  }
+  // Сначала фото (из SQL файлы хранилища удалять нельзя), потом сам аккаунт.
+  function deleteAccount() {
+    if (!REAL) {
+      var all = readJSON('local', 'nova.profiles') || {};
+      delete all[String(state.user.email).toLowerCase()];
+      writeJSON('local', 'nova.profiles', all);
+      return wait(400);
+    }
+    return sb().then(function (c) {
+      return c.auth.getSession().then(function (r) {
+        var sess = r && r.data && r.data.session;
+        if (!sess) throw new Error('JWT expired');
+        return c.storage.from('avatars').remove([sess.user.id + '/avatar.jpg']);
+      }).then(function (res) {
+        if (res && res.error) throw res.error;
+        return c.rpc('delete_my_account');
+      }).then(function (res) {
+        if (res && res.error) throw res.error;
+        // Аккаунта на сервере больше нет: забываем сессию в браузере.
+        return c.auth.signOut({ scope: 'local' }).catch(function () { /* ничего */ });
+      });
+    });
+  }
+  function forgetLocal(email) {
+    var known = readJSON('local', 'nova.known') || {};
+    delete known[String(email).toLowerCase()];
+    writeJSON('local', 'nova.known', known);
+    state.activity = [];
+    writeJSON('local', 'nova.activity', null);
+    signOutLocal();
+    setRecovery(false);
   }
 
   function saveProfile(p) {
@@ -1879,6 +2130,7 @@
   $$('[data-logout]').forEach(function (b) {
     b.addEventListener('click', function () {
       signOutLocal();
+      setRecovery(false);
       if (REAL) call(function (a) { return a.signOut({ scope: 'local' }); }).catch(function () { /* сессия всё равно удалена из браузера */ });
       toast({ title: 'Ты вышел из кабинета', text: 'Сборка сохранена в этом браузере.', icon: 'logout' });
       go('login');
@@ -1977,7 +2229,8 @@
         else if (state.view === 'login' || state.view === 'register') go('dashboard');
       } else if (state.user) {
         signOutLocal();
-        if (state.view === 'dashboard') go('login');
+        setRecovery(false);
+        if (state.view === 'dashboard' || state.view === 'newpass') go('login');
       }
     }).catch(function () { /* нет связи — оставляем как есть */ });
   }
