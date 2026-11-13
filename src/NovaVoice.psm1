@@ -28,7 +28,15 @@ $script:Pending = $null
 # Путь нужен только латиницей (Vosk не открывает файлы по пути с русскими буквами), поэтому, если
 # в имени пользователя есть кириллица, берём C:\ProgramData\NovaVoice-<SID> и закрываем её от остальных.
 function Get-NovaVoiceDir {
-    if ($env:LOCALAPPDATA -match '^[\x20-\x7E]+$') { return (Join-Path $env:LOCALAPPDATA 'NovaVoice') }
+    $ascii = '^[\x20-\x7E]+$'
+    if ($env:LOCALAPPDATA -match $ascii) { return (Join-Path $env:LOCALAPPDATA 'NovaVoice') }
+    # Имя пользователя на кириллице: берём «короткое» имя папки (C:\Users\4E3B~1\AppData\Local) — оно латиницей.
+    try {
+        $short = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($env:LOCALAPPDATA).ShortPath
+        if ($short -match $ascii) { return (Join-Path $short 'NovaVoice') }
+    } catch {
+        Write-Verbose 'Короткие имена папок недоступны.'
+    }
     return (Join-Path $env:ProgramData ('NovaVoice-{0}' -f [Security.Principal.WindowsIdentity]::GetCurrent().User.Value))
 }
 
@@ -58,7 +66,11 @@ function Initialize-NovaVoiceDir {
 function Test-NovaVoiceDll {
     $engine = Join-Path (Get-NovaVoiceDir) 'engine'
     if (-not (Test-Path -LiteralPath $engine)) { return $false }
-    $dlls = @(Get-ChildItem -LiteralPath $engine -Recurse -Force -File -Filter '*.dll' -ErrorAction SilentlyContinue)
+    # В папке движка — только файлы из оригинального архива: никаких лишних DLL, .drv, .ocx и прочего.
+    $allowed = @($script:Vosk.Dlls.Keys) + @('libvosk.lib', 'vosk_api.h')
+    $all = @(Get-ChildItem -LiteralPath $engine -Recurse -Force -File -ErrorAction SilentlyContinue)
+    foreach ($file in $all) { if ($allowed -notcontains $file.Name) { return $false } }
+    $dlls = @($all | Where-Object { $_.Extension -eq '.dll' })
     if ($dlls.Count -ne $script:Vosk.Dlls.Count) { return $false }
     foreach ($dll in $dlls) {
         $expected = $script:Vosk.Dlls[$dll.Name]
@@ -129,8 +141,7 @@ using System.Text;
 
 namespace NovaVoice {
     public static class Win {
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] public static extern bool SetDllDirectory(string path);
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] public static extern IntPtr LoadLibrary(string path);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] public static extern IntPtr LoadLibraryEx(string path, IntPtr file, uint flags);
         [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vk);
         public static bool Held(byte[] keys) { foreach (var k in keys) if ((GetAsyncKeyState(k) & 0x8000) == 0) return false; return true; }
         [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
@@ -265,11 +276,12 @@ function Initialize-NovaVoiceNative {
     # Перед загрузкой ещё раз сверяем все DLL движка: подменённые файлы не загружаем.
     if (-not (Test-NovaVoiceDll)) { throw 'Файлы движка голоса изменены или повреждены. Запусти Nova Голос снова — он скачает их заново.' }
     $dll = Get-NovaVoiceEngineDll
-    # Системные DLL загружаем до того, как добавить папку движка в поиск, а сам движок — по полному пути.
+    # Движок грузится по полному пути, а его зависимости ищутся только рядом с ним и в System32 —
+    # общий порядок поиска DLL для всей программы не меняется.
     [void][NovaVoice.Mic]::waveInGetNumDevs()
     [void][NovaVoice.Win]::GetForegroundWindow()
-    [void][NovaVoice.Win]::SetDllDirectory((Split-Path -Parent $dll))
-    if ([NovaVoice.Win]::LoadLibrary($dll) -eq [IntPtr]::Zero) { throw 'Не удалось загрузить движок распознавания.' }
+    $flags = 0x00000100 -bor 0x00000800  # LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32
+    if ([NovaVoice.Win]::LoadLibraryEx($dll, [IntPtr]::Zero, $flags) -eq [IntPtr]::Zero) { throw 'Не удалось загрузить движок распознавания.' }
     $script:VoiceLoaded = $true
 }
 
@@ -557,15 +569,17 @@ function Start-NovaVoiceListener {
             }
             if ($data.Length -eq 0) { continue }
             # Режим «говорю, только пока держу клавишу»: без клавиши звук сразу выбрасываем.
-            if ($Config.PushKeys) {
-                if (-not [NovaVoice.Win]::Held($Config.PushKeys)) {
-                    if ($holding) { [NovaVoice.Vosk]::vosk_recognizer_reset($r.Rec); $holding = $false }
-                    continue
-                }
-                $holding = $true
+            $text = $null
+            if ($Config.PushKeys -and -not [NovaVoice.Win]::Held($Config.PushKeys)) {
+                if (-not $holding) { continue }
+                # Клавишу отпустили: забираем то, что успели сказать, и дальше не слушаем.
+                $holding = $false
+                $text = Get-NovaVoiceResultText ([NovaVoice.Vosk]::vosk_recognizer_final_result($r.Rec))
+            } else {
+                if ($Config.PushKeys) { $holding = $true }
+                if ([NovaVoice.Vosk]::vosk_recognizer_accept_waveform($r.Rec, $data, $data.Length) -eq 0) { continue }
+                $text = Get-NovaVoiceResultText ([NovaVoice.Vosk]::vosk_recognizer_result($r.Rec))
             }
-            if ([NovaVoice.Vosk]::vosk_recognizer_accept_waveform($r.Rec, $data, $data.Length) -eq 0) { continue }
-            $text = Get-NovaVoiceResultText ([NovaVoice.Vosk]::vosk_recognizer_result($r.Rec))
             if (-not $text -or $text -eq '[unk]') { continue }
             $commands = @(Resolve-NovaVoiceText -Text $text -Config $Config)
             if ($commands.Count -eq 0) {

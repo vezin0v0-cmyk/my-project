@@ -65,9 +65,23 @@ $script:DataDirProtected = $false
 $script:WriteRights = [System.Security.AccessControl.FileSystemRights]'WriteData, AppendData, WriteExtendedAttributes, WriteAttributes, Delete, DeleteSubdirectoriesAndFiles, ChangePermissions, TakeOwnership'
 
 # Кому можно доверять запись: администраторы, система, TrustedInstaller и тот, кто сейчас запустил Nova.
+$script:TrustedSidCache = $null
 function Get-NovaTrustedSid {
-    return @('S-1-5-32-544', 'S-1-5-18', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464',
+    if ($script:TrustedSidCache) { return $script:TrustedSidCache }
+    $sids = @('S-1-5-32-544', 'S-1-5-18', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464',
         [Security.Principal.WindowsIdentity]::GetCurrent().User.Value)
+    # Все администраторы компьютера: если их несколько, файлы Nova могут принадлежать любому из них.
+    try {
+        $group = [ADSI]('WinNT://./' + (New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')).Translate([System.Security.Principal.NTAccount]).Value.Split('\')[-1] + ',group')
+        foreach ($member in @($group.psbase.Invoke('Members'))) {
+            $bytes = $member.GetType().InvokeMember('objectSid', 'GetProperty', $null, $member, $null)
+            $sids += (New-Object System.Security.Principal.SecurityIdentifier($bytes, 0)).Value
+        }
+    } catch {
+        Write-Verbose 'Список администраторов недоступен — доверяем только группе.'
+    }
+    $script:TrustedSidCache = @($sids | Select-Object -Unique)
+    return $script:TrustedSidCache
 }
 
 function New-NovaDataDirSecurity {
@@ -85,15 +99,21 @@ function New-NovaDataDirSecurity {
 }
 
 # Причина, по которой путь небезопасен, или пустая строка. Смотрит владельца и всех, кто может писать.
+# Ссылки (junction, symlink) не допускаются вовсе: проверка прав «сквозь» ссылку смотрела бы на чужую папку.
 function Get-NovaPathProblem {
     param([Parameter(Mandatory)][string]$Path, [string[]]$Trusted)
     try {
+        $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+        if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { return ('{0}: это ссылка на другое место' -f $Path) }
         $acl = Get-Acl -LiteralPath $Path
+        # Условные записи доступа .NET не показывает — такие права считаем подозрительными.
+        if ($acl.Sddl -match '\(XA;') { return ('{0}: особые (условные) права доступа' -f $Path) }
         $owner = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
         if ($Trusted -notcontains $owner) { return ('{0}: владелец {1}' -f $Path, $acl.Owner) }
         foreach ($rule in $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) {
             if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) { continue }
-            if (($rule.FileSystemRights -band $script:WriteRights) -eq 0) { continue }
+            # 0x50000000 — «общие» права GENERIC_ALL и GENERIC_WRITE в наследуемых записях.
+            if ((($rule.FileSystemRights -band $script:WriteRights) -eq 0) -and (([int64]$rule.FileSystemRights -band 0x50000000) -eq 0)) { continue }
             # CREATOR OWNER касается только новых файлов, а их владелец проверяется отдельно.
             if ($rule.IdentityReference.Value -eq 'S-1-3-0') { continue }
             if ($Trusted -notcontains $rule.IdentityReference.Value) { return ('{0}: менять может {1}' -f $Path, $rule.IdentityReference.Value) }
@@ -104,48 +124,80 @@ function Get-NovaPathProblem {
     return ''
 }
 
+# Проверяет папку и всё внутри. В ссылки не заходит — сама ссылка уже считается проблемой.
 function Get-NovaTreeProblem {
     param([Parameter(Mandatory)][string]$Path, [string[]]$Trusted)
     $problem = Get-NovaPathProblem -Path $Path -Trusted $Trusted
     if ($problem) { return $problem }
-    foreach ($item in @(Get-ChildItem -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue)) {
-        $problem = Get-NovaPathProblem -Path $item.FullName -Trusted $Trusted
-        if ($problem) { return $problem }
+    $stack = New-Object System.Collections.Generic.Stack[System.IO.DirectoryInfo]
+    $stack.Push((New-Object System.IO.DirectoryInfo($Path)))
+    while ($stack.Count -gt 0) {
+        $dir = $stack.Pop()
+        try { $items = $dir.GetFileSystemInfos() } catch { return ('{0}: не удалось прочитать ({1})' -f $dir.FullName, $_.Exception.Message) }
+        foreach ($item in $items) {
+            $problem = Get-NovaPathProblem -Path $item.FullName -Trusted $Trusted
+            if ($problem) { return $problem }
+            if ($item -is [System.IO.DirectoryInfo]) { $stack.Push($item) }
+        }
     }
     return ''
 }
 
 function Protect-NovaDataDir {
     param([Parameter(Mandatory)][string]$Path)
-    if ($script:DataDirProtected -or -not (Test-NovaAdmin)) { return }
+    if ($script:DataDirProtected) { return }
+    if (-not (Test-NovaAdmin)) { throw 'Папке данных Nova нужны права администратора.' }
     $trusted = Get-NovaTrustedSid
-    if (-not (Test-Path -LiteralPath $Path)) {
-        # Папка сразу создаётся закрытой — нет момента, когда в неё можно что-то подложить.
-        [void][System.IO.Directory]::CreateDirectory($Path, (New-NovaDataDirSecurity))
-    } else {
-        try { [System.IO.Directory]::SetAccessControl($Path, (New-NovaDataDirSecurity)) } catch { Write-Verbose 'Права не поменялись — проверим ниже.' }
+    # Важно: права на существующую папку не переписываем — если там ссылка, мы бы переписали чужую папку.
+    # Get-Item видит и «сломанную» ссылку, а Test-Path — нет.
+    if (Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue) {
         $problem = Get-NovaTreeProblem -Path $Path -Trusted $trusted
         if ($problem) {
             # Папку создал или изменил кто-то другой. Ничему из неё не доверяем: откладываем и начинаем с чистой.
-            $aside = '{0}.untrusted-{1}' -f $Path, (Get-Date -Format 'yyyyMMdd-HHmmss')
-            Move-Item -LiteralPath $Path -Destination $aside -Force
+            $aside = '{0}.untrusted-{1}' -f $Path, [guid]::NewGuid().ToString('N')
+            try {
+                [System.IO.Directory]::Move($Path, $aside)
+            } catch {
+                throw ('Папку {0} создал кто-то другой, и её не получается убрать ({1}). Перезагрузи компьютер и запусти Nova снова. Если не поможет — на компьютере есть чужая программа или пользователь, который мешает.' -f $Path, $_.Exception.Message)
+            }
             Write-Nova ('Папку {0} создал или изменил не Nova ({1}). Отложила её в {2} и создала новую.' -f $Path, $problem, $aside) warn
-            [void][System.IO.Directory]::CreateDirectory($Path, (New-NovaDataDirSecurity))
         }
     }
+    if (-not (Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)) {
+        # Папка сразу создаётся закрытой — нет момента, когда в неё можно что-то подложить.
+        [void][System.IO.Directory]::CreateDirectory($Path, (New-NovaDataDirSecurity))
+    }
+    # Если кто-то успел подсунуть свою папку или ссылку между проверкой и созданием — это заметит проверка.
     $problem = Get-NovaTreeProblem -Path $Path -Trusted $trusted
     if ($problem) { throw ('Папка {0} небезопасна: {1}. Nova остановилась, чтобы через неё нельзя было взломать компьютер.' -f $Path, $problem) }
     $script:DataDirProtected = $true
+}
+
+# Перед запуском программы из папки Nova ещё раз проверяем её и весь путь до неё:
+# между первой проверкой и запуском могли пройти минуты.
+function Assert-NovaToolPath {
+    param([Parameter(Mandatory)][string]$Path)
+    $trusted = Get-NovaTrustedSid
+    $dataDir = Join-Path $env:ProgramData 'Nova'
+    $current = $Path
+    while ($current -and $current.Length -ge $dataDir.Length) {
+        $problem = Get-NovaPathProblem -Path $current -Trusted $trusted
+        if ($problem) { throw ('Nova не запустит {0}: {1}' -f $Path, $problem) }
+        if ($current -eq $dataDir) { break }
+        $current = Split-Path -Parent $current
+    }
 }
 
 # Папку самой Nova (где Nova.cmd и src) не должны менять другие пользователи: Nova запускается
 # с правами администратора и выполняет эти файлы. Например, C:\Nova наследует от диска C:
 # право «изменение» для всех пользователей, а флешка FAT/exFAT прав не хранит вовсе.
 function Get-NovaProjectProblem {
-    param([Parameter(Mandatory)][string]$Root)
+    param([Parameter(Mandatory)][string]$Root, [string]$ConfigPath)
     $trusted = Get-NovaTrustedSid
-    $paths = @($Root, (Join-Path $Root 'src'), (Join-Path $Root 'config.json'), (Join-Path $Root 'Nova.cmd'))
+    $paths = @($Root, (Join-Path $Root 'src'), (Join-Path $Root 'assets'), (Join-Path $Root 'config.json'), (Join-Path $Root 'Nova.cmd'))
+    if ($ConfigPath) { $paths += $ConfigPath }
     $paths += @(Get-ChildItem -LiteralPath (Join-Path $Root 'src') -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+    $paths += @(Get-ChildItem -LiteralPath (Join-Path $Root 'assets') -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
     foreach ($path in $paths) {
         if (-not (Test-Path -LiteralPath $path)) { continue }
         $problem = Get-NovaPathProblem -Path $path -Trusted $trusted
@@ -538,6 +590,9 @@ function Remove-NovaOneDrive {
         if ($index -lt 0) { $exe = $UninstallString.Trim(); $arguments = '/uninstall' } else { $exe = $UninstallString.Substring(0, $index).Trim(); $arguments = $UninstallString.Substring($index + 1) }
     }
     if (-not (Test-Path -LiteralPath $exe)) { throw "Не найден установщик OneDrive: $exe" }
+    # Аргументы из реестра не берём: туда можно вписать что угодно. Только стандартное удаление.
+    $arguments = '/uninstall'
+    if ($UninstallString -match '/allusers') { $arguments = '/uninstall /allusers' }
     # Установщик лежит в папке пользователя, и Nova запустит его с правами администратора.
     # Поэтому копируем его в защищённую папку Nova и запускаем копию, только если её подписала Microsoft.
     $tools = Join-Path (Get-NovaDataDir) 'tools'
@@ -545,9 +600,14 @@ function Remove-NovaOneDrive {
     $copy = Join-Path $tools 'OneDriveSetup.exe'
     Copy-Item -LiteralPath $exe -Destination $copy -Force
     try {
+        Assert-NovaToolPath $copy
         $signature = Get-AuthenticodeSignature -LiteralPath $copy
-        if ($signature.Status -ne 'Valid' -or [string]$signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
-            throw 'установщик OneDrive не подписан Microsoft — не запускаю его'
+        $original = [string](Get-Item -LiteralPath $copy).VersionInfo.OriginalFilename
+        $embedded = ($null -eq $signature.PSObject.Properties['SignatureType']) -or ([string]$signature.SignatureType -eq 'Authenticode')
+        # Подпись Microsoft есть и у cmd.exe — поэтому проверяем ещё, что внутри файла написано «OneDriveSetup.exe».
+        if ($signature.Status -ne 'Valid' -or [string]$signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation' -or
+            $original -notlike 'OneDriveSetup.exe*' -or -not $embedded) {
+            throw 'это не настоящий установщик OneDrive от Microsoft — не запускаю его'
         }
         Get-Process -Name OneDrive -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
         $process = Start-Process -FilePath $copy -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
@@ -1432,6 +1492,9 @@ function Test-NovaJournalEntry {
             }
             'wallpaper' {
                 if ($Entry.installed -and -not $Allowed.wallpaper.ContainsKey([System.IO.Path]::GetFullPath([string]$Entry.installed).ToLowerInvariant())) { return 'обои Nova лежат не там, куда их кладёт Nova' }
+                # Прежние обои — только файл на этом компьютере (не сетевой путь).
+                $old = [string]$Entry.path
+                if ($old -and ($old -notmatch '^[a-zA-Z]:\\' -or $old.StartsWith('\\'))) { return 'прежние обои — не локальный файл' }
                 return ''
             }
             'powerScheme' {
@@ -1499,7 +1562,7 @@ function Restart-NovaExplorer {
     }
     # Если не перезапустила — запускаем с правами обычного пользователя, а не администратора:
     # иначе весь рабочий стол и всё, что из него открывают, получили бы права администратора.
-    & (Get-NovaSystemTool 'runas.exe') /trustlevel:0x20000 explorer.exe | Out-Null
+    & (Get-NovaSystemTool 'runas.exe') /trustlevel:0x20000 (Join-Path $env:SystemRoot 'explorer.exe') | Out-Null
 }
 
 # Точка восстановления Windows — запасной вариант, если что-то пойдёт совсем не так.
@@ -1592,6 +1655,8 @@ function Invoke-NovaFpsCapture {
     $csv = Join-Path $dir ('capture-{0}.csv' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
     $arguments = @('--output_file', $csv, '--delay', [string]$Delay, '--timed', [string]$Seconds, '--terminate_after_timed',
         '--stop_existing_session', '--session_name', 'NovaFps', '--no_console_stats', '--v1_metrics')
+    Assert-NovaToolPath $exe
+    if (-not (Test-NovaPresentMon $exe)) { throw 'PresentMon изменился после проверки — не запускаю.' }
     $run = Invoke-NovaNative $exe $arguments
     if (-not (Test-Path -LiteralPath $csv)) {
         throw ('PresentMon не записал ни одного кадра (код {0}). Игра точно была открыта во время замера?' -f $run.Code)

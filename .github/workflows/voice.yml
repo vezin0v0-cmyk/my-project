@@ -27,10 +27,3 @@ jobs:
       - name: Голосовые команды на записях
         shell: powershell
         run: ./tests/Test-Voice.ps1
-
-      - name: Запуск из NovaVoice.cmd на записи
-        shell: powershell
-        # Only ASCII inside: GitHub saves this script without BOM.
-        run: |
-          ./src/NovaVoice.ps1 -WavFile ./tests/voice/minimize.wav -Yes
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -14,10 +14,11 @@
     .\Nova.ps1 -Mode Undo -Yes    # отменить последний запуск
     .\Nova.ps1 -Mode Check        # проверить, готова ли система
     .\Nova.ps1 -Mode Fps          # замер FPS в игре: до и после Nova
+    .\Nova.ps1 -Mode Clean        # освободить место на диске
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Menu', 'Preview', 'Apply', 'Undo', 'Measure', 'Check', 'Fps')]
+    [ValidateSet('Menu', 'Preview', 'Apply', 'Undo', 'Measure', 'Check', 'Fps', 'Clean')]
     [string]$Mode = 'Menu',
     [string]$ConfigPath,
     [switch]$Yes,
@@ -25,7 +26,9 @@ param(
     [switch]$PauseAtEnd,
     # Замер FPS: сколько секунд записывать и через сколько начать.
     [ValidateRange(5, 600)][int]$Seconds = 60,
-    [ValidateRange(0, 120)][int]$Delay = 10
+    [ValidateRange(0, 120)][int]$Delay = 10,
+    # Очистка без долгих шагов (DISM) — для проверки.
+    [switch]$Quick
 )
 
 $ErrorActionPreference = 'Stop'
@@ -40,10 +43,13 @@ if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
     exit 1
 }
 
+# Модули — только системные: модуль с тем же именем в «Документах» пользователя не подменит команды Windows.
+$env:PSModulePath = (@((Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules'), (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\Modules')) -join ';')
 $projectRoot = Split-Path -Parent $PSScriptRoot
 if (-not $ConfigPath) { $ConfigPath = Join-Path $projectRoot 'config.json' }
 $tweaksPath = Join-Path $PSScriptRoot 'tweaks.json'
 Import-Module (Join-Path $PSScriptRoot 'Nova.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'NovaClean.psm1') -Force -DisableNameChecking
 
 # Без прав администратора Windows не даст менять системные настройки — перезапускаемся с ними.
 if (-not (Test-NovaAdmin)) {
@@ -64,14 +70,19 @@ if (-not (Test-NovaAdmin)) {
 
 # Папку Nova не должны менять другие пользователи: Nova выполняет эти файлы с правами администратора.
 function Assert-NovaProjectFolder {
-    if ($env:NOVA_ALLOW_SHARED_FOLDER -eq '1') { return }
-    $problem = Get-NovaProjectProblem -Root $projectRoot
+    # Только для проверок в GitHub Actions: там рабочая папка открыта для всех.
+    if ($env:NOVA_ALLOW_SHARED_FOLDER -eq '1' -and $env:GITHUB_ACTIONS -eq 'true') { return }
+    $problem = Get-NovaProjectProblem -Root $projectRoot -ConfigPath $ConfigPath
     if (-not $problem) { return }
     Write-Host ''
     Write-Nova 'Папку Nova могут менять другие пользователи этого компьютера — запускать её с правами администратора небезопасно.' err
     Write-Nova ('Подробно: {0}' -f $problem) dim
-    Write-Nova 'Перенеси папку Nova в свою папку (например, «Загрузки» или «Рабочий стол») и запусти Nova.cmd оттуда.' warn
-    Write-Nova 'С флешки FAT/exFAT Nova тоже не запустится: такие флешки не хранят права на файлы.' dim
+    if ($problem -like '*владелец*') {
+        Write-Nova 'Папку распаковал другой пользователь. Скачай и распакуй Nova под той учётной записью, из которой запускаешь.' warn
+    } else {
+        Write-Nova ('Перенеси папку Nova в свою папку пользователя: {0}' -f $env:USERPROFILE) warn
+        Write-Nova 'Папки на других дисках (например, D:\) и флешки FAT/exFAT часто открыты для всех.' dim
+    }
     throw 'Папка Nova не защищена от других пользователей.'
 }
 
@@ -306,10 +317,54 @@ function Invoke-NovaFpsFlow {
 function Start-NovaVoiceFlow {
     $cmd = Join-Path $projectRoot 'NovaVoice.cmd'
     if (-not (Test-Path -LiteralPath $cmd)) { throw 'Не найден NovaVoice.cmd рядом с Nova.cmd.' }
-    Start-Process -FilePath 'explorer.exe' -ArgumentList ('"{0}"' -f $cmd)
+    Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList ('"{0}"' -f $cmd)
     Write-Host ''
     Write-Nova 'Открываю «Nova Голос» в отдельном окне. Скажи, например: «Нова, сверни все окна».' ok
     Write-Nova 'Команды и свои бинды — в файле voice.json. Голос работает, пока открыто его окно.' dim
+}
+
+# Освободить место: показываем, сколько займёт каждый пункт, удаляем только мусор, в конце — итог.
+function Invoke-NovaCleanFlow {
+    Write-Host ''
+    Write-Nova 'ОСВОБОДИТЬ МЕСТО НА ДИСКЕ' title
+    $freeBefore = Get-NovaFreeSpace
+    Write-Nova ('Свободно сейчас: {0}. Считаю, что можно убрать...' -f (Format-NovaSize $freeBefore)) dim
+    $plan = @(Get-NovaCleanPlan -Quick:$Quick)
+    Write-Host ''
+    foreach ($item in $plan) {
+        $size = 'посчитаю после'
+        if ($item.Size -gt 0) { $size = Format-NovaSize $item.Size } elseif ($item.Kind -eq 'folder') { $size = 'пусто' }
+        Write-Host ('  [+] {0,-40}{1,12}' -f $item.Title, $size) -ForegroundColor White
+        Write-Host ('      {0}' -f $item.Note) -ForegroundColor DarkGray
+    }
+    $hiber = Get-NovaHiberfilSize
+    if ($hiber -gt 0) {
+        Write-Host ''
+        Write-Nova ('Ещё {0} занимает файл гибернации. Освободить его — пункт «Отключить гибернацию» в config.json (вернуть можно).' -f (Format-NovaSize $hiber)) info
+    }
+    Write-Nova 'Удаляется только мусор: временные файлы, кэши, старые копии обновлений. Твои файлы и программы не трогаю. Вернуть удалённое нельзя — но оно и не нужно.' dim
+    if (-not (Confirm-NovaAction 'Освободить место?')) { Write-Nova 'Отменено.' dim; return 0 }
+    foreach ($item in $plan) {
+        Write-Nova ('{0}...' -f $item.Title) dim
+        try {
+            $freed = Invoke-NovaCleanItem $item
+            if ($freed -gt 0) { Write-Nova ('{0}: освобождено {1}' -f $item.Title, (Format-NovaSize $freed)) ok }
+            elseif ($freed -lt 0) { Write-Nova ('{0}: готово' -f $item.Title) ok }
+        } catch {
+            Write-Nova ('{0}: {1}' -f $item.Title, $_.Exception.Message) warn
+        }
+    }
+    if (-not $Yes) {
+        Write-Host ''
+        Write-Nova 'Можно сжать системные файлы Windows (CompactOS): обычно ещё 2–4 ГБ. Займёт 10–20 минут, на современных ПК скорость не меняется. Вернуть можно тут же: «compact /compactos:never».' info
+        if (Confirm-NovaAction 'Сжать системные файлы?') {
+            try { Invoke-NovaCompactOs; Write-Nova 'Системные файлы сжаты.' ok } catch { Write-Nova $_.Exception.Message warn }
+        }
+    }
+    $freeAfter = Get-NovaFreeSpace
+    Write-Host ''
+    Write-Nova ('Готово! Освобождено: {0}. Свободно теперь: {1}.' -f (Format-NovaSize ([math]::Max(0, $freeAfter - $freeBefore))), (Format-NovaSize $freeAfter)) ok
+    return 0
 }
 
 function Invoke-NovaUndoFlow {
@@ -366,6 +421,7 @@ function Start-NovaMenu {
         Write-Host '  6  Проверить систему' -ForegroundColor White
         Write-Host '  7  Замерить FPS в игре: до и после Nova' -ForegroundColor White
         Write-Host '  8  Голосовые команды: «Нова, сверни все окна»' -ForegroundColor White
+        Write-Host '  9  Освободить место на диске' -ForegroundColor White
         Write-Host '  0  Выход' -ForegroundColor White
         Write-Host ''
         $choice = (Read-Host '  Выбери пункт').Trim()
@@ -376,7 +432,7 @@ function Start-NovaMenu {
                 '3' { [void](Invoke-NovaUndoFlow); Wait-NovaKey }
                 '4' {
                     # Через Проводник — редактор откроется без прав администратора.
-                    Start-Process -FilePath 'explorer.exe' -ArgumentList ('"{0}"' -f $ConfigPath)
+                    Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList ('"{0}"' -f $ConfigPath)
                     Write-Nova 'Открываю config.json. Если Windows спросит, чем открыть, — выбери «Блокнот».' dim
                     Start-Sleep -Seconds 2
                 }
@@ -384,6 +440,7 @@ function Start-NovaMenu {
                 '6' { [void](Invoke-NovaCheckFlow); Wait-NovaKey }
                 '7' { [void](Invoke-NovaFpsFlow); Wait-NovaKey }
                 '8' { Start-NovaVoiceFlow; Wait-NovaKey }
+                '9' { [void](Invoke-NovaCleanFlow); Wait-NovaKey }
                 '0' { return }
             }
         } catch {
@@ -395,6 +452,8 @@ function Start-NovaMenu {
 
 $exitCode = 0
 try {
+    # Сначала проверяем саму папку Nova и только потом трогаем что-либо с правами администратора.
+    Assert-NovaProjectFolder
     $dataDir = Get-NovaDataDir
 } catch {
     Write-Host ''
@@ -415,7 +474,6 @@ try {
 }
 
 try {
-    Assert-NovaProjectFolder
     switch ($Mode) {
         'Menu' { Start-NovaMenu }
         'Preview' { Show-NovaBanner; Invoke-NovaPreviewFlow }
@@ -424,6 +482,7 @@ try {
         'Measure' { Show-NovaBanner; $exitCode = Invoke-NovaMeasureFlow }
         'Check' { Show-NovaBanner; $exitCode = Invoke-NovaCheckFlow }
         'Fps' { Show-NovaBanner; $exitCode = Invoke-NovaFpsFlow }
+        'Clean' { Show-NovaBanner; $exitCode = Invoke-NovaCleanFlow }
     }
 } catch {
     Write-Nova ('Ошибка: {0}' -f $_.Exception.Message) err

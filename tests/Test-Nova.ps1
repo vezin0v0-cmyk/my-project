@@ -195,4 +195,37 @@ if (-not (Get-NovaProjectProblem -Root $shared)) { throw 'Папка, котор
 Remove-Item -LiteralPath $shared -Recurse -Force
 Write-Host ('Папка проекта, открытая для всех, распознаётся. Эта папка в CI: {0}' -f $(if (Get-NovaProjectProblem -Root $root) { 'открыта для других' } else { 'закрыта' }))
 
+# 6. Ссылка внутри папки Nova считается проблемой.
+$dataDir = Get-NovaDataDir
+$target = Join-Path $env:TEMP ('nova-victim-' + [guid]::NewGuid())
+New-Item -ItemType Directory -Path $target | Out-Null
+Set-Content -LiteralPath (Join-Path $target 'secret.txt') -Value 'x'
+cmd.exe /c mklink /J "$dataDir\tools-link" "$target" | Out-Null
+$innerProblem = Get-NovaTreeProblem -Path $dataDir -Trusted (Get-NovaTrustedSid)
+cmd.exe /c rmdir "$dataDir\tools-link" | Out-Null
+if ($innerProblem -notlike '*ссылка*') { throw ('Ссылка внутри папки Nova не замечена: {0}' -f $innerProblem) }
+Write-Host 'Ссылка внутри папки Nova замечается.'
+
+# 7. Вместо папки Nova подложили ссылку на чужую папку: права той папки не меняются, ссылка убирается.
+$saved = $dataDir + '.test-saved'
+[System.IO.Directory]::Move($dataDir, $saved)
+$sddlBefore = (Get-Acl -LiteralPath $target).Sddl
+cmd.exe /c mklink /J "$dataDir" "$target" | Out-Null
+& (Get-Module Nova) { $script:DataDirProtected = $false }
+$null = Get-NovaDataDir
+$sddlAfter = (Get-Acl -LiteralPath $target).Sddl
+$stillLink = [bool]((Get-Item -LiteralPath $dataDir -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+foreach ($aside in @(Get-ChildItem -LiteralPath $env:ProgramData -Directory -Force -Filter 'Nova.untrusted-*')) {
+    if ($aside.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { cmd.exe /c rmdir "$($aside.FullName)" | Out-Null }
+    else { Remove-Item -LiteralPath $aside.FullName -Recurse -Force }
+}
+Remove-Item -LiteralPath $dataDir -Recurse -Force
+[System.IO.Directory]::Move($saved, $dataDir)
+& (Get-Module Nova) { $script:DataDirProtected = $false }
+if (-not (Test-Path -LiteralPath (Join-Path $target 'secret.txt'))) { throw 'Файл в чужой папке пропал.' }
+Remove-Item -LiteralPath $target -Recurse -Force
+if ($sddlAfter -ne $sddlBefore) { throw 'Nova переписала права папки, на которую вела ссылка.' }
+if ($stillLink) { throw 'Ссылка вместо папки Nova осталась.' }
+Write-Host 'Ссылка вместо папки Nova убирается, права чужой папки не меняются.'
+
 Write-Host 'ТЕСТ ПРОЙДЕН'

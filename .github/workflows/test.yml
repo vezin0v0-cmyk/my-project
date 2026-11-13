@@ -37,6 +37,14 @@ jobs:
         shell: powershell
         run: ./tests/Test-Fps.ps1
 
+      - name: Очистка диска не ходит по подложенным ссылкам
+        shell: powershell
+        run: ./tests/Test-Clean.ps1
+
+      - name: Освободить место (без долгого DISM)
+        shell: powershell
+        run: ./src/Nova.ps1 -Mode Clean -Yes -Quick
+
       - name: Проверка системы
         shell: powershell
         run: ./src/Nova.ps1 -Mode Check

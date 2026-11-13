@@ -38,10 +38,17 @@ try {
         foreach ($problem in $config.Problems) { Write-Nova $problem warn }
         throw 'Исправь voice.json и запусти снова.'
     }
-    if (-not $WavFile -and (Test-NovaAdmin)) {
-        Write-Nova 'Голосовые команды не нужно запускать от имени администратора — так безопаснее.' warn
-        Write-Nova 'Открой NovaVoice.cmd обычным двойным кликом (или пункт 8 в меню Nova).' info
-        throw 'Nova Голос запущен с правами администратора.'
+    if (Test-NovaAdmin) {
+        # Если контроль учётных записей выключен или это встроенный «Администратор», у всех программ
+        # и так права администратора — отдельной защиты тут не получится, работаем с предупреждением.
+        $lua = Get-NovaRegValue -Path 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name 'EnableLUA'
+        $alwaysAdmin = ($lua.Exists -and [int]$lua.Value -eq 0) -or ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -like '*-500')
+        if (-not $alwaysAdmin) {
+            Write-Nova 'Голосовые команды не нужно запускать от имени администратора — так безопаснее.' warn
+            Write-Nova 'Открой NovaVoice.cmd обычным двойным кликом (или пункт 8 в меню Nova).' info
+            throw 'Nova Голос запущен с правами администратора.'
+        }
+        Write-Nova 'Контроль учётных записей выключен — голос работает с правами администратора, как и все программы на этом ПК.' warn
     }
     if (-not (Test-NovaVoiceEngine)) {
         Write-Nova 'Нужно один раз скачать бесплатный движок распознавания Vosk и русскую модель (~60 МБ).' info
