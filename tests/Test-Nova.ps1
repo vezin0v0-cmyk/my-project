@@ -116,14 +116,17 @@ Write-Host ('Отмена вернула все {0} параметров точ�
 # --- Защита отмены ---
 $backups = Join-Path (Get-NovaDataDir) 'backups'
 
-# 1. Подменённая резервная копия: чужое значение реестра не должно записаться.
+# 1. Подменённая резервная копия: чужое значение реестра не должно записаться, файл через «..» — удалиться.
+$victim = Join-Path $env:ProgramData 'nova-victim.txt'
+Set-Content -LiteralPath $victim -Value 'не трогать'
 $probeKey = 'HKCU\Software\NovaTamperTest'
 $fake = [pscustomobject]@{
     tool    = 'Nova'
     entries = @(
         [pscustomobject]@{ type = 'registry'; path = $probeKey; name = 'Owned'; existed = $true; kind = 'String'; value = 'hacked' },
         [pscustomobject]@{ type = 'keyCreated'; path = 'HKCU\Software\Microsoft' },
-        [pscustomobject]@{ type = 'service'; name = 'EventLog'; startup = 'Disabled' }
+        [pscustomobject]@{ type = 'service'; name = 'EventLog'; startup = 'Disabled' },
+        [pscustomobject]@{ type = 'wallpaper'; path = ''; installed = (Join-Path $env:ProgramData 'Nova\..\nova-victim.txt') }
     )
 }
 $fakePath = Join-Path $backups 'backup-test-tamper.json'
@@ -133,7 +136,9 @@ Remove-Item -LiteralPath ($fakePath -replace '\.json$', '.restored.json') -Force
 if ((Get-NovaRegValue -Path $probeKey -Name 'Owned').Exists) { throw 'Подменённая резервная копия записала чужое значение в реестр.' }
 if (-not (Get-NovaRegValue -Path 'HKCU\Software\Microsoft' -Name '__nova_probe__').KeyExists) { throw 'Подменённая резервная копия удалила раздел реестра.' }
 if ((Get-NovaServiceStartup 'EventLog') -eq 'Disabled') { throw 'Подменённая резервная копия отключила службу.' }
-if ($tamper.Failed -ne 2) { throw ('Ожидалось 2 пропущенные записи, а пропущено {0}.' -f $tamper.Failed) }
+if ($tamper.Failed -ne 3) { throw ('Ожидалось 3 пропущенные записи, а пропущено {0}.' -f $tamper.Failed) }
+if (-not (Test-Path -LiteralPath $victim)) { throw 'Подменённая резервная копия удалила файл через «..».' }
+Remove-Item -LiteralPath $victim -Force
 Write-Host 'Подменённая резервная копия не выполнилась.'
 
 # 2. Раздел, созданный Nova, не удаляется, если в него записала другая программа.
@@ -163,5 +168,31 @@ $usersWrite = @($acl.Access | Where-Object {
 if ($usersWrite.Count -gt 0) { throw 'Обычные пользователи могут менять папку Nova.' }
 if (-not $acl.AreAccessRulesProtected) { throw 'Права на папку Nova наследуются от ProgramData.' }
 Write-Host 'Папка Nova закрыта от изменений обычными пользователями.'
+
+# 4. Кто-то дал себе право менять папку Nova: при следующем запуске Nova откладывает её и создаёт новую.
+$dataDir = Get-NovaDataDir
+$backupsDir = Join-Path $dataDir 'backups'
+$aclB = Get-Acl -LiteralPath $backupsDir
+$aclB.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule((New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-545')), 'Modify', 'ContainerInherit, ObjectInherit', 'None', 'Allow')))
+Set-Acl -LiteralPath $backupsDir -AclObject $aclB
+& (Get-Module Nova) { $script:DataDirProtected = $false }
+$null = Get-NovaDataDir
+$moved = @(Get-ChildItem -LiteralPath $env:ProgramData -Directory -Filter 'Nova.untrusted-*')
+if ($moved.Count -eq 0) { throw 'Изменённая чужими правами папка Nova не была отложена.' }
+if (Get-NovaTreeProblem -Path $dataDir -Trusted (Get-NovaTrustedSid)) { throw 'Новая папка Nova небезопасна.' }
+$moved | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
+Write-Host 'Захваченная папка Nova откладывается, вместо неё создаётся чистая.'
+
+# 5. Папка проекта, которую могут менять другие пользователи, распознаётся.
+$shared = Join-Path $env:TEMP ('nova-shared-' + [guid]::NewGuid())
+New-Item -ItemType Directory -Path $shared | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $shared 'src') | Out-Null
+Set-Content -LiteralPath (Join-Path $shared 'src\Nova.ps1') -Value 'x'
+$aclS = Get-Acl -LiteralPath $shared
+$aclS.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule((New-Object System.Security.Principal.SecurityIdentifier('S-1-5-11')), 'Modify', 'ContainerInherit, ObjectInherit', 'None', 'Allow')))
+Set-Acl -LiteralPath $shared -AclObject $aclS
+if (-not (Get-NovaProjectProblem -Root $shared)) { throw 'Папка, которую могут менять все пользователи, не распознана.' }
+Remove-Item -LiteralPath $shared -Recurse -Force
+Write-Host ('Папка проекта, открытая для всех, распознаётся. Эта папка в CI: {0}' -f $(if (Get-NovaProjectProblem -Root $root) { 'открыта для других' } else { 'закрыта' }))
 
 Write-Host 'ТЕСТ ПРОЙДЕН'

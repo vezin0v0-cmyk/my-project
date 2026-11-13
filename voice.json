@@ -1,7 +1,8 @@
 {
-  "_info": "Голосовые команды Nova. Говори «Нова, …» — например «Нова, сверни все окна». Фразы пиши маленькими буквами, без запятых. Что умеет «do»: shutdown, restart, cancel, minimizeAll, restoreAll, closeWindow, closeAll, lock, volumeUp, volumeDown, mute. Свою команду можно сделать через «run» (программа или ссылка) или «keys» (сочетание клавиш, например win+shift+s).",
+  "_info": "Голосовые команды Nova. Говори «Нова, …» — например «Нова, сверни все окна». Фразы пиши маленькими буквами, без запятых. Что умеет «do»: shutdown, restart, cancel, minimizeAll, restoreAll, closeWindow, closeAll, lock, volumeUp, volumeDown, mute. Свою команду можно сделать через «run» (программа или ссылка) или «keys» (сочетание клавиш, например win+shift+s). Играешь с голосовым чатом или стримишь? Впиши в pushToTalk клавишу (например \"ctrl+alt\" или \"f8\") — команды будут слышны, только пока она зажата.",
   "wakeWord": "нова",
   "delaySeconds": 15,
+  "pushToTalk": "",
   "commands": [
     { "say": ["выключи компьютер", "выключи комп"], "do": "shutdown" },
     { "say": ["перезагрузка компьютера", "перезагрузить компьютер"], "do": "restart" },

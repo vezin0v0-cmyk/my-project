@@ -13,13 +13,60 @@ $script:Vosk = @{
     ModelUrl     = 'https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip'
     ModelSha256  = '961D5FF98A17F4AA6DE69864D0AA71FA5BAC682301D2B5D17A3F24C5C99A46D4'
     ModelName    = 'vosk-model-small-ru-0.22'
+    # Файлы движка из архива выше. Сверяются перед каждым запуском: подменённую DLL Nova не загрузит.
+    Dlls         = @{
+        'libvosk.dll'         = '9331C2F6A32CF77141AF27C9750E79532718F51BBC2E3CEA3C60F14CA4251E4E'
+        'libstdc++-6.dll'     = 'A1D96A848A567D7657E152CFE92E2FD62DA412968CC11EC8BDB04BF20EBC5747'
+        'libgcc_s_seh-1.dll'  = '201BF8A54EBB490F93EA4BEB20740A483BF67036B90B5720F32D0C746A72D1E9'
+        'libwinpthread-1.dll' = '92CAEB8A4EA281C674003462A233F3B445B685B0A6F93EB11254FEDA2DDA9CDE'
+    }
 }
 $script:VoiceActions = @('shutdown', 'restart', 'cancel', 'minimizeAll', 'restoreAll', 'closeWindow', 'closeAll', 'lock', 'volumeUp', 'volumeDown', 'mute')
 $script:Pending = $null
 
-# Папка движка: путь только латиницей (Vosk не открывает файлы по пути с русскими буквами)
-# и без прав администратора — голос работает от обычного пользователя.
-function Get-NovaVoiceDir { return (Join-Path $env:ProgramData 'NovaVoice') }
+# Папка движка — личная: другие пользователи компьютера не могут туда ничего подложить.
+# Путь нужен только латиницей (Vosk не открывает файлы по пути с русскими буквами), поэтому, если
+# в имени пользователя есть кириллица, берём C:\ProgramData\NovaVoice-<SID> и закрываем её от остальных.
+function Get-NovaVoiceDir {
+    if ($env:LOCALAPPDATA -match '^[\x20-\x7E]+$') { return (Join-Path $env:LOCALAPPDATA 'NovaVoice') }
+    return (Join-Path $env:ProgramData ('NovaVoice-{0}' -f [Security.Principal.WindowsIdentity]::GetCurrent().User.Value))
+}
+
+# Создаёт папку движка закрытой (менять может только этот пользователь, администраторы и система)
+# и проверяет, что её никто не захватил заранее.
+function Initialize-NovaVoiceDir {
+    $dir = Get-NovaVoiceDir
+    $me = [Security.Principal.WindowsIdentity]::GetCurrent().User
+    $trusted = @($me.Value, 'S-1-5-32-544', 'S-1-5-18')
+    if (-not (Test-Path -LiteralPath $dir)) {
+        $acl = New-Object System.Security.AccessControl.DirectorySecurity
+        $acl.SetOwner($me)
+        $acl.SetAccessRuleProtection($true, $false)
+        $inherit = [System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+        foreach ($sid in $trusted) {
+            $rule = New-Object System.Security.AccessControl.FileSystemAccessRule((New-Object System.Security.Principal.SecurityIdentifier($sid)), 'FullControl', $inherit, 'None', 'Allow')
+            $acl.AddAccessRule($rule)
+        }
+        [void][System.IO.Directory]::CreateDirectory($dir, $acl)
+    }
+    $problem = Get-NovaTreeProblem -Path $dir -Trusted $trusted
+    if ($problem) { throw ('Папку движка голоса может менять кто-то ещё ({0}). Удали папку {1} и запусти снова.' -f $problem, $dir) }
+    return $dir
+}
+
+# Проверяет файлы движка: ровно те DLL, что в оригинальном архиве, байт в байт.
+function Test-NovaVoiceDll {
+    $engine = Join-Path (Get-NovaVoiceDir) 'engine'
+    if (-not (Test-Path -LiteralPath $engine)) { return $false }
+    $dlls = @(Get-ChildItem -LiteralPath $engine -Recurse -Force -File -Filter '*.dll' -ErrorAction SilentlyContinue)
+    if ($dlls.Count -ne $script:Vosk.Dlls.Count) { return $false }
+    foreach ($dll in $dlls) {
+        $expected = $script:Vosk.Dlls[$dll.Name]
+        if (-not $expected -or (Get-FileHash -LiteralPath $dll.FullName -Algorithm SHA256).Hash -ne $expected) { return $false }
+        if ($dll.DirectoryName -ne (Split-Path -Parent (Get-NovaVoiceEngineDll))) { return $false }
+    }
+    return $true
+}
 
 function Get-NovaVoiceEngineDll {
     $dir = Join-Path (Get-NovaVoiceDir) 'engine'
@@ -32,7 +79,7 @@ function Get-NovaVoiceEngineDll {
 function Get-NovaVoiceModelDir { return (Join-Path (Join-Path (Get-NovaVoiceDir) 'model') $script:Vosk.ModelName) }
 
 function Test-NovaVoiceEngine {
-    return ([bool](Get-NovaVoiceEngineDll)) -and (Test-Path -LiteralPath (Join-Path (Get-NovaVoiceModelDir) 'am\final.mdl'))
+    return (Test-NovaVoiceDll) -and (Test-Path -LiteralPath (Join-Path (Get-NovaVoiceModelDir) 'am\final.mdl'))
 }
 
 function Save-NovaVerifiedZip {
@@ -62,7 +109,8 @@ function Save-NovaVerifiedZip {
 }
 
 function Install-NovaVoiceEngine {
-    if (-not (Get-NovaVoiceEngineDll)) {
+    [void](Initialize-NovaVoiceDir)
+    if (-not (Test-NovaVoiceDll)) {
         Write-Nova 'Скачиваю движок распознавания Vosk (15 МБ)...' dim
         Save-NovaVerifiedZip -Url $script:Vosk.EngineUrl -Sha256 $script:Vosk.EngineSha256 -Destination (Join-Path (Get-NovaVoiceDir) 'engine') -What 'движок Vosk'
     }
@@ -82,6 +130,9 @@ using System.Text;
 namespace NovaVoice {
     public static class Win {
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] public static extern bool SetDllDirectory(string path);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] public static extern IntPtr LoadLibrary(string path);
+        [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vk);
+        public static bool Held(byte[] keys) { foreach (var k in keys) if ((GetAsyncKeyState(k) & 0x8000) == 0) return false; return true; }
         [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
         [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr w, IntPtr l);
@@ -120,6 +171,7 @@ namespace NovaVoice {
         [DllImport("libvosk.dll", CallingConvention = CallingConvention.Cdecl)] public static extern int vosk_model_find_word(IntPtr model, byte[] word);
         [DllImport("libvosk.dll", CallingConvention = CallingConvention.Cdecl)] public static extern IntPtr vosk_recognizer_new_grm(IntPtr model, float rate, byte[] grammar);
         [DllImport("libvosk.dll", CallingConvention = CallingConvention.Cdecl)] public static extern void vosk_recognizer_free(IntPtr rec);
+        [DllImport("libvosk.dll", CallingConvention = CallingConvention.Cdecl)] public static extern void vosk_recognizer_reset(IntPtr rec);
         [DllImport("libvosk.dll", CallingConvention = CallingConvention.Cdecl)] public static extern int vosk_recognizer_accept_waveform(IntPtr rec, byte[] data, int length);
         [DllImport("libvosk.dll", CallingConvention = CallingConvention.Cdecl)] public static extern IntPtr vosk_recognizer_result(IntPtr rec);
         [DllImport("libvosk.dll", CallingConvention = CallingConvention.Cdecl)] public static extern IntPtr vosk_recognizer_final_result(IntPtr rec);
@@ -209,8 +261,16 @@ namespace NovaVoice {
 
 function Initialize-NovaVoiceNative {
     if (-not ('NovaVoice.Vosk' -as [type])) { Add-Type -TypeDefinition $script:NativeCode -Language CSharp }
+    if ($script:VoiceLoaded) { return }
+    # Перед загрузкой ещё раз сверяем все DLL движка: подменённые файлы не загружаем.
+    if (-not (Test-NovaVoiceDll)) { throw 'Файлы движка голоса изменены или повреждены. Запусти Nova Голос снова — он скачает их заново.' }
     $dll = Get-NovaVoiceEngineDll
-    if ($dll) { [void][NovaVoice.Win]::SetDllDirectory((Split-Path -Parent $dll)) }
+    # Системные DLL загружаем до того, как добавить папку движка в поиск, а сам движок — по полному пути.
+    [void][NovaVoice.Mic]::waveInGetNumDevs()
+    [void][NovaVoice.Win]::GetForegroundWindow()
+    [void][NovaVoice.Win]::SetDllDirectory((Split-Path -Parent $dll))
+    if ([NovaVoice.Win]::LoadLibrary($dll) -eq [IntPtr]::Zero) { throw 'Не удалось загрузить движок распознавания.' }
+    $script:VoiceLoaded = $true
 }
 
 # Настройки из voice.json: фраза → действие. Ошибки в файле — понятным списком.
@@ -222,6 +282,12 @@ function Read-NovaVoiceConfig {
     if ($wake -notmatch '^[а-яё]+$') { $problems.Add('voice.json: wakeWord — одно слово русскими буквами') }
     $delay = [int](Get-NovaProp $doc 'delaySeconds' 15)
     if ($delay -lt 5 -or $delay -gt 120) { $problems.Add('voice.json: delaySeconds — от 5 до 120 секунд') }
+    $pushToTalk = [string](Get-NovaProp $doc 'pushToTalk' '')
+    $pushKeys = $null
+    if ($pushToTalk) {
+        $pushKeys = ConvertTo-NovaVoiceKeys $pushToTalk
+        if ($null -eq $pushKeys) { $problems.Add("voice.json: непонятная клавиша pushToTalk '$pushToTalk'") }
+    }
     $commands = New-Object System.Collections.Generic.List[object]
     foreach ($item in @(Get-NovaProp $doc 'commands' @())) {
         $say = @(@(Get-NovaProp $item 'say' @()) | ForEach-Object { ([string]$_).Trim().ToLowerInvariant() -replace '\s+', ' ' } | Where-Object { $_ })
@@ -237,7 +303,7 @@ function Read-NovaVoiceConfig {
         if ($keys -and $null -eq (ConvertTo-NovaVoiceKeys $keys)) { $problems.Add("voice.json: у «$label» непонятные клавиши '$keys'") }
         $commands.Add([pscustomobject]@{ Say = $say; Do = $do; Run = $run; Keys = $keys; Label = $say[0] })
     }
-    return [pscustomobject]@{ WakeWord = $wake; Delay = $delay; Commands = $commands.ToArray(); Problems = $problems.ToArray() }
+    return [pscustomobject]@{ WakeWord = $wake; Delay = $delay; PushToTalk = $pushToTalk; PushKeys = $pushKeys; Commands = $commands.ToArray(); Problems = $problems.ToArray() }
 }
 
 # Все фразы, которые слушает распознаватель. Фразы без «Нова» тоже в списке — чтобы распознать
@@ -325,21 +391,22 @@ function Invoke-NovaVoiceCommand {
         return ('нажимаю {0}' -f $Command.Keys)
     }
     switch ($Command.Do) {
+        # Выключение и перезагрузка ждут сами, а потом просят Windows выключиться обычным способом:
+        # с задержкой shutdown.exe закрывает программы принудительно, и несохранённое пропало бы.
         'shutdown' {
-            if (-not $DryRun) { & shutdown.exe /s /t $delay /c ('Nova: компьютер выключится через {0} с. Скажи «{1}, отмена».' -f $delay, $Config.WakeWord) }
-            return ('выключаю компьютер через {0} с — «{1}, отмена» отменит' -f $delay, $Config.WakeWord)
+            if (-not $DryRun) { Set-NovaVoicePending 'shutdown' $delay }
+            return ('выключу компьютер через {0} с — «{1}, отмена» отменит. Программы успеют спросить про сохранение' -f $delay, $Config.WakeWord)
         }
         'restart' {
-            if (-not $DryRun) { & shutdown.exe /r /t $delay /c ('Nova: перезагрузка через {0} с. Скажи «{1}, отмена».' -f $delay, $Config.WakeWord) }
-            return ('перезагружаю через {0} с — «{1}, отмена» отменит' -f $delay, $Config.WakeWord)
+            if (-not $DryRun) { Set-NovaVoicePending 'restart' $delay }
+            return ('перезагружу через {0} с — «{1}, отмена» отменит' -f $delay, $Config.WakeWord)
         }
         'cancel' {
-            if (-not $DryRun) { & shutdown.exe /a 2>$null }
             $script:Pending = $null
             return 'отменено'
         }
         'closeAll' {
-            if (-not $DryRun) { $script:Pending = [pscustomobject]@{ Action = 'closeAll'; Deadline = (Get-Date).AddSeconds($delay) } }
+            if (-not $DryRun) { Set-NovaVoicePending 'closeAll' $delay }
             return ('закрою все окна через {0} с — «{1}, отмена» отменит. Несохранённое программы спросят сохранить' -f $delay, $Config.WakeWord)
         }
         'minimizeAll' { if (-not $DryRun) { (New-Object -ComObject Shell.Application).MinimizeAll() }; return 'сворачиваю все окна' }
@@ -360,12 +427,25 @@ function Invoke-NovaVoiceCommand {
     return ''
 }
 
-# Отложенная команда («закрой все окна»): выполняем, когда вышло время и её не отменили.
+function Set-NovaVoicePending {
+    param([string]$Action, [int]$Seconds)
+    $script:Pending = [pscustomobject]@{ Action = $Action; Deadline = (Get-Date).AddSeconds($Seconds) }
+    try { [Console]::Beep(660, 200) } catch { Write-Verbose 'Нет звука.' }
+}
+
+function Get-NovaVoicePending { return $script:Pending }
+
+# Отложенная команда: выполняем, когда вышло время и её не отменили.
 function Invoke-NovaVoicePending {
     if ($null -eq $script:Pending -or (Get-Date) -lt $script:Pending.Deadline) { return $null }
     $action = $script:Pending.Action
     $script:Pending = $null
-    if ($action -eq 'closeAll') { return ('закрыла окон: {0}' -f (Close-NovaVoiceWindows)) }
+    $shutdown = Join-Path (Join-Path $env:SystemRoot 'System32') 'shutdown.exe'
+    switch ($action) {
+        'closeAll' { return ('закрыла окон: {0}' -f (Close-NovaVoiceWindows)) }
+        'shutdown' { & $shutdown /s /t 0; return 'выключаю компьютер' }
+        'restart' { & $shutdown /r /t 0; return 'перезагружаю компьютер' }
+    }
     return $null
 }
 
@@ -464,7 +544,9 @@ function Start-NovaVoiceListener {
     $mic = $null
     try {
         $mic = New-Object -TypeName NovaVoice.Mic -ArgumentList 8, 3200
+        $holding = $false
         Write-Nova ('Слушаю. Скажи, например: «{0}, сверни все окна». Закрыть — Ctrl+C или крестик окна.' -f $Config.WakeWord) ok
+        if ($Config.PushToTalk) { Write-Nova ('Команды слышу, только пока зажато: {0}.' -f $Config.PushToTalk) info }
         while ($true) {
             $data = $mic.Read()
             if ($null -eq $data) {
@@ -474,6 +556,14 @@ function Start-NovaVoiceListener {
                 continue
             }
             if ($data.Length -eq 0) { continue }
+            # Режим «говорю, только пока держу клавишу»: без клавиши звук сразу выбрасываем.
+            if ($Config.PushKeys) {
+                if (-not [NovaVoice.Win]::Held($Config.PushKeys)) {
+                    if ($holding) { [NovaVoice.Vosk]::vosk_recognizer_reset($r.Rec); $holding = $false }
+                    continue
+                }
+                $holding = $true
+            }
             if ([NovaVoice.Vosk]::vosk_recognizer_accept_waveform($r.Rec, $data, $data.Length) -eq 0) { continue }
             $text = Get-NovaVoiceResultText ([NovaVoice.Vosk]::vosk_recognizer_result($r.Rec))
             if (-not $text -or $text -eq '[unk]') { continue }

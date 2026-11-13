@@ -62,6 +62,19 @@ if (-not (Test-NovaAdmin)) {
     return
 }
 
+# Папку Nova не должны менять другие пользователи: Nova выполняет эти файлы с правами администратора.
+function Assert-NovaProjectFolder {
+    if ($env:NOVA_ALLOW_SHARED_FOLDER -eq '1') { return }
+    $problem = Get-NovaProjectProblem -Root $projectRoot
+    if (-not $problem) { return }
+    Write-Host ''
+    Write-Nova 'Папку Nova могут менять другие пользователи этого компьютера — запускать её с правами администратора небезопасно.' err
+    Write-Nova ('Подробно: {0}' -f $problem) dim
+    Write-Nova 'Перенеси папку Nova в свою папку (например, «Загрузки» или «Рабочий стол») и запусти Nova.cmd оттуда.' warn
+    Write-Nova 'С флешки FAT/exFAT Nova тоже не запустится: такие флешки не хранят права на файлы.' dim
+    throw 'Папка Nova не защищена от других пользователей.'
+}
+
 function Show-NovaBanner {
     param([switch]$Clear)
     if ($Clear) {
@@ -361,7 +374,12 @@ function Start-NovaMenu {
                 '1' { Invoke-NovaPreviewFlow; Wait-NovaKey }
                 '2' { [void](Invoke-NovaApplyFlow); Wait-NovaKey }
                 '3' { [void](Invoke-NovaUndoFlow); Wait-NovaKey }
-                '4' { Start-Process -FilePath 'notepad.exe' -ArgumentList ('"{0}"' -f $ConfigPath) }
+                '4' {
+                    # Через Проводник — редактор откроется без прав администратора.
+                    Start-Process -FilePath 'explorer.exe' -ArgumentList ('"{0}"' -f $ConfigPath)
+                    Write-Nova 'Открываю config.json. Если Windows спросит, чем открыть, — выбери «Блокнот».' dim
+                    Start-Sleep -Seconds 2
+                }
                 '5' { [void](Invoke-NovaMeasureFlow); Wait-NovaKey }
                 '6' { [void](Invoke-NovaCheckFlow); Wait-NovaKey }
                 '7' { [void](Invoke-NovaFpsFlow); Wait-NovaKey }
@@ -376,7 +394,15 @@ function Start-NovaMenu {
 }
 
 $exitCode = 0
-$logPath = Join-Path (Get-NovaDataDir) ('logs\nova-{0}.log' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+try {
+    $dataDir = Get-NovaDataDir
+} catch {
+    Write-Host ''
+    Write-Nova ('Ошибка: {0}' -f $_.Exception.Message) err
+    if ($PauseAtEnd) { Wait-NovaKey }
+    exit 1
+}
+$logPath = Join-Path $dataDir ('logs\nova-{0}.log' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 # Храним последние 30 логов, чтобы папка не разрасталась.
 Get-ChildItem -LiteralPath (Split-Path -Parent $logPath) -Filter 'nova-*.log' -ErrorAction SilentlyContinue |
     Sort-Object Name -Descending | Select-Object -Skip 29 | Remove-Item -Force -ErrorAction SilentlyContinue
@@ -389,6 +415,7 @@ try {
 }
 
 try {
+    Assert-NovaProjectFolder
     switch ($Mode) {
         'Menu' { Start-NovaMenu }
         'Preview' { Show-NovaBanner; Invoke-NovaPreviewFlow }

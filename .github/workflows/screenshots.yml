@@ -16,6 +16,9 @@ jobs:
   screenshots:
     name: Снимки экрана Windows
     runs-on: windows-latest
+    env:
+      # Рабочая папка GitHub открыта для всех пользователей машины; на настоящем ПК Nova такую папку не примет.
+      NOVA_ALLOW_SHARED_FOLDER: '1'
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5

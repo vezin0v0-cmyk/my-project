@@ -44,6 +44,27 @@ Remove-Item -LiteralPath $bad -Force
 if ($badConfig.Problems.Count -lt 5) { $badConfig.Problems | ForEach-Object { Write-Host $_ }; throw ('нашлось только {0} ошибок в плохом voice.json' -f $badConfig.Problems.Count) }
 Write-Host ('ok  в плохом voice.json найдено ошибок: {0}' -f $badConfig.Problems.Count)
 
+# pushToTalk: понятная клавиша проходит, непонятная — нет
+$ptt = Join-Path $env:TEMP ('voice-ptt-{0}.json' -f [guid]::NewGuid())
+[System.IO.File]::WriteAllText($ptt, '{"wakeWord":"нова","pushToTalk":"ctrl+alt","commands":[{"say":["тише"],"do":"volumeDown"}]}', (New-Object System.Text.UTF8Encoding($false)))
+$pttConfig = Read-NovaVoiceConfig -Path $ptt
+if ($pttConfig.Problems.Count -ne 0 -or (($pttConfig.PushKeys) -join ',') -ne '17,18') { throw 'pushToTalk ctrl+alt не разобрался' }
+[System.IO.File]::WriteAllText($ptt, '{"wakeWord":"нова","pushToTalk":"ctrl+???","commands":[{"say":["тише"],"do":"volumeDown"}]}', (New-Object System.Text.UTF8Encoding($false)))
+if ((Read-NovaVoiceConfig -Path $ptt).Problems.Count -eq 0) { throw 'непонятная клавиша pushToTalk должна отклоняться' }
+Remove-Item -LiteralPath $ptt -Force
+Write-Host 'ok  pushToTalk'
+
+# Выключение не выполняется сразу: сначала отсчёт, «отмена» его снимает.
+$shutdownCmd = $config.Commands | Where-Object { $_.Do -eq 'shutdown' } | Select-Object -First 1
+$cancelCmd = $config.Commands | Where-Object { $_.Do -eq 'cancel' } | Select-Object -First 1
+[void](Invoke-NovaVoiceCommand -Command $shutdownCmd -Config $config)
+$pending = Get-NovaVoicePending
+if ($null -eq $pending -or $pending.Action -ne 'shutdown' -or $pending.Deadline -lt (Get-Date).AddSeconds(10)) { throw 'выключение должно ждать отсчёт' }
+if ($null -ne (Invoke-NovaVoicePending)) { throw 'до конца отсчёта ничего не выполняется' }
+[void](Invoke-NovaVoiceCommand -Command $cancelCmd -Config $config)
+if ($null -ne (Get-NovaVoicePending)) { throw '«отмена» должна снимать отсчёт' }
+Write-Host 'ok  выключение ждёт 15 с и отменяется'
+
 # Опасные команды объясняют, как отменить
 $shutdown = $config.Commands | Where-Object { $_.Do -eq 'shutdown' } | Select-Object -First 1
 $text = Invoke-NovaVoiceCommand -Command $shutdown -Config $config -DryRun
@@ -54,6 +75,18 @@ Write-Host ('ok  «выключи компьютер» → {0}' -f $text)
 Install-NovaVoiceEngine
 if (-not (Test-NovaVoiceEngine)) { throw 'Движок не установился' }
 Write-Host 'ok  движок Vosk и русская модель на месте, контрольные суммы совпали'
+
+# Подложенная DLL рядом с движком: Nova это замечает и скачивает движок заново.
+$engineDir = Split-Path -Parent (Get-NovaVoiceEngineDll)
+[System.IO.File]::WriteAllText((Join-Path $engineDir 'winmm.dll'), 'planted')
+if (Test-NovaVoiceDll) { throw 'подложенная DLL не замечена' }
+Install-NovaVoiceEngine
+if (-not (Test-NovaVoiceDll) -or (Test-Path -LiteralPath (Join-Path $engineDir 'winmm.dll'))) { throw 'движок не переустановился после подмены' }
+Write-Host 'ok  подложенная DLL замечена, движок скачан заново'
+$voiceDir = Get-NovaVoiceDir
+$voiceProblem = Get-NovaTreeProblem -Path $voiceDir -Trusted @([Security.Principal.WindowsIdentity]::GetCurrent().User.Value, 'S-1-5-32-544', 'S-1-5-18')
+if ($voiceProblem) { throw ('папку движка может менять кто-то ещё: {0}' -f $voiceProblem) }
+Write-Host ('ok  папка движка закрыта от других пользователей: {0}' -f $voiceDir)
 
 # Все слова из voice.json есть в словаре модели (иначе фразы молча портятся).
 $model = Open-NovaVoiceModel

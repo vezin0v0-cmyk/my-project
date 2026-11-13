@@ -50,38 +50,108 @@ function Test-NovaAdmin {
 # Папка для резервных копий и логов: C:\ProgramData\Nova
 function Get-NovaDataDir {
     $dir = Join-Path $env:ProgramData 'Nova'
+    Protect-NovaDataDir $dir
     foreach ($sub in @('backups', 'logs')) {
         $path = Join-Path $dir $sub
         if (-not (Test-Path -LiteralPath $path)) { New-Item -ItemType Directory -Path $path -Force | Out-Null }
     }
-    Protect-NovaDataDir $dir
     return $dir
 }
 
-# В C:\ProgramData любой пользователь может создавать файлы. Резервные копии Nova выполняются
-# с правами администратора, поэтому папку закрываем: менять — только администраторы и система,
-# читать — все (обои и логотип Nova должны быть видны обычному пользователю).
+# В C:\ProgramData любой пользователь может создавать папки. Nova выполняет оттуда резервные копии
+# и программы с правами администратора, поэтому папка должна принадлежать администраторам,
+# а менять её могут только они и система. Читать — все (обои и логотип видит обычный пользователь).
 $script:DataDirProtected = $false
+$script:WriteRights = [System.Security.AccessControl.FileSystemRights]'WriteData, AppendData, WriteExtendedAttributes, WriteAttributes, Delete, DeleteSubdirectoriesAndFiles, ChangePermissions, TakeOwnership'
+
+# Кому можно доверять запись: администраторы, система, TrustedInstaller и тот, кто сейчас запустил Nova.
+function Get-NovaTrustedSid {
+    return @('S-1-5-32-544', 'S-1-5-18', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464',
+        [Security.Principal.WindowsIdentity]::GetCurrent().User.Value)
+}
+
+function New-NovaDataDirSecurity {
+    $acl = New-Object System.Security.AccessControl.DirectorySecurity
+    $acl.SetOwner((New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')))
+    $acl.SetAccessRuleProtection($true, $false)
+    $inherit = [System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+    $propagate = [System.Security.AccessControl.PropagationFlags]::None
+    foreach ($pair in @(@('S-1-5-32-544', 'FullControl'), @('S-1-5-18', 'FullControl'), @('S-1-5-32-545', 'ReadAndExecute'))) {
+        $sid = New-Object System.Security.Principal.SecurityIdentifier($pair[0])
+        $rights = [System.Security.AccessControl.FileSystemRights]$pair[1]
+        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($sid, $rights, $inherit, $propagate, 'Allow')))
+    }
+    return $acl
+}
+
+# Причина, по которой путь небезопасен, или пустая строка. Смотрит владельца и всех, кто может писать.
+function Get-NovaPathProblem {
+    param([Parameter(Mandatory)][string]$Path, [string[]]$Trusted)
+    try {
+        $acl = Get-Acl -LiteralPath $Path
+        $owner = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+        if ($Trusted -notcontains $owner) { return ('{0}: владелец {1}' -f $Path, $acl.Owner) }
+        foreach ($rule in $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) {
+            if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) { continue }
+            if (($rule.FileSystemRights -band $script:WriteRights) -eq 0) { continue }
+            # CREATOR OWNER касается только новых файлов, а их владелец проверяется отдельно.
+            if ($rule.IdentityReference.Value -eq 'S-1-3-0') { continue }
+            if ($Trusted -notcontains $rule.IdentityReference.Value) { return ('{0}: менять может {1}' -f $Path, $rule.IdentityReference.Value) }
+        }
+    } catch {
+        return ('{0}: не удалось проверить права ({1})' -f $Path, $_.Exception.Message)
+    }
+    return ''
+}
+
+function Get-NovaTreeProblem {
+    param([Parameter(Mandatory)][string]$Path, [string[]]$Trusted)
+    $problem = Get-NovaPathProblem -Path $Path -Trusted $Trusted
+    if ($problem) { return $problem }
+    foreach ($item in @(Get-ChildItem -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue)) {
+        $problem = Get-NovaPathProblem -Path $item.FullName -Trusted $Trusted
+        if ($problem) { return $problem }
+    }
+    return ''
+}
+
 function Protect-NovaDataDir {
     param([Parameter(Mandatory)][string]$Path)
     if ($script:DataDirProtected -or -not (Test-NovaAdmin)) { return }
-    $script:DataDirProtected = $true
-    try {
-        $admins = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')
-        $acl = New-Object System.Security.AccessControl.DirectorySecurity
-        $acl.SetOwner($admins)
-        $acl.SetAccessRuleProtection($true, $false)
-        $inherit = [System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
-        $propagate = [System.Security.AccessControl.PropagationFlags]::None
-        foreach ($pair in @(@('S-1-5-32-544', 'FullControl'), @('S-1-5-18', 'FullControl'), @('S-1-5-32-545', 'ReadAndExecute'))) {
-            $sid = New-Object System.Security.Principal.SecurityIdentifier($pair[0])
-            $rights = [System.Security.AccessControl.FileSystemRights]$pair[1]
-            $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($sid, $rights, $inherit, $propagate, 'Allow')))
+    $trusted = Get-NovaTrustedSid
+    if (-not (Test-Path -LiteralPath $Path)) {
+        # Папка сразу создаётся закрытой — нет момента, когда в неё можно что-то подложить.
+        [void][System.IO.Directory]::CreateDirectory($Path, (New-NovaDataDirSecurity))
+    } else {
+        try { [System.IO.Directory]::SetAccessControl($Path, (New-NovaDataDirSecurity)) } catch { Write-Verbose 'Права не поменялись — проверим ниже.' }
+        $problem = Get-NovaTreeProblem -Path $Path -Trusted $trusted
+        if ($problem) {
+            # Папку создал или изменил кто-то другой. Ничему из неё не доверяем: откладываем и начинаем с чистой.
+            $aside = '{0}.untrusted-{1}' -f $Path, (Get-Date -Format 'yyyyMMdd-HHmmss')
+            Move-Item -LiteralPath $Path -Destination $aside -Force
+            Write-Nova ('Папку {0} создал или изменил не Nova ({1}). Отложила её в {2} и создала новую.' -f $Path, $problem, $aside) warn
+            [void][System.IO.Directory]::CreateDirectory($Path, (New-NovaDataDirSecurity))
         }
-        [System.IO.Directory]::SetAccessControl($Path, $acl)
-    } catch {
-        Write-Nova ('Не удалось закрыть папку {0} от изменений: {1}' -f $Path, $_.Exception.Message) warn
     }
+    $problem = Get-NovaTreeProblem -Path $Path -Trusted $trusted
+    if ($problem) { throw ('Папка {0} небезопасна: {1}. Nova остановилась, чтобы через неё нельзя было взломать компьютер.' -f $Path, $problem) }
+    $script:DataDirProtected = $true
+}
+
+# Папку самой Nova (где Nova.cmd и src) не должны менять другие пользователи: Nova запускается
+# с правами администратора и выполняет эти файлы. Например, C:\Nova наследует от диска C:
+# право «изменение» для всех пользователей, а флешка FAT/exFAT прав не хранит вовсе.
+function Get-NovaProjectProblem {
+    param([Parameter(Mandatory)][string]$Root)
+    $trusted = Get-NovaTrustedSid
+    $paths = @($Root, (Join-Path $Root 'src'), (Join-Path $Root 'config.json'), (Join-Path $Root 'Nova.cmd'))
+    $paths += @(Get-ChildItem -LiteralPath (Join-Path $Root 'src') -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+    foreach ($path in $paths) {
+        if (-not (Test-Path -LiteralPath $path)) { continue }
+        $problem = Get-NovaPathProblem -Path $path -Trusted $trusted
+        if ($problem) { return $problem }
+    }
+    return ''
 }
 
 # Подставляет значения в текст настроек:
@@ -103,6 +173,27 @@ function Expand-NovaText {
 function Resolve-NovaAsset {
     param([string]$RelativePath)
     return (Join-Path $script:NovaRoot ($RelativePath -replace '/', '\'))
+}
+
+# Системные программы — только из System32, а не «первая найденная по PATH».
+function Get-NovaSystemTool {
+    param([Parameter(Mandatory)][string]$Name)
+    return (Join-Path (Join-Path $env:SystemRoot 'System32') $Name)
+}
+
+# winget — только настоящий, из защищённой папки пакета «Установщик приложений».
+# Ярлык в %LOCALAPPDATA%\Microsoft\WindowsApps может подменить любая программа пользователя.
+function Get-NovaWingetPath {
+    try {
+        $package = Get-AppxPackage -Name 'Microsoft.DesktopAppInstaller' -ErrorAction Stop | Sort-Object Version -Descending | Select-Object -First 1
+    } catch {
+        return $null
+    }
+    if ($null -eq $package -or -not $package.InstallLocation) { return $null }
+    $exe = Join-Path $package.InstallLocation 'winget.exe'
+    if (-not (Test-Path -LiteralPath $exe)) { return $null }
+    if ($exe -notlike (Join-Path $env:ProgramFiles 'WindowsApps\*')) { return $null }
+    return $exe
 }
 
 # Запуск обычной программы (powercfg, winget). Ошибки программы не роняют скрипт — смотрим код возврата.
@@ -384,7 +475,7 @@ function Get-NovaServiceDelayed {
 }
 
 function Get-NovaActivePowerScheme {
-    $result = Invoke-NovaNative 'powercfg.exe' @('/getactivescheme')
+    $result = Invoke-NovaNative (Get-NovaSystemTool 'powercfg.exe') @('/getactivescheme')
     if ($result.Output -match '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}') {
         return $Matches[0].ToLowerInvariant()
     }
@@ -393,7 +484,7 @@ function Get-NovaActivePowerScheme {
 
 function Test-NovaPowerSchemeExists {
     param([string]$Guid)
-    $result = Invoke-NovaNative 'powercfg.exe' @('/list')
+    $result = Invoke-NovaNative (Get-NovaSystemTool 'powercfg.exe') @('/list')
     return ($result.Output -match [regex]::Escape($Guid))
 }
 
@@ -447,9 +538,23 @@ function Remove-NovaOneDrive {
         if ($index -lt 0) { $exe = $UninstallString.Trim(); $arguments = '/uninstall' } else { $exe = $UninstallString.Substring(0, $index).Trim(); $arguments = $UninstallString.Substring($index + 1) }
     }
     if (-not (Test-Path -LiteralPath $exe)) { throw "Не найден установщик OneDrive: $exe" }
-    Get-Process -Name OneDrive -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    $process = Start-Process -FilePath $exe -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
-    if ($process.ExitCode -ne 0) { throw "Удаление OneDrive завершилось с кодом $($process.ExitCode)" }
+    # Установщик лежит в папке пользователя, и Nova запустит его с правами администратора.
+    # Поэтому копируем его в защищённую папку Nova и запускаем копию, только если её подписала Microsoft.
+    $tools = Join-Path (Get-NovaDataDir) 'tools'
+    if (-not (Test-Path -LiteralPath $tools)) { New-Item -ItemType Directory -Path $tools -Force | Out-Null }
+    $copy = Join-Path $tools 'OneDriveSetup.exe'
+    Copy-Item -LiteralPath $exe -Destination $copy -Force
+    try {
+        $signature = Get-AuthenticodeSignature -LiteralPath $copy
+        if ($signature.Status -ne 'Valid' -or [string]$signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+            throw 'установщик OneDrive не подписан Microsoft — не запускаю его'
+        }
+        Get-Process -Name OneDrive -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        $process = Start-Process -FilePath $copy -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+        if ($process.ExitCode -ne 0) { throw "Удаление OneDrive завершилось с кодом $($process.ExitCode)" }
+    } finally {
+        Remove-Item -LiteralPath $copy -Force -ErrorAction SilentlyContinue
+    }
 }
 
 #endregion
@@ -671,14 +776,14 @@ function Invoke-NovaAction {
         'powerScheme' {
             $before = Get-NovaActivePowerScheme
             if ($before) { [void]$Journal.Add([pscustomobject]@{ type = 'powerScheme'; tweak = $Tweak; guid = $before }) }
-            $result = Invoke-NovaNative 'powercfg.exe' @('/setactive', [string]$Action.guid)
+            $result = Invoke-NovaNative (Get-NovaSystemTool 'powercfg.exe') @('/setactive', [string]$Action.guid)
             if ($result.Code -ne 0) { throw "powercfg не смог сменить схему питания: $($result.Output.Trim())" }
             return
         }
         'hibernate' {
             $before = Get-NovaHibernateState
             [void]$Journal.Add([pscustomobject]@{ type = 'hibernate'; tweak = $Tweak; state = $before })
-            $result = Invoke-NovaNative 'powercfg.exe' @('/hibernate', [string]$Action.state)
+            $result = Invoke-NovaNative (Get-NovaSystemTool 'powercfg.exe') @('/hibernate', [string]$Action.state)
             if ($result.Code -ne 0) { throw "powercfg не смог изменить гибернацию: $($result.Output.Trim())" }
             return
         }
@@ -710,7 +815,7 @@ function Undo-NovaEntry {
             if ($script:ServiceStartups -contains $Entry.startup) {
                 Set-Service -Name $Entry.name -StartupType $Entry.startup
                 if ($Entry.startup -eq 'Automatic' -and [bool](Get-NovaProp $Entry 'delayed' $false) -and -not (Get-NovaServiceDelayed $Entry.name)) {
-                    $result = Invoke-NovaNative 'sc.exe' @('config', [string]$Entry.name, 'start=', 'delayed-auto')
+                    $result = Invoke-NovaNative (Get-NovaSystemTool 'sc.exe') @('config', [string]$Entry.name, 'start=', 'delayed-auto')
                     if ($result.Code -ne 0) { throw "не удалось вернуть отложенный запуск службы $($Entry.name)" }
                 }
                 if ($Entry.startup -eq 'Automatic') { Start-Service -Name $Entry.name -ErrorAction SilentlyContinue }
@@ -718,12 +823,12 @@ function Undo-NovaEntry {
             return
         }
         'powerScheme' {
-            $result = Invoke-NovaNative 'powercfg.exe' @('/setactive', [string]$Entry.guid)
+            $result = Invoke-NovaNative (Get-NovaSystemTool 'powercfg.exe') @('/setactive', [string]$Entry.guid)
             if ($result.Code -ne 0) { throw "powercfg не смог вернуть схему питания: $($result.Output.Trim())" }
             return
         }
         'hibernate' {
-            $result = Invoke-NovaNative 'powercfg.exe' @('/hibernate', [string]$Entry.state)
+            $result = Invoke-NovaNative (Get-NovaSystemTool 'powercfg.exe') @('/hibernate', [string]$Entry.state)
             if ($result.Code -ne 0) { throw "powercfg не смог вернуть гибернацию: $($result.Output.Trim())" }
             return
         }
@@ -958,17 +1063,17 @@ function Get-NovaAppPlan {
             }
         })
 
-    $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
+    $winget = Get-NovaWingetPath
     $installItems = @(foreach ($id in $toInstall) {
             $isInstalled = $false
             if ($winget) {
-                $result = Invoke-NovaNative 'winget.exe' @('list', '--id', $id, '--exact', '--accept-source-agreements')
+                $result = Invoke-NovaNative $winget @('list', '--id', $id, '--exact', '--accept-source-agreements')
                 $isInstalled = ($result.Code -eq 0)
             }
             [pscustomobject]@{ Id = $id; Installed = $isInstalled }
         })
 
-    return [pscustomobject]@{ Remove = $removeItems; Install = $installItems; WingetAvailable = [bool]$winget }
+    return [pscustomobject]@{ Remove = $removeItems; Install = $installItems; WingetAvailable = [bool]$winget; Winget = $winget }
 }
 
 function Write-NovaPlanLine {
@@ -1157,7 +1262,7 @@ function Invoke-NovaApply {
         if ($AppPlan.WingetAvailable) {
             foreach ($app in @($AppPlan.Install | Where-Object { -not $_.Installed })) {
                 Write-Nova ('устанавливаю {0}...' -f $app.Id) info
-                $run = Invoke-NovaNative 'winget.exe' @('install', '--id', $app.Id, '--exact', '--silent', '--accept-package-agreements', '--accept-source-agreements') -Stream
+                $run = Invoke-NovaNative $AppPlan.Winget @('install', '--id', $app.Id, '--exact', '--silent', '--accept-package-agreements', '--accept-source-agreements') -Stream
                 if ($run.Code -eq 0) {
                     [void]$journal.Add([pscustomobject]@{ type = 'appInstalled'; name = $app.Id })
                     $result.AppsInstalled++
@@ -1278,8 +1383,14 @@ function Get-NovaAllowedTargets {
                 }
                 'service' { $allowed.service[([string]$action.name).ToLowerInvariant()] = $true }
                 'scheduledTask' { $allowed.task[('{0}{1}' -f $action.path, $action.name).ToLowerInvariant()] = $true }
-                'copyFile' { $allowed.file[(Expand-NovaText $action.to).ToLowerInvariant()] = $true }
+                'copyFile' { $allowed.file[[System.IO.Path]::GetFullPath((Expand-NovaText $action.to)).ToLowerInvariant()] = $true }
             }
+        }
+    }
+    $allowed.wallpaper = @{}
+    foreach ($tweak in @($Tweaks)) {
+        foreach ($action in @($tweak.actions | Where-Object { $_.type -eq 'wallpaper' })) {
+            $allowed.wallpaper[[System.IO.Path]::GetFullPath((Get-NovaWallpaperTarget $action)).ToLowerInvariant()] = $true
         }
     }
     $desktop = Get-NovaRegPathKey $script:DesktopKey
@@ -1290,7 +1401,6 @@ function Get-NovaAllowedTargets {
 # Возвращает причину, по которой запись нельзя выполнять, или пустую строку, если всё в порядке.
 function Test-NovaJournalEntry {
     param($Entry, $Allowed)
-    $dataDir = (Join-Path $env:ProgramData 'Nova').ToLowerInvariant() + '\'
     try {
         switch ([string]$Entry.type) {
             'registry' {
@@ -1314,13 +1424,14 @@ function Test-NovaJournalEntry {
                 return ''
             }
             'copyFile' {
-                $path = ([string]$Entry.path).ToLowerInvariant()
+                # GetFullPath убирает трюки вроде «папка\..\..\Windows».
+                $path = [System.IO.Path]::GetFullPath([string]$Entry.path).ToLowerInvariant()
                 if (-not $Allowed.file.ContainsKey($path)) { return 'этого файла нет в настройках Nova' }
-                if ($Entry.backup -and ([string]$Entry.backup).ToLowerInvariant() -ne ($path + '.nova-backup')) { return 'неожиданная копия файла' }
+                if ($Entry.backup -and [System.IO.Path]::GetFullPath([string]$Entry.backup).ToLowerInvariant() -ne ($path + '.nova-backup')) { return 'неожиданная копия файла' }
                 return ''
             }
             'wallpaper' {
-                if ($Entry.installed -and -not ([string]$Entry.installed).ToLowerInvariant().StartsWith($dataDir)) { return 'обои Nova лежат не в папке Nova' }
+                if ($Entry.installed -and -not $Allowed.wallpaper.ContainsKey([System.IO.Path]::GetFullPath([string]$Entry.installed).ToLowerInvariant())) { return 'обои Nova лежат не там, куда их кладёт Nova' }
                 return ''
             }
             'powerScheme' {
@@ -1381,8 +1492,14 @@ function Invoke-NovaUndo {
 function Restart-NovaExplorer {
     if (-not (Get-Process -Name explorer -ErrorAction SilentlyContinue)) { return }
     Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
-    if (-not (Get-Process -Name explorer -ErrorAction SilentlyContinue)) { Start-Process explorer.exe }
+    # Windows сама перезапускает Проводник. Ждём до 10 секунд.
+    for ($i = 0; $i -lt 20; $i++) {
+        Start-Sleep -Milliseconds 500
+        if (Get-Process -Name explorer -ErrorAction SilentlyContinue) { return }
+    }
+    # Если не перезапустила — запускаем с правами обычного пользователя, а не администратора:
+    # иначе весь рабочий стол и всё, что из него открывают, получили бы права администратора.
+    & (Get-NovaSystemTool 'runas.exe') /trustlevel:0x20000 explorer.exe | Out-Null
 }
 
 # Точка восстановления Windows — запасной вариант, если что-то пойдёт совсем не так.
@@ -1763,7 +1880,7 @@ function Get-NovaHealth {
     $wanted = @()
     if ($installApps) { $wanted = @($installApps.PSObject.Properties | Where-Object { $_.Value -eq $true }) }
     if ($wanted.Count -gt 0) {
-        if (-not (Get-Command winget.exe -ErrorAction SilentlyContinue)) {
+        if (-not (Get-NovaWingetPath)) {
             $checks.Add((New-NovaCheck 'Программы' 'warn' 'winget не найден — программы из списка installApps не установятся.' 'Обнови «Установщик приложений» (App Installer) в Microsoft Store.' 'winget'))
         } elseif (-not [System.Net.NetworkInformation.NetworkInterface]::GetIsNetworkAvailable()) {
             $checks.Add((New-NovaCheck 'Программы' 'warn' 'Нет подключения к сети — программы из installApps не скачаются.' 'Подключись к интернету перед применением.' 'winget'))

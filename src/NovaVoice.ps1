@@ -38,6 +38,11 @@ try {
         foreach ($problem in $config.Problems) { Write-Nova $problem warn }
         throw 'Исправь voice.json и запусти снова.'
     }
+    if (-not $WavFile -and (Test-NovaAdmin)) {
+        Write-Nova 'Голосовые команды не нужно запускать от имени администратора — так безопаснее.' warn
+        Write-Nova 'Открой NovaVoice.cmd обычным двойным кликом (или пункт 8 в меню Nova).' info
+        throw 'Nova Голос запущен с правами администратора.'
+    }
     if (-not (Test-NovaVoiceEngine)) {
         Write-Nova 'Нужно один раз скачать бесплатный движок распознавания Vosk и русскую модель (~60 МБ).' info
         if (-not $Yes) {
