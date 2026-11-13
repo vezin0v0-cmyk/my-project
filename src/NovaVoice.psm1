@@ -117,6 +117,7 @@ namespace NovaVoice {
         [DllImport("libvosk.dll", CallingConvention = CallingConvention.Cdecl)] public static extern void vosk_set_log_level(int level);
         [DllImport("libvosk.dll", CallingConvention = CallingConvention.Cdecl)] public static extern IntPtr vosk_model_new(byte[] path);
         [DllImport("libvosk.dll", CallingConvention = CallingConvention.Cdecl)] public static extern void vosk_model_free(IntPtr model);
+        [DllImport("libvosk.dll", CallingConvention = CallingConvention.Cdecl)] public static extern int vosk_model_find_word(IntPtr model, byte[] word);
         [DllImport("libvosk.dll", CallingConvention = CallingConvention.Cdecl)] public static extern IntPtr vosk_recognizer_new_grm(IntPtr model, float rate, byte[] grammar);
         [DllImport("libvosk.dll", CallingConvention = CallingConvention.Cdecl)] public static extern void vosk_recognizer_free(IntPtr rec);
         [DllImport("libvosk.dll", CallingConvention = CallingConvention.Cdecl)] public static extern int vosk_recognizer_accept_waveform(IntPtr rec, byte[] data, int length);
@@ -368,16 +369,43 @@ function Invoke-NovaVoicePending {
     return $null
 }
 
-function New-NovaVoiceRecognizer {
-    param($Config)
+function Open-NovaVoiceModel {
     Initialize-NovaVoiceNative
     [NovaVoice.Vosk]::vosk_set_log_level(-1)
     $model = [NovaVoice.Vosk]::vosk_model_new([NovaVoice.Vosk]::Utf8Z((Get-NovaVoiceModelDir)))
     if ($model -eq [IntPtr]::Zero) { throw 'Не удалось загрузить модель речи.' }
-    $grammar = ConvertTo-Json -InputObject @(Get-NovaVoiceGrammar $Config) -Compress
+    return $model
+}
+
+# Слова, которых нет в словаре модели: фразы с ними не распознаются, поэтому их надо заменить.
+function Get-NovaVoiceUnknownWord {
+    param([IntPtr]$Model, [string[]]$Words)
+    return @($Words | Where-Object { $_ -and $_ -ne '[unk]' } | Select-Object -Unique |
+            Where-Object { [NovaVoice.Vosk]::vosk_model_find_word($Model, [NovaVoice.Vosk]::Utf8Z($_)) -lt 0 })
+}
+
+function Get-NovaVoiceConfigWord {
+    param($Config)
+    return @(@($Config.WakeWord) + @($Config.Commands | ForEach-Object { $_.Say } | ForEach-Object { $_ -split ' ' }) | Select-Object -Unique)
+}
+
+function New-NovaVoiceRecognizer {
+    param($Config)
+    $model = Open-NovaVoiceModel
+    $unknown = @(Get-NovaVoiceUnknownWord -Model $model -Words (Get-NovaVoiceConfigWord $Config))
+    if ($unknown -contains $Config.WakeWord) {
+        [NovaVoice.Vosk]::vosk_model_free($model)
+        throw ('Модель не знает слово «{0}». Выбери другое wakeWord в voice.json.' -f $Config.WakeWord)
+    }
+    # Фразы с незнакомыми словами выкидываем целиком: иначе Vosk молча обрежет их и начнёт путать команды.
+    $phrases = @(Get-NovaVoiceGrammar $Config | Where-Object {
+            $phrase = $_
+            $phrase -eq '[unk]' -or @($phrase -split ' ' | Where-Object { $unknown -contains $_ }).Count -eq 0
+        })
+    $grammar = ConvertTo-Json -InputObject $phrases -Compress
     $rec = [NovaVoice.Vosk]::vosk_recognizer_new_grm($model, 16000.0, [NovaVoice.Vosk]::Utf8Z($grammar))
     if ($rec -eq [IntPtr]::Zero) { [NovaVoice.Vosk]::vosk_model_free($model); throw 'Не удалось запустить распознавание.' }
-    return [pscustomobject]@{ Model = $model; Rec = $rec }
+    return [pscustomobject]@{ Model = $model; Rec = $rec; Unknown = $unknown }
 }
 
 function Remove-NovaVoiceRecognizer {
@@ -430,6 +458,9 @@ function Start-NovaVoiceListener {
     Initialize-NovaVoiceNative
     if ([NovaVoice.Mic]::waveInGetNumDevs() -eq 0) { throw 'Не найден микрофон. Подключи его и запусти снова.' }
     $r = New-NovaVoiceRecognizer $Config
+    if ($r.Unknown.Count -gt 0) {
+        Write-Nova ('Модель не знает слова: {0}. Фразы с ними не сработают — замени их в voice.json.' -f ($r.Unknown -join ', ')) warn
+    }
     $mic = $null
     try {
         $mic = New-Object -TypeName NovaVoice.Mic -ArgumentList 8, 3200

@@ -55,6 +55,19 @@ Install-NovaVoiceEngine
 if (-not (Test-NovaVoiceEngine)) { throw 'Движок не установился' }
 Write-Host 'ok  движок Vosk и русская модель на месте, контрольные суммы совпали'
 
+# Все слова из voice.json есть в словаре модели (иначе фразы молча портятся).
+$model = Open-NovaVoiceModel
+try {
+    $probe = @('перезагрузи', 'перезагрузка', 'перезагрузить', 'перезапусти', 'компьютера', 'скрой', 'спрячь', 'дискорд', 'браузер', 'стим', 'проводник', 'скриншот', 'нова', 'закрой', 'окно')
+    $unknownProbe = @(Get-NovaVoiceUnknownWord -Model $model -Words $probe)
+    Write-Host ('слова не из словаря (справка): {0}' -f ($unknownProbe -join ', '))
+    $unknown = @(Get-NovaVoiceUnknownWord -Model $model -Words (Get-NovaVoiceConfigWord $config))
+} finally {
+    [NovaVoice.Vosk]::vosk_model_free($model)
+}
+if ($unknown.Count -gt 0) { throw ('В voice.json слова, которых модель не знает: {0}' -f ($unknown -join ', ')) }
+Write-Host 'ok  все слова из voice.json модель знает'
+
 $expected = [ordered]@{
     'shutdown'     = 'shutdown'
     'minimize'     = 'minimizeAll'
