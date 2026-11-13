@@ -295,6 +295,48 @@
   .modal textarea { flex: 1; min-height: 300px; width: 100%; resize: none; border-radius: 12px; border: 1px solid var(--line); background: rgba(0,0,0,.45); color: var(--text); font: 12.5px/1.5 var(--mono); padding: 12px; margin: 12px 0; }
   .modal .row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
 
+  /* ---------- Профиль ---------- */
+  .ava { overflow: hidden; position: relative; }
+  .ava img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ava.has-img { box-shadow: 0 0 0 2px var(--ring, #ffc940); }
+  .me { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; border-radius: 12px; }
+  .me:hover .who b { color: var(--gold); }
+  .ava-btn { padding: 0; border: 0; background: none; cursor: pointer; border-radius: 14px; }
+  .hello { display: flex; align-items: center; gap: 14px; min-width: 0; }
+  .hello .ava { width: 56px; height: 56px; border-radius: 18px; font-size: 20px; }
+  .dtop .bio { color: var(--text); opacity: .82; margin: 6px 0 0; font-size: 14px; max-width: 520px; overflow-wrap: anywhere; }
+  .profile.box { width: min(520px, 100%); max-height: 92vh; overflow: auto; }
+  .profile .panel-head { align-items: flex-start; }
+  .p-top { display: flex; align-items: center; gap: 18px; margin: 4px 0 18px; }
+  .p-top .ava { width: 104px; height: 104px; border-radius: 30px; font-size: 36px; }
+  .p-top .ava.has-img { box-shadow: 0 0 0 3px var(--ring, #ffc940), 0 12px 30px rgba(0,0,0,.45); }
+  .p-btns { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+  .p-btns small { color: var(--dim); font-size: 12px; }
+  .p-btns .row-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .field > label .count { float: right; font-weight: 500; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .profile textarea { width: 100%; min-height: 76px; resize: vertical; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,.09); background: rgba(0,0,0,.4);
+    font: 15px/1.45 var(--sans); color: var(--text); outline: none; transition: border-color .2s, box-shadow .2s; }
+  .profile textarea:focus { border-color: rgba(255,201,64,.75); box-shadow: 0 0 0 4px rgba(255,201,64,.12); }
+  .swatches { display: flex; gap: 10px; flex-wrap: wrap; }
+  .swatches button { width: 38px; height: 38px; border-radius: 12px; border: 2px solid transparent; cursor: pointer; position: relative; padding: 0; }
+  .swatches button[aria-checked="true"] { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.18); }
+  .swatches button[aria-checked="true"]::after { content: ""; position: absolute; inset: 0; margin: auto; width: 14px; height: 8px; border: solid #1b1404; border-width: 0 0 3px 3px; transform: translateY(-2px) rotate(-45deg); }
+  .p-meta { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 12px; background: rgba(0,0,0,.25); border: 1px solid var(--line); color: var(--muted); font-size: 13.5px; margin: 4px 0 16px; }
+  .p-meta b { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
+  .p-meta .ok { color: var(--ok); font-weight: 600; }
+  .crop { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .crop canvas { width: 280px; height: 280px; max-width: 100%; border-radius: 20px; background: #000; touch-action: none; cursor: grab; }
+  .crop canvas:active { cursor: grabbing; }
+  .crop .zoom { display: flex; align-items: center; gap: 10px; width: min(280px, 100%); color: var(--dim); font-size: 13px; }
+  .crop input[type=range] { flex: 1; accent-color: #ffc940; }
+  .crop p { margin: 0; color: var(--muted); font-size: 13px; text-align: center; }
+  @media (max-width: 560px) {
+    .modal { padding: 10px; align-items: end; }
+    .profile.box { max-height: 94vh; padding: 16px; }
+    .p-top .ava { width: 88px; height: 88px; border-radius: 26px; font-size: 30px; }
+    .hello .ava { width: 48px; height: 48px; border-radius: 15px; font-size: 17px; }
+  }
+
   @media (max-width: 1100px) {
     .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
@@ -362,6 +404,8 @@
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
     <symbol id="i-package" viewBox="0 0 24 24"><path d="M3 7.5 12 3l9 4.5-9 4.5z"/><path d="M3 7.5v9L12 21l9-4.5v-9M12 12v9"/></symbol>
     <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
     <symbol id="i-nova" viewBox="0 0 24 24"><path d="M12 1.5l2.4 8.1 8.1 2.4-8.1 2.4L12 22.5l-2.4-8.1L1.5 12l8.1-2.4z"/></symbol>
   </defs>
 </svg>
@@ -481,11 +525,14 @@
       <button type="button" data-go="overview" class="active"><svg class="i"><use href="#i-grid"/></svg>Обзор</button>
       <button type="button" data-go="builder"><svg class="i"><use href="#i-sliders"/></svg>Конструктор</button>
       <button type="button" data-go="activity"><svg class="i"><use href="#i-clock"/></svg>Активность</button>
+      <button type="button" data-profile><svg class="i"><use href="#i-user"/></svg>Профиль</button>
       <a href="index.html"><svg class="i"><use href="#i-home"/></svg>Сайт Nova</a>
     </nav>
     <div class="user">
-      <div class="ava u-ava"></div>
-      <div class="who"><b class="u-name"></b><span class="u-mail"></span></div>
+      <button class="me" type="button" data-profile aria-label="Мой профиль">
+        <div class="ava u-ava"></div>
+        <div class="who"><b class="u-name"></b><span class="u-mail"></span></div>
+      </button>
       <button class="icon-btn" type="button" data-logout aria-label="Выйти"><svg class="i"><use href="#i-logout"/></svg></button>
     </div>
   </aside>
@@ -493,13 +540,17 @@
   <main class="dmain">
     <div class="mtop">
       <a class="brand" href="index.html"><span class="dot"></span>NOVA</a>
-      <div class="r"><div class="ava u-ava"></div><button class="icon-btn" type="button" data-logout aria-label="Выйти"><svg class="i"><use href="#i-logout"/></svg></button></div>
+      <div class="r"><button class="ava-btn" type="button" data-profile aria-label="Мой профиль"><div class="ava u-ava"></div></button><button class="icon-btn" type="button" data-logout aria-label="Выйти"><svg class="i"><use href="#i-logout"/></svg></button></div>
     </div>
 
     <header class="dtop" id="overview">
-      <div>
-        <h1 id="greet"></h1>
-        <p class="date" id="today"></p>
+      <div class="hello">
+        <button class="ava-btn" type="button" data-profile aria-label="Мой профиль"><div class="ava u-ava"></div></button>
+        <div>
+          <h1 id="greet"></h1>
+          <p class="date" id="today"></p>
+          <p class="bio" id="u-bio" hidden></p>
+        </div>
       </div>
       <div class="actions">
         <span class="demo-chip" id="dash-chip">демо · данные только в этом браузере</span>
@@ -565,8 +616,8 @@
   <nav class="tabbar glass">
     <button type="button" data-go="overview" class="active"><svg class="i"><use href="#i-grid"/></svg>Обзор</button>
     <button type="button" data-go="builder"><svg class="i"><use href="#i-sliders"/></svg>Конструктор</button>
-    <button type="button" data-download><svg class="i"><use href="#i-download"/></svg>Скачать</button>
     <button type="button" data-go="activity"><svg class="i"><use href="#i-clock"/></svg>Активность</button>
+    <button type="button" data-profile><svg class="i"><use href="#i-user"/></svg>Профиль</button>
   </nav>
 </div>
 
@@ -776,6 +827,11 @@
     return n.charAt(0).toUpperCase() + n.slice(1);
   }
   function signIn(user, remember) {
+    if (!REAL) {
+      var saved = (readJSON('local', 'nova.profiles') || {})[String(user.email).toLowerCase()];
+      if (saved) user = Object.assign({}, user, saved);
+      if (!user.created) user.created = new Date().toISOString();
+    }
     state.user = user;
     writeJSON(remember ? 'local' : 'session', 'nova.user', user);
     writeJSON(remember ? 'session' : 'local', 'nova.user', null);
@@ -830,7 +886,11 @@
   function userFrom(u) {
     var meta = (u && u.user_metadata) || {};
     var email = (u && u.email) || '';
-    return { name: meta.name || nameFromEmail(email), email: email };
+    return {
+      id: u && u.id, name: meta.name || nameFromEmail(email), email: email,
+      avatar: meta.avatar_url || '', bio: meta.bio || '', color: meta.color || 'gold',
+      created: (u && u.created_at) || ''
+    };
   }
   // Понятный текст вместо английской ошибки сервера.
   function authError(err) {
@@ -1226,6 +1286,307 @@
     return ((parts[0] || '?').charAt(0) + (parts[1] ? parts[1].charAt(0) : '')).toUpperCase();
   }
 
+  // ---------- Профиль ----------
+  var COLORS = {
+    gold: { name: 'Золото', a: '#ffe07a', b: '#f39a1f' },
+    fire: { name: 'Огонь', a: '#ffb37a', b: '#ef4e26' },
+    mint: { name: 'Мята', a: '#a6f5cc', b: '#1fae6c' },
+    sky: { name: 'Небо', a: '#a8dcff', b: '#2f76ec' },
+    violet: { name: 'Фиолет', a: '#dcbcff', b: '#7a3cf0' },
+    rose: { name: 'Роза', a: '#ffbdd6', b: '#e3407c' }
+  };
+  // Картинку показываем только из своего хранилища (или из демо), чтобы в профиль нельзя было подсунуть чужую ссылку.
+  function safeAvatar(url) {
+    url = String(url || '');
+    if (/^data:image\/(jpeg|png|webp);base64,[a-z0-9+\/=]+$/i.test(url)) return url;
+    if (REAL && url.indexOf(AUTH.supabaseUrl + '/storage/v1/object/public/avatars/') === 0) return url;
+    return '';
+  }
+  function paintAva(el, u, override) {
+    var c = COLORS[u.color] || COLORS.gold;
+    var src = override !== undefined ? override : safeAvatar(u.avatar);
+    el.style.background = 'linear-gradient(135deg, ' + c.a + ', ' + c.b + ')';
+    el.style.setProperty('--ring', c.b);
+    el.classList.toggle('has-img', !!src);
+    el.textContent = '';
+    if (src) {
+      var img = document.createElement('img');
+      img.alt = '';
+      img.src = src;
+      img.onerror = function () { el.classList.remove('has-img'); el.textContent = initials(u.name); };
+      el.appendChild(img);
+    } else {
+      el.textContent = initials(u.name);
+    }
+  }
+  function sinceText(iso) {
+    var d = iso ? new Date(iso) : null;
+    if (!d || isNaN(d)) return '';
+    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).replace(/\s*г\.?$/, '');
+  }
+
+  // Фото: обрезка до квадрата. Тянешь пальцем, ползунок или щипок — масштаб.
+  var OUT_SIZE = 384;
+  function cropper(img, mount) {
+    var S = 280, dpr = Math.min(window.devicePixelRatio || 1, 3);
+    var cv = document.createElement('canvas');
+    cv.width = Math.round(S * dpr); cv.height = Math.round(S * dpr);
+    cv.setAttribute('aria-label', 'Фото: двигай, чтобы выбрать, что будет видно');
+    var ctx = cv.getContext('2d');
+    var iw = img.naturalWidth, ih = img.naturalHeight;
+    var base = Math.max(S / iw, S / ih), zoom = 1, ox = 0, oy = 0;
+    function size() { return { w: iw * base * zoom, h: ih * base * zoom }; }
+    function clamp() {
+      var z = size(), mx = (z.w - S) / 2, my = (z.h - S) / 2;
+      ox = Math.max(-mx, Math.min(mx, ox)); oy = Math.max(-my, Math.min(my, oy));
+    }
+    function paint(c, k) {
+      var z = size();
+      c.drawImage(img, (S / 2 - z.w / 2 + ox) * k, (S / 2 - z.h / 2 + oy) * k, z.w * k, z.h * k);
+    }
+    function draw() {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      paint(ctx, dpr);
+      // Затемняем всё, кроме рамки, — как будет выглядеть аватар.
+      var r = S * 0.29, m = 14, x = m, y = m, w = S - 2 * m, h = S - 2 * m;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.beginPath();
+      ctx.rect(0, 0, S, S);
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x, y, x, y + h, r); ctx.arcTo(x, y + h, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x + w, y, r); ctx.arcTo(x + w, y, x, y, r);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(0,0,0,.55)';
+      ctx.fill('evenodd');
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(255,201,64,.9)'; ctx.lineWidth = 2; ctx.stroke();
+    }
+    var range = document.createElement('input');
+    range.type = 'range'; range.min = '1'; range.max = '4'; range.step = '0.01'; range.value = '1';
+    range.setAttribute('aria-label', 'Масштаб');
+    function setZoom(z) { zoom = Math.max(1, Math.min(4, z)); range.value = String(zoom); clamp(); draw(); }
+    range.addEventListener('input', function () { setZoom(parseFloat(range.value)); });
+    var pts = {}, pinch = null;
+    cv.addEventListener('pointerdown', function (e) { cv.setPointerCapture(e.pointerId); pts[e.pointerId] = { x: e.clientX, y: e.clientY }; });
+    cv.addEventListener('pointermove', function (e) {
+      var p = pts[e.pointerId]; if (!p) return;
+      var ids = Object.keys(pts);
+      if (ids.length === 2) {
+        var o = pts[ids[0] == e.pointerId ? ids[1] : ids[0]];
+        var d = Math.hypot(e.clientX - o.x, e.clientY - o.y);
+        if (pinch) setZoom(pinch.zoom * d / pinch.d); else pinch = { d: d, zoom: zoom };
+      } else {
+        var k = S / cv.getBoundingClientRect().width;
+        ox += (e.clientX - p.x) * k; oy += (e.clientY - p.y) * k; clamp(); draw();
+      }
+      p.x = e.clientX; p.y = e.clientY;
+    });
+    function up(e) { delete pts[e.pointerId]; pinch = null; }
+    cv.addEventListener('pointerup', up);
+    cv.addEventListener('pointercancel', up);
+    cv.addEventListener('wheel', function (e) { e.preventDefault(); setZoom(zoom * (e.deltaY < 0 ? 1.08 : 1 / 1.08)); }, { passive: false });
+    var zoomRow = document.createElement('label');
+    zoomRow.className = 'zoom';
+    zoomRow.innerHTML = '<span>−</span>';
+    zoomRow.appendChild(range);
+    zoomRow.insertAdjacentHTML('beforeend', '<span>+</span>');
+    mount.appendChild(cv);
+    mount.appendChild(zoomRow);
+    draw();
+    return {
+      result: function () {
+        var out = document.createElement('canvas');
+        out.width = OUT_SIZE; out.height = OUT_SIZE;
+        var o = out.getContext('2d');
+        o.fillStyle = '#000'; o.fillRect(0, 0, OUT_SIZE, OUT_SIZE);
+        // Рамка внутри поля — 14px отступа; переводим её в квадрат OUT_SIZE.
+        var m = 14, k = OUT_SIZE / (S - 2 * m);
+        o.translate(-m * k, -m * k);
+        paint(o, k);
+        return out;
+      }
+    };
+  }
+  function canvasToBlob(cv) {
+    return new Promise(function (resolve, reject) {
+      if (cv.toBlob) cv.toBlob(function (b) { if (b) resolve(b); else reject(new Error('toBlob')); }, 'image/jpeg', 0.88);
+      else reject(new Error('toBlob'));
+    });
+  }
+  function loadImage(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () { resolve(img); };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('image')); };
+      img.src = url;
+    });
+  }
+  function storageError(err) {
+    var msg = String((err && err.message) || '');
+    if (/too large|payload|exceeded the maximum/i.test(msg)) return 'Фото слишком большое. Выбери другое.';
+    if (/mime|content type|not supported/i.test(msg)) return 'Такой формат не подходит. Нужна картинка JPG или PNG.';
+    if (/row-level security|unauthorized|jwt|403/i.test(msg)) return 'Сессия устарела. Выйди и войди в кабинет заново.';
+    return authError(err).text;
+  }
+
+  function openProfile() {
+    var u = state.user;
+    if (!u || $('.modal.profile-modal')) return;
+    var draft = { color: u.color || 'gold', photo: null, removePhoto: false };
+    var m = document.createElement('div');
+    m.className = 'modal profile-modal';
+    m.innerHTML =
+      '<div class="box glass profile" role="dialog" aria-modal="true" aria-labelledby="p-title">' +
+        '<div class="panel-head"><div><h2 id="p-title">Мой профиль</h2><p>Фото, имя и пара слов о себе.</p></div>' +
+        '<button class="icon-btn" type="button" data-close aria-label="Закрыть">' + use('x') + '</button></div>' +
+        '<div class="p-form">' +
+          '<div class="p-top"><button class="ava-btn" type="button" data-pick aria-label="Сменить фото"><div class="ava" id="p-ava"></div></button>' +
+            '<div class="p-btns"><div class="row-btns"><button class="btn-glass sm" type="button" data-pick>' + use('camera') + '<span>Сменить фото</span></button>' +
+            '<button class="btn-glass sm" type="button" data-unphoto>' + use('trash') + '<span>Убрать</span></button></div>' +
+            '<small>Подойдёт любое фото с телефона или компьютера.</small></div></div>' +
+          '<div class="field"><label for="p-name">Имя</label><div class="input"><svg class="i lead"><use href="#i-user"/></svg><input id="p-name" type="text" maxlength="40" autocomplete="name"></div><small class="err" aria-live="polite"></small></div>' +
+          '<div class="field"><label for="p-bio">О себе <span class="count" id="p-count"></span></label><textarea id="p-bio" maxlength="120" rows="2" placeholder="Например: играю в CS2 и настраиваю Windows под себя"></textarea></div>' +
+          '<div class="field"><label>Цвет профиля</label><div class="swatches" role="radiogroup" aria-label="Цвет профиля"></div></div>' +
+          '<div class="p-meta"><span>Почта: <b class="p-mail"></b> <span class="ok">· подтверждена</span></span><span class="p-since"></span></div>' +
+          '<div class="row"><button class="btn-glass sm" type="button" data-close>Отмена</button><button class="btn-gold sm" type="button" data-save>' + use('check') + '<span>Сохранить</span></button></div>' +
+        '</div>' +
+        '<div class="crop" hidden><p>Двигай фото пальцем, увеличивай ползунком.</p><div class="crop-stage"></div>' +
+          '<div class="row" style="align-self:stretch"><button class="btn-glass sm" type="button" data-crop-back>Назад</button><button class="btn-gold sm" type="button" data-crop-ok>' + use('check') + '<span>Готово</span></button></div></div>' +
+        '<input type="file" accept="image/*" hidden>' +
+      '</div>';
+    var form = $('.p-form', m), crop = $('.crop', m), file = $('input[type=file]', m), ava = $('#p-ava', m);
+    var nameIn = $('#p-name', m), bioIn = $('#p-bio', m), count = $('#p-count', m);
+    nameIn.value = u.name || '';
+    bioIn.value = u.bio || '';
+    $('.p-mail', m).textContent = u.email;
+    $('.ok', m).hidden = !REAL;
+    var since = sinceText(u.created);
+    $('.p-since', m).textContent = since ? 'В Nova с ' + since : '';
+    function updCount() { count.textContent = bioIn.value.length + '/120'; }
+    bioIn.addEventListener('input', updCount); updCount();
+
+    function preview() {
+      var tmp = Object.assign({}, u, { name: nameIn.value.trim() || u.name, color: draft.color });
+      var src = draft.photo ? draft.photo.url : (draft.removePhoto ? '' : undefined);
+      paintAva(ava, tmp, src);
+      $('[data-unphoto]', m).hidden = !(draft.photo || (!draft.removePhoto && safeAvatar(u.avatar)));
+    }
+    nameIn.addEventListener('input', preview);
+
+    var sw = $('.swatches', m);
+    Object.keys(COLORS).forEach(function (key) {
+      var c = COLORS[key], b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('role', 'radio'); b.title = c.name; b.setAttribute('aria-label', c.name);
+      b.style.background = 'linear-gradient(135deg, ' + c.a + ', ' + c.b + ')';
+      b.setAttribute('aria-checked', String(key === draft.color));
+      b.addEventListener('click', function () {
+        draft.color = key;
+        $$('button', sw).forEach(function (x) { x.setAttribute('aria-checked', String(x === b)); });
+        preview();
+      });
+      sw.appendChild(b);
+    });
+
+    var cropCtl = null;
+    $$('[data-pick]', m).forEach(function (b) { b.addEventListener('click', function () { file.value = ''; file.click(); }); });
+    file.addEventListener('change', function () {
+      var f = file.files && file.files[0];
+      if (!f) return;
+      if (!/^image\//.test(f.type || 'image/')) { toast({ title: 'Это не картинка', text: 'Выбери фото в формате JPG, PNG или HEIC.', icon: 'camera' }); return; }
+      if (f.size > 25 * 1024 * 1024) { toast({ title: 'Фото слишком большое', text: 'Выбери фото до 25 МБ.', icon: 'camera' }); return; }
+      loadImage(f).then(function (img) {
+        var stage = $('.crop-stage', m); stage.innerHTML = '';
+        cropCtl = cropper(img, stage);
+        form.hidden = true; crop.hidden = false;
+      }, function () {
+        toast({ title: 'Не получилось открыть фото', text: 'Попробуй другое фото или сохрани его как JPG.', icon: 'camera' });
+      });
+    });
+    $('[data-crop-back]', m).addEventListener('click', function () { crop.hidden = true; form.hidden = false; });
+    $('[data-crop-ok]', m).addEventListener('click', function () {
+      var cv = cropCtl.result();
+      draft.photo = { canvas: cv, url: cv.toDataURL('image/jpeg', 0.88) };
+      draft.removePhoto = false;
+      crop.hidden = true; form.hidden = false;
+      preview();
+    });
+    $('[data-unphoto]', m).addEventListener('click', function () { draft.photo = null; draft.removePhoto = true; preview(); });
+
+    function close() { m.remove(); document.removeEventListener('keydown', onKey); }
+    function onKey(e) { if (e.key === 'Escape') close(); }
+    m.addEventListener('click', function (e) { if (e.target === m || e.target.closest('[data-close]')) close(); });
+    document.addEventListener('keydown', onKey);
+
+    $('[data-save]', m).addEventListener('click', function () {
+      var name = nameIn.value.trim().replace(/\s+/g, ' ');
+      if (name.length < 2) { setErr(nameIn, 'Напиши имя — хотя бы 2 буквы'); nameIn.focus(); return; }
+      setErr(nameIn, '');
+      var bio = bioIn.value.trim().replace(/\s+/g, ' ').slice(0, 120);
+      var btn = this, stop = spin(btn, 'Сохраняю…');
+      saveProfile({ name: name, bio: bio, color: draft.color, photo: draft.photo, removePhoto: draft.removePhoto })
+        .then(function () {
+          stop(); close();
+          renderDash();
+          log(draft.photo ? 'Новое фото профиля' : 'Профиль обновлён');
+          toast({ title: 'Профиль сохранён', text: 'Так тебя теперь видно в Nova.', icon: 'user', kind: 'ok' });
+        })
+        .catch(function (err) {
+          stop();
+          toast({ title: 'Не получилось сохранить', text: storageError(err), icon: 'user' });
+        });
+    });
+
+    preview();
+    document.body.appendChild(m);
+    nameIn.blur();
+  }
+
+  function saveProfile(p) {
+    var u = state.user;
+    if (!REAL) {
+      var avatar = p.photo ? p.photo.url : (p.removePhoto ? '' : u.avatar);
+      var extra = { name: p.name, bio: p.bio, color: p.color, avatar: avatar };
+      var all = readJSON('local', 'nova.profiles') || {};
+      all[String(u.email).toLowerCase()] = extra;
+      writeJSON('local', 'nova.profiles', all);
+      signIn(Object.assign({}, u, extra), remembered() || !!readJSON('local', 'nova.user'));
+      return wait(500);
+    }
+    return sb().then(function (c) {
+      return c.auth.getSession().then(function (r) {
+        var sess = r && r.data && r.data.session;
+        if (!sess) throw new Error('JWT expired');
+        return { c: c, uid: sess.user.id };
+      });
+    }).then(function (ctx) {
+      var c = ctx.c, path = ctx.uid + '/avatar.jpg';
+      var bucket = c.storage.from('avatars');
+      var step = Promise.resolve(u.avatar);
+      if (p.photo) {
+        step = canvasToBlob(p.photo.canvas).then(function (blob) {
+          return bucket.upload(path, blob, { upsert: true, contentType: 'image/jpeg', cacheControl: '3600' });
+        }).then(function (res) {
+          if (res.error) throw res.error;
+          return bucket.getPublicUrl(path).data.publicUrl + '?v=' + Date.now();
+        });
+      } else if (p.removePhoto) {
+        step = bucket.remove([path]).then(function (res) { if (res.error) throw res.error; return ''; });
+      }
+      return step.then(function (avatarUrl) {
+        return c.auth.updateUser({ data: { name: p.name, bio: p.bio, color: p.color, avatar_url: avatarUrl || '' } });
+      }).then(function (res) {
+        if (res.error) throw res.error;
+        signIn(userFrom(res.data.user), remembered());
+      });
+    });
+  }
+  $$('[data-profile]').forEach(function (b) { b.addEventListener('click', openProfile); });
+
   function counts() {
     var c = {};
     CATS.forEach(function (cat) { c[cat.id] = { on: 0, total: 0 }; });
@@ -1246,7 +1607,10 @@
     $('#day-name').textContent = now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }).replace(/^\d+\s*/, '') + ', ' + now.toLocaleDateString('ru-RU', { weekday: 'long' });
     $$('.u-name').forEach(function (el) { el.textContent = u.name; });
     $$('.u-mail').forEach(function (el) { el.textContent = u.email; });
-    $$('.u-ava').forEach(function (el) { el.textContent = initials(u.name); });
+    $$('.u-ava').forEach(function (el) { paintAva(el, u); });
+    var bio = $('#u-bio');
+    bio.textContent = u.bio || '';
+    bio.hidden = !u.bio;
     renderStats();
     renderSteps();
     renderTabs();
