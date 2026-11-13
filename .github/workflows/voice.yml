@@ -1,0 +1,42 @@
+name: Голосовые команды (Vosk)
+
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'voice.json'
+      - 'tests/Test-Voice.ps1'
+      - 'tests/voice/**'
+      - '.github/workflows/voice.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  voice:
+    name: Vosk на Windows
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      # Only ASCII in run blocks: GitHub saves them without BOM, Windows PowerShell 5.1 would misread Cyrillic.
+      - name: Discover Vosk release and model hashes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $headers = @{ 'User-Agent' = 'nova-ci'; Authorization = "Bearer $env:GH_TOKEN" }
+          $releases = Invoke-RestMethod 'https://api.github.com/repos/alphacep/vosk-api/releases?per_page=4' -Headers $headers
+          foreach ($rel in $releases) {
+            Write-Host ('== {0} prerelease={1} published={2}' -f $rel.tag_name, $rel.prerelease, $rel.published_at)
+            foreach ($a in $rel.assets) { if ($a.name -match 'win') { Write-Host ('   {0}  {1}  {2}  {3}' -f $a.name, $a.size, $a.digest, $a.browser_download_url) } }
+          }
+          $model = 'https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip'
+          Invoke-WebRequest $model -OutFile "$env:RUNNER_TEMP\model.zip"
+          Write-Host ('MODEL {0} size={1} sha256={2}' -f $model, (Get-Item "$env:RUNNER_TEMP\model.zip").Length, (Get-FileHash "$env:RUNNER_TEMP\model.zip" -Algorithm SHA256).Hash)
+          Expand-Archive "$env:RUNNER_TEMP\model.zip" -DestinationPath "$env:RUNNER_TEMP\model" -Force
+          Get-ChildItem "$env:RUNNER_TEMP\model" -Recurse -Depth 2 | Select-Object -First 30 | ForEach-Object { Write-Host $_.FullName }
