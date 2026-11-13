@@ -680,6 +680,53 @@ function Save-NovaJournal {
     [System.IO.File]::WriteAllText($Path, $json, (New-Object System.Text.UTF8Encoding($false)))
 }
 
+# Удаляет приложение из Store. Сначала у всех пользователей; если Windows не даёт
+# (бывает, когда приложение числится за удалённым или системным профилем) — у текущего.
+# Отдельно убирает его из образа, чтобы оно не появилось у новых пользователей.
+function Remove-NovaApp {
+    param([Parameter(Mandatory)]$App, [int]$Build)
+    $errors = New-Object System.Collections.Generic.List[string]
+    foreach ($package in $App.Packages) {
+        $done = $false
+        if ($Build -ge 17763) {
+            try {
+                Remove-AppxPackage -Package $package.PackageFullName -AllUsers -ErrorAction Stop
+                $done = $true
+            } catch {
+                $errors.Add($_.Exception.Message.Trim())
+            }
+        }
+        if (-not $done) {
+            try {
+                Remove-AppxPackage -Package $package.PackageFullName -ErrorAction Stop
+            } catch {
+                $errors.Add($_.Exception.Message.Trim())
+            }
+        }
+    }
+    foreach ($package in $App.Provisioned) {
+        try {
+            Remove-AppxProvisionedPackage -Online -PackageName $package.PackageName -ErrorAction Stop | Out-Null
+        } catch {
+            $errors.Add($_.Exception.Message.Trim())
+        }
+    }
+
+    # Главное — результат: у текущего пользователя приложения нет и в образе его нет.
+    $removed = $true
+    if ($errors.Count -gt 0) {
+        $leftForUser = @(Get-AppxPackage -Name $App.Name -ErrorAction SilentlyContinue)
+        $leftProvisioned = @()
+        try {
+            $leftProvisioned = @(Get-AppxProvisionedPackage -Online -ErrorAction Stop | Where-Object { $_.DisplayName -like $App.Name })
+        } catch {
+            $errors.Add($_.Exception.Message.Trim())
+        }
+        $removed = ($leftForUser.Count -eq 0) -and ($leftProvisioned.Count -eq 0)
+    }
+    return [pscustomobject]@{ Removed = $removed; Errors = @($errors) }
+}
+
 function Invoke-NovaApply {
     param([Parameter(Mandatory)]$Context, [Parameter(Mandatory)]$Plan, $AppPlan)
     $backupPath = Join-Path (Get-NovaDataDir) ('backups\backup-{0}.json' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -704,25 +751,15 @@ function Invoke-NovaApply {
     }
 
     if ($null -ne $AppPlan) {
-        $build = $Context.System.Build
         foreach ($app in @($AppPlan.Remove | Where-Object { $_.Present })) {
-            try {
-                foreach ($package in $app.Packages) {
-                    if ($build -ge 17763) {
-                        Remove-AppxPackage -Package $package.PackageFullName -AllUsers -ErrorAction Stop
-                    } else {
-                        Remove-AppxPackage -Package $package.PackageFullName -ErrorAction Stop
-                    }
-                }
-                foreach ($package in $app.Provisioned) {
-                    Remove-AppxProvisionedPackage -Online -PackageName $package.PackageName -ErrorAction Stop | Out-Null
-                }
+            $removal = Remove-NovaApp -App $app -Build $Context.System.Build
+            if ($removal.Removed) {
                 [void]$journal.Add([pscustomobject]@{ type = 'appRemoved'; name = $app.Name })
                 $result.AppsRemoved++
                 Write-Nova ('удалено: {0}' -f $app.Name) ok
-            } catch {
+            } else {
                 $result.Failed++
-                Write-Nova ('не удалось удалить {0}: {1}' -f $app.Name, $_.Exception.Message) err
+                Write-Nova ('не удалось удалить {0}: {1}' -f $app.Name, ($removal.Errors -join ' / ')) err
             }
         }
         if ($AppPlan.WingetAvailable) {

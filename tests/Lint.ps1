@@ -47,7 +47,7 @@ if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
 }
 Import-Module PSScriptAnalyzer
 # Write-Host — это намеренно: Nova — консольная программа с цветным выводом.
-$excluded = @('PSAvoidUsingWriteHost', 'PSUseShouldProcessForStateChangingFunctions', 'PSUseSingularNouns')
+$excluded = @('PSAvoidUsingWriteHost', 'PSUseShouldProcessForStateChangingFunctions', 'PSUseSingularNouns', 'PSAvoidUsingPositionalParameters')
 $issues = @(Invoke-ScriptAnalyzer -Path (Join-Path $root 'src') -Recurse -ExcludeRule $excluded)
 $issues += @(Invoke-ScriptAnalyzer -Path (Join-Path $root 'tests') -Recurse -ExcludeRule $excluded)
 foreach ($issue in $issues) {

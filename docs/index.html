@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nova — твоя Windows, настроенная под тебя</title>
+<meta name="description" content="Nova — бесплатный инструмент с открытым кодом: убирает рекламу, слежку и мусор из Windows 10/11, включает тёмную тему и игровые настройки. Всё отменяется в один клик.">
+<meta name="theme-color" content="#07080b">
+<style>
+  :root {
+    --bg: #07080b;
+    --panel: #0d0f14;
+    --panel-2: #11141b;
+    --line: #1c2029;
+    --line-2: #262b36;
+    --text: #e9e6df;
+    --muted: #8b8f99;
+    --dim: #5b606b;
+    --accent: #f5b54a;
+    --accent-soft: rgba(245, 181, 74, 0.14);
+    --bad: #ff6b5b;
+    --ok: #7bd88f;
+    --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --radius: 6px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse at 50% 0%, #000 30%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse at 50% 0%, #000 30%, transparent 75%);
+  }
+  a { color: inherit; }
+  .wrap { width: min(1160px, 100% - 40px); margin: 0 auto; position: relative; }
+  .mono { font-family: var(--mono); }
+
+  /* Верхняя панель */
+  .top {
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    background: rgba(7, 8, 11, 0.78);
+    border-bottom: 1px solid var(--line);
+  }
+  .top .wrap { display: flex; align-items: center; gap: 24px; height: 56px; }
+  .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; font: 700 15px/1 var(--mono); letter-spacing: 0.18em; }
+  .logo-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 14px var(--accent); }
+  .logo small { color: var(--dim); font-weight: 400; letter-spacing: 0.05em; }
+  .nav { display: flex; gap: 22px; margin-left: auto; font: 13px/1 var(--mono); }
+  .nav a { color: var(--muted); text-decoration: none; }
+  .nav a:hover { color: var(--text); }
+
+  /* Кнопки */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 13px 20px; border-radius: var(--radius);
+    border: 1px solid var(--line-2); background: var(--panel-2);
+    color: var(--text); text-decoration: none; font: 600 15px/1 var(--sans);
+    transition: border-color .2s, background .2s, transform .2s;
+  }
+  .btn:hover { border-color: var(--dim); transform: translateY(-1px); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #17120a; }
+  .btn.primary:hover { background: #ffc566; }
+  .btn[aria-disabled="true"] { opacity: .45; pointer-events: none; }
+
+  /* Первый экран */
+  .hero { display: grid; grid-template-columns: 1fr 1.08fr; gap: 48px; align-items: center; padding: 72px 0 56px; }
+  .tag { display: inline-block; font: 12px/1 var(--mono); color: var(--accent); letter-spacing: .06em; padding: 7px 10px; border: 1px solid rgba(245,181,74,.3); border-radius: 4px; background: var(--accent-soft); }
+  h1 { font-size: clamp(40px, 6vw, 68px); line-height: 1.02; letter-spacing: -0.03em; margin: 22px 0 18px; font-weight: 750; }
+  h1 span { color: var(--accent); }
+  .lead { color: var(--muted); font-size: 18px; max-width: 34em; margin: 0 0 30px; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 40px; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .stat { padding: 14px 16px; border-right: 1px solid var(--line); background: var(--panel); }
+  .stat:last-child { border-right: 0; }
+  .stat b { display: block; font: 700 24px/1.1 var(--mono); }
+  .stat span { font: 11px/1.3 var(--mono); color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
+
+  /* Панели в стиле «пульта» */
+  .panel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); overflow: hidden; }
+  .panel-head { display: flex; justify-content: space-between; gap: 12px; padding: 9px 14px; border-bottom: 1px solid var(--line); font: 11px/1.4 var(--mono); color: var(--dim); text-transform: uppercase; letter-spacing: .08em; }
+  .panel-head b { color: var(--muted); font-weight: 500; }
+  .live { color: var(--ok); }
+  .live::before { content: "● "; }
+
+  .viz canvas { display: block; width: 100%; height: 420px; }
+  .viz-foot { display: flex; justify-content: center; padding: 0 0 18px; }
+  .loaded { font: 12px/1 var(--mono); color: var(--accent); padding: 8px 12px; border: 1px solid rgba(245,181,74,.45); border-radius: 4px; background: rgba(245,181,74,.06); letter-spacing: .06em; }
+
+  /* Разделы */
+  section { padding: 64px 0; }
+  .section-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 28px; }
+  .section-head .num { font: 12px/1 var(--mono); color: var(--accent); }
+  h2 { font-size: clamp(28px, 3.6vw, 40px); line-height: 1.1; letter-spacing: -0.02em; margin: 0; }
+  .sub { color: var(--muted); margin: -12px 0 30px; max-width: 46em; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .card { padding: 0; }
+  .card .body { padding: 18px 18px 20px; }
+  .card h3 { margin: 0 0 8px; font-size: 19px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  .meter { display: flex; gap: 3px; margin-top: 16px; }
+  .meter i { flex: 1; height: 4px; background: var(--line-2); border-radius: 1px; }
+  .meter i.on { background: var(--accent); }
+
+  /* Терминал */
+  .terminal { font: 13.5px/1.65 var(--mono); }
+  .terminal .screen { padding: 18px 20px; min-height: 470px; white-space: pre-wrap; overflow-x: auto; }
+  .t-dim { color: var(--dim); } .t-ok { color: var(--ok); } .t-title { color: #6fd3e8; } .t-acc { color: #e083e0; } .t-gray { color: var(--muted); } .t-warn { color: var(--accent); }
+  .cursor { display: inline-block; width: .6em; height: 1.1em; background: var(--accent); vertical-align: text-bottom; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .replay { background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; padding: 0; }
+  .replay:hover { color: var(--text); }
+
+  /* Шаги */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; counter-reset: step; }
+  .step { padding: 20px; position: relative; }
+  .step::before { counter-increment: step; content: "0" counter(step); font: 700 36px/1 var(--mono); color: var(--accent); display: block; margin-bottom: 14px; }
+  .step h3 { margin: 0 0 6px; font-size: 18px; }
+  .step p { margin: 0; color: var(--muted); font-size: 15px; }
+  code { font: 0.92em var(--mono); background: var(--panel-2); border: 1px solid var(--line); padding: 1px 6px; border-radius: 4px; color: var(--text); }
+
+  /* Безопасность */
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .list { list-style: none; margin: 0; padding: 18px 20px; }
+  .list li { padding: 9px 0 9px 28px; position: relative; border-bottom: 1px dashed var(--line); color: var(--muted); }
+  .list li:last-child { border-bottom: 0; }
+  .list li::before { content: "✓"; position: absolute; left: 2px; color: var(--ok); font-family: var(--mono); }
+  .list.no li::before { content: "×"; color: var(--bad); }
+  .list b { color: var(--text); font-weight: 600; }
+
+  /* Поддержка */
+  .support { display: grid; grid-template-columns: 1.2fr 1fr; gap: 14px; align-items: stretch; }
+  .support .body { padding: 22px; }
+  .support p { color: var(--muted); margin: 0 0 18px; }
+  .donate { display: flex; flex-wrap: wrap; gap: 10px; }
+  .note { font: 12px/1.5 var(--mono); color: var(--dim); margin-top: 14px; }
+
+  /* Вопросы */
+  details { border-bottom: 1px solid var(--line); }
+  details:first-of-type { border-top: 1px solid var(--line); }
+  summary { cursor: pointer; list-style: none; padding: 18px 40px 18px 0; font-weight: 600; font-size: 17px; position: relative; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; position: absolute; right: 6px; top: 14px; font: 400 24px/1 var(--mono); color: var(--accent); transition: transform .2s; }
+  details[open] summary::after { transform: rotate(45deg); }
+  details p { margin: 0 0 20px; color: var(--muted); max-width: 52em; }
+
+  footer { border-top: 1px solid var(--line); padding: 30px 0 44px; color: var(--dim); font: 12px/1.7 var(--mono); }
+  footer .wrap { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+
+  .reveal { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+
+  @media (max-width: 920px) {
+    .hero { grid-template-columns: 1fr; padding-top: 44px; gap: 32px; }
+    .grid, .steps { grid-template-columns: 1fr 1fr; }
+    .two, .support { grid-template-columns: 1fr; }
+    .nav a:not(.nav-gh) { display: none; }
+  }
+  @media (max-width: 600px) {
+    .wrap { width: calc(100% - 28px); }
+    .grid, .steps { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: 1fr 1fr; }
+    .stat:nth-child(2) { border-right: 0; }
+    .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+    .viz canvas { height: 340px; }
+    .lead { font-size: 17px; }
+    .terminal { font-size: 11.5px; }
+    .terminal .screen { padding: 14px; min-height: 420px; }
+    section { padding: 48px 0; }
+    .btn { width: 100%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+    .cursor { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="#"><span class="logo-dot"></span>NOVA <small>v0.1</small></a>
+    <nav class="nav">
+      <a href="#features">Возможности</a>
+      <a href="#demo">Как выглядит</a>
+      <a href="#install">Установка</a>
+      <a href="#faq">Вопросы</a>
+      <a class="nav-gh" data-link="repo" href="#">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <section class="hero">
+      <div>
+        <span class="tag">// бесплатно · открытый код · Windows 10/11</span>
+        <h1>Твоя Windows.<br><span>Без лишнего.</span></h1>
+        <p class="lead">Nova убирает рекламу, слежку и мусорные приложения, включает тёмную тему и игровые настройки. Ты сам выбираешь, что менять, — и в один клик можешь всё вернуть.</p>
+        <div class="cta">
+          <a class="btn primary" data-link="download" href="#">Скачать бесплатно</a>
+          <a class="btn" href="#install">Как установить</a>
+        </div>
+        <div class="stats">
+          <div class="stat"><b id="stat-tweaks">29</b><span>настроек</span></div>
+          <div class="stat"><b>27</b><span>лишних приложений</span></div>
+          <div class="stat"><b>1</b><span>клик — отмена</span></div>
+          <div class="stat"><b>0 ₽</b><span>навсегда</span></div>
+        </div>
+      </div>
+
+      <div class="panel viz" aria-label="Схема: проблемы Windows проходят через Nova и превращаются в настройки под тебя">
+        <div class="panel-head"><b>nova / signal flow</b><span class="live">live</span></div>
+        <canvas id="flow"></canvas>
+        <div class="viz-foot"><span class="loaded">config.json / LOADED</span></div>
+      </div>
+    </section>
+  </div>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="section-head"><span class="num">01</span><h2>Что делает Nova</h2></div>
+      <p class="sub">Только проверенные настройки Windows — никаких «ускорителей на +200% FPS». Каждую можно включить или выключить.</p>
+      <div class="grid">
+        <article class="panel card reveal">
+          <div class="panel-head"><b>01 / приватность</b><span>10 настроек</span></div>
+          <div class="body">
+            <h3>Меньше слежки</h3>
+            <p>Минимум телеметрии, без рекламного идентификатора и истории действий. Copilot и Recall выключены.</p>
+            <div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div>
+          </div>
+        </article>
+        <article class="panel card reveal">
+          <div class="panel-head"><b>02 / реклама</b><span>чистый «Пуск»</span></div>
+          <div class="body">
+            <h3>Без рекламы</h3>
+            <p>Никаких «советов» в «Пуске», самоустанавливающихся игр, рекламы OneDrive и Bing в поиске.</p>
+            <div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></div>
+          </div>
+        </article>
+        <article class="panel card reveal">
+          <div class="panel-head"><b>03 / приложения</b><span>27 в списке</span></div>
+          <div class="body">
+            <h3>Без мусора</h3>
+            <p>Удаляет предустановленное: новости, погоду, пасьянсы, Clipchamp, Teams и другое. Что оставить — решаешь ты.</p>
+            <div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i></div>
+          </div>
+        </article>
+        <article class="panel card reveal">
+          <div class="panel-head"><b>04 / интерфейс</b><span>11 настроек</span></div>
+          <div class="body">
+            <h3>Удобный интерфейс</h3>
+            <p>Тёмная тема, полное меню по правому клику, видимые расширения файлов, панель задач без виджетов.</p>
+            <div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+          </div>
+        </article>
+        <article class="panel card reveal">
+          <div class="panel-head"><b>05 / игры</b><span>8 настроек</span></div>
+          <div class="body">
+            <h3>Игры и скорость</h3>
+            <p>Игровой режим, без фоновой записи Game DVR, быстрые меню, автозагрузка без пауз, мышь без ускорения.</p>
+            <div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+          </div>
+        </article>
+        <article class="panel card reveal">
+          <div class="panel-head"><b>06 / безопасность</b><span class="live">undo</span></div>
+          <div class="body">
+            <h3>Отмена в один клик</h3>
+            <p>Перед изменениями — точка восстановления и резервная копия. Любой запуск можно отменить из меню.</p>
+            <div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="demo">
+    <div class="wrap">
+      <div class="section-head"><span class="num">02</span><h2>Как это выглядит</h2></div>
+      <p class="sub">Сначала Nova показывает, что изменит, и только потом спрашивает разрешения.</p>
+      <div class="panel terminal reveal">
+        <div class="panel-head"><b>powershell — nova</b><button class="replay" id="replay" type="button">↻ повторить</button></div>
+        <div class="screen" id="screen" aria-live="off"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <div class="section-head"><span class="num">03</span><h2>Установка за минуту</h2></div>
+      <div class="steps">
+        <div class="panel step reveal">
+          <h3>Скачай</h3>
+          <p>Скачай архив и распакуй его в любую папку.</p>
+        </div>
+        <div class="panel step reveal">
+          <h3>Выбери, что менять</h3>
+          <p>Открой <code>config.json</code>: <code>true</code> — включить, <code>false</code> — выключить. Можно пропустить — всё уже настроено.</p>
+        </div>
+        <div class="panel step reveal">
+          <h3>Запусти</h3>
+          <p>Дважды кликни <code>Nova.cmd</code>, выбери «Посмотреть», затем «Применить». Перезагрузи компьютер.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="safe">
+    <div class="wrap">
+      <div class="section-head"><span class="num">04</span><h2>Честно и безопасно</h2></div>
+      <div class="two">
+        <div class="panel reveal">
+          <div class="panel-head"><b>что nova делает</b></div>
+          <ul class="list">
+            <li><b>Показывает план</b> — что изменится, до того, как что-то изменится.</li>
+            <li><b>Создаёт точку восстановления</b> Windows перед изменениями.</li>
+            <li><b>Сохраняет, как было</b>, и умеет вернуть всё обратно.</li>
+            <li><b>Открытый код</b> — любой может проверить, что внутри.</li>
+          </ul>
+        </div>
+        <div class="panel reveal">
+          <div class="panel-head"><b>чего nova не делает</b></div>
+          <ul class="list no">
+            <li><b>Не содержит Windows</b> и не раздаёт её образы — работает с твоей системой.</li>
+            <li><b>Не активирует Windows</b> и не обходит лицензию.</li>
+            <li><b>Не трогает Edge и Microsoft Store</b> — без них ломаются другие программы.</li>
+            <li><b>Не собирает данные</b> и ничего никуда не отправляет.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="support">
+    <div class="wrap">
+      <div class="section-head"><span class="num">05</span><h2>Поддержать проект</h2></div>
+      <div class="support">
+        <div class="panel reveal">
+          <div class="panel-head"><b>donate</b><span>спасибо ♥</span></div>
+          <div class="body">
+            <p>Nova бесплатна и всегда будет бесплатной. Если она тебе помогла — можно поддержать разработку. Это помогает выпускать новые версии.</p>
+            <div class="donate" id="donate"></div>
+            <div class="note" id="donate-note"></div>
+          </div>
+        </div>
+        <div class="panel reveal">
+          <div class="panel-head"><b>новости</b></div>
+          <div class="body">
+            <p>Новые версии, разборы настроек Windows и ответы на вопросы.</p>
+            <div class="donate" id="channel"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="wrap">
+      <div class="section-head"><span class="num">06</span><h2>Вопросы</h2></div>
+      <details>
+        <summary>Это пиратская Windows?</summary>
+        <p>Нет. Nova не содержит Windows и не активирует её. Это набор настроек, который ты запускаешь на своей обычной, лицензионной Windows 10 или 11.</p>
+      </details>
+      <details>
+        <summary>Это безопасно?</summary>
+        <p>Nova сначала показывает, что изменит, затем создаёт точку восстановления и резервную копию. Любой запуск отменяется из меню. Весь код открыт. Если хочешь перестраховаться — в первый раз запусти на виртуальной машине (например, в бесплатном VirtualBox).</p>
+      </details>
+      <details>
+        <summary>Windows пишет «Windows защитила ваш компьютер». Что делать?</summary>
+        <p>Так Windows реагирует на любые программы без платной цифровой подписи. Нажми «Подробнее» → «Выполнить в любом случае».</p>
+      </details>
+      <details>
+        <summary>Можно выбрать, что включать?</summary>
+        <p>Да. Всё в файле <code>config.json</code>: <code>true</code> — включено, <code>false</code> — выключено. Пункт 4 в меню Nova открывает этот файл. Описание каждой настройки — в <code>src/tweaks.json</code>.</p>
+      </details>
+      <details>
+        <summary>Как вернуть удалённое приложение?</summary>
+        <p>Найди его в Microsoft Store и установи заново. Настройки системы Nova возвращает сама — пункт «Отменить последний запуск».</p>
+      </details>
+      <details>
+        <summary>Сколько стоит?</summary>
+        <p>Нисколько. Nova бесплатна, а поддержать проект можно донатом — по желанию.</p>
+      </details>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>NOVA — открытый проект. Не связан с Microsoft.</span>
+    <span>Windows — товарный знак Microsoft Corporation.</span>
+  </div>
+</footer>
+
+<script>
+  // ---- Ссылки проекта: заполни, и кнопки на сайте появятся сами ----
+  var SITE = {
+    repo: 'https://github.com/vezin0v0-cmyk/my-project',
+    download: 'https://github.com/vezin0v0-cmyk/my-project/archive/refs/heads/main.zip',
+    donate: [
+      { name: 'Boosty', url: '' },
+      { name: 'DonationAlerts', url: '' }
+    ],
+    channel: { name: 'Telegram-канал', url: '' }
+  };
+
+  (function links() {
+    document.querySelectorAll('[data-link]').forEach(function (a) {
+      var url = SITE[a.getAttribute('data-link')];
+      if (url) { a.href = url; a.target = '_blank'; a.rel = 'noopener'; }
+    });
+    function button(item, primary) {
+      var a = document.createElement('a');
+      a.className = 'btn' + (primary ? ' primary' : '');
+      a.textContent = item.name;
+      if (item.url) { a.href = item.url; a.target = '_blank'; a.rel = 'noopener'; }
+      else { a.setAttribute('aria-disabled', 'true'); }
+      return a;
+    }
+    var donate = document.getElementById('donate');
+    SITE.donate.forEach(function (d, i) { donate.appendChild(button(d, i === 0)); });
+    if (!SITE.donate.some(function (d) { return d.url; })) {
+      document.getElementById('donate-note').textContent = '// ссылки на донат появятся совсем скоро';
+    }
+    document.getElementById('channel').appendChild(button(SITE.channel, false));
+  })();
+
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---- Плавное появление блоков ----
+  (function reveal() {
+    var items = document.querySelectorAll('.reveal');
+    if (!('IntersectionObserver' in window) || reduceMotion) {
+      items.forEach(function (el) { el.classList.add('in'); });
+      return;
+    }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { threshold: 0.12 });
+    items.forEach(function (el) { io.observe(el); });
+  })();
+
+  // ---- Схема «до → Nova → после» с бегущими частицами ----
+  (function flow() {
+    var canvas = document.getElementById('flow');
+    var ctx = canvas.getContext('2d');
+    var LEFT = ['телеметрия', 'реклама в «Пуске»', 'Bing в поиске', 'Copilot', 'Recall', 'виджеты', 'Game DVR', 'Clipchamp', 'пасьянсы', 'новости'];
+    var RIGHT = ['приватность', 'чистый «Пуск»', 'тёмная тема', 'игровой режим', 'быстрые меню', 'без мусора', 'отмена в 1 клик'];
+    var W = 0, H = 0, dpr = 1, paths = [], particles = [], running = false, visible = true, t0 = 0;
+
+    function bezier(p, t) {
+      var u = 1 - t;
+      return {
+        x: u * u * u * p[0] + 3 * u * u * t * p[2] + 3 * u * t * t * p[4] + t * t * t * p[6],
+        y: u * u * u * p[1] + 3 * u * u * t * p[3] + 3 * u * t * t * p[5] + t * t * t * p[7]
+      };
+    }
+
+    function layout() {
+      var rect = canvas.getBoundingClientRect();
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = rect.width; H = rect.height;
+      canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      var small = W < 520;
+      var left = small ? LEFT.slice(0, 8) : LEFT;
+      var right = small ? RIGHT.slice(0, 6) : RIGHT;
+      var cx = W / 2, cy = H / 2;
+      // Отступы считаем по реальной ширине подписей, чтобы текст не обрезался.
+      ctx.font = (small ? 10 : 11.5) + 'px ui-monospace, Menlo, Consolas, monospace';
+      function widest(list) { return Math.max.apply(null, list.map(function (s) { return ctx.measureText(s).width; })); }
+      var xl = Math.ceil(widest(left)) + 18, xr = W - Math.ceil(widest(right)) - 20;
+      paths = [];
+      function column(labels, x, side) {
+        var top = 34, bottom = H - 34, step = (bottom - top) / (labels.length - 1);
+        labels.forEach(function (label, i) {
+          var y = top + i * step;
+          for (var k = 0; k < 5; k++) {
+            var off = (k - 2) * 1.6;
+            var p = side < 0
+              ? [x, y + off, x + (cx - x) * 0.55, y + off, cx - (cx - x) * 0.25, cy + off * 0.3, cx, cy]
+              : [cx, cy, cx + (x - cx) * 0.25, cy + off * 0.3, x - (x - cx) * 0.55, y + off, x, y + off];
+            paths.push({ p: p, side: side, label: k === 2 ? label : null, lx: x, ly: y });
+          }
+        });
+      }
+      column(left, xl, -1);
+      column(right, xr, 1);
+
+      var count = small ? 60 : 110;
+      particles = [];
+      for (var i = 0; i < count; i++) particles.push(spawn(Math.random()));
+    }
+
+    function spawn(t) {
+      // Частица идёт слева в центр, а потом из центра направо.
+      var leftPaths = paths.filter(function (p) { return p.side < 0; });
+      var rightPaths = paths.filter(function (p) { return p.side > 0; });
+      return {
+        a: leftPaths[(Math.random() * leftPaths.length) | 0],
+        b: rightPaths[(Math.random() * rightPaths.length) | 0],
+        t: t === undefined ? 0 : t,
+        v: 0.0016 + Math.random() * 0.0024
+      };
+    }
+
+    function draw(time) {
+      ctx.clearRect(0, 0, W, H);
+      var cx = W / 2, cy = H / 2;
+      var small = W < 520;
+
+      // Нити
+      paths.forEach(function (path) {
+        var p = path.p;
+        ctx.beginPath();
+        ctx.moveTo(p[0], p[1]);
+        ctx.bezierCurveTo(p[2], p[3], p[4], p[5], p[6], p[7]);
+        ctx.strokeStyle = path.side < 0 ? 'rgba(255,255,255,0.07)' : 'rgba(245,181,74,0.16)';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+      });
+
+      // Подписи
+      ctx.font = (small ? 10 : 11.5) + 'px ui-monospace, Menlo, Consolas, monospace';
+      ctx.textBaseline = 'middle';
+      paths.forEach(function (path) {
+        if (!path.label) return;
+        if (path.side < 0) {
+          ctx.textAlign = 'right';
+          ctx.fillStyle = '#7a7f8a';
+          ctx.fillText(path.label, path.lx - 10, path.ly);
+          ctx.fillStyle = 'rgba(255,107,91,0.85)';
+          ctx.fillRect(path.lx - 3, path.ly - 1.5, 3, 3);
+        } else {
+          ctx.textAlign = 'left';
+          ctx.fillStyle = '#e9e6df';
+          ctx.fillText(path.label, path.lx + 10, path.ly);
+          ctx.fillStyle = '#f5b54a';
+          ctx.fillRect(path.lx, path.ly - 1.5, 3, 3);
+        }
+      });
+
+      // Частицы
+      particles.forEach(function (pt, i) {
+        if (running) pt.t += pt.v;
+        if (pt.t >= 2) { particles[i] = pt = spawn(0); }
+        var onLeft = pt.t < 1;
+        var pos = bezier(onLeft ? pt.a.p : pt.b.p, onLeft ? pt.t : pt.t - 1);
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, onLeft ? 1.3 : 1.7, 0, Math.PI * 2);
+        ctx.fillStyle = onLeft ? 'rgba(255,120,100,0.75)' : 'rgba(255,200,110,0.95)';
+        ctx.fill();
+      });
+
+      // Ядро
+      var pulse = reduceMotion ? 0 : Math.sin(time / 600) * 0.5 + 0.5;
+      var glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 46 + pulse * 10);
+      glow.addColorStop(0, 'rgba(245,181,74,0.55)');
+      glow.addColorStop(1, 'rgba(245,181,74,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(cx, cy, 56, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+      ctx.fillStyle = '#f5b54a'; ctx.fill();
+      ctx.font = '600 11px ui-monospace, Menlo, Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#f5b54a';
+      ctx.fillText('NOVA', cx, cy + 22);
+    }
+
+    function loop(time) {
+      if (!visible) { running = false; return; }
+      draw(time);
+      requestAnimationFrame(loop);
+    }
+
+    function start() {
+      if (reduceMotion) { running = false; draw(0); return; }
+      if (running) return;
+      running = true; visible = true;
+      requestAnimationFrame(loop);
+    }
+
+    layout();
+    if (reduceMotion) {
+      // Без анимации: просто рисуем частицы в разных местах пути.
+      draw(0);
+    } else {
+      start();
+      if ('IntersectionObserver' in window) {
+        new IntersectionObserver(function (entries) {
+          visible = entries[0].isIntersecting;
+          if (visible) start();
+        }).observe(canvas);
+      }
+    }
+    var resizeTimer;
+    window.addEventListener('resize', function () {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function () { layout(); if (!running) draw(0); }, 150);
+    });
+  })();
+
+  // ---- Демонстрация работы в терминале ----
+  (function terminal() {
+    var screen = document.getElementById('screen');
+    var LINES = [
+      ['t-dim', 'PS C:\\Nova> .\\Nova.cmd'],
+      ['', ''],
+      ['t-acc', '  Nova 0.1.0 — твоя Windows, настроенная под тебя'],
+      ['t-dim', '  Система: Windows 11 24H2, сборка 26100 (Professional)'],
+      ['', ''],
+      ['t-title', '  ПРИВАТНОСТЬ'],
+      ['t-ok', '  [+] Минимум телеметрии                  будет изменено'],
+      ['t-ok', '  [+] Убрать рекламу и «советы» Windows   будет изменено'],
+      ['t-ok', '  [+] Без Bing в поиске «Пуска»           будет изменено'],
+      ['t-ok', '  [+] Отключить Copilot                   будет изменено'],
+      ['t-title', '  ИНТЕРФЕЙС'],
+      ['t-gray', '  [=] Тёмная тема                         уже настроено'],
+      ['t-ok', '  [+] Полное контекстное меню сразу       будет изменено'],
+      ['t-title', '  ПРИЛОЖЕНИЯ: УДАЛИТЬ'],
+      ['t-ok', '  [+] Clipchamp.Clipchamp                 будет удалено'],
+      ['t-ok', '  [+] Microsoft.BingNews                  будет удалено'],
+      ['', ''],
+      ['t-acc', '  Итого: настроек — 21, удалить приложений — 9'],
+      ['', '  Применить эти изменения?  1 — да, 0 — нет: 1'],
+      ['t-ok', '  + Точка восстановления создана.'],
+      ['t-ok', '  + Минимум телеметрии'],
+      ['t-ok', '  + Убрать рекламу и «советы» Windows'],
+      ['t-dim', '    ...'],
+      ['t-ok', '  + Готово! Настроек применено: 21, удалено приложений: 9.'],
+      ['', '  Чтобы всё точно применилось, перезагрузи компьютер.']
+    ];
+    var timer = null, started = false;
+
+    function render(count, withCursor) {
+      screen.innerHTML = '';
+      for (var i = 0; i < count; i++) {
+        var span = document.createElement('span');
+        if (LINES[i][0]) span.className = LINES[i][0];
+        span.textContent = LINES[i][1] + '\n';
+        screen.appendChild(span);
+      }
+      if (withCursor) {
+        var c = document.createElement('span');
+        c.className = 'cursor';
+        screen.appendChild(c);
+      }
+    }
+
+    function play() {
+      clearTimeout(timer);
+      if (reduceMotion) { render(LINES.length, false); return; }
+      var i = 0;
+      (function next() {
+        render(i, true);
+        if (i++ < LINES.length) timer = setTimeout(next, i === 1 ? 500 : (LINES[i - 1] && LINES[i - 1][1].indexOf('Применить') > -1 ? 1100 : 170));
+      })();
+    }
+
+    document.getElementById('replay').addEventListener('click', play);
+    if ('IntersectionObserver' in window && !reduceMotion) {
+      render(0, true);
+      var io = new IntersectionObserver(function (entries) {
+        if (entries[0].isIntersecting && !started) { started = true; play(); io.disconnect(); }
+      }, { threshold: 0.3 });
+      io.observe(screen);
+    } else {
+      render(LINES.length, false);
+    }
+  })();
+</script>
+</body>
+</html>
