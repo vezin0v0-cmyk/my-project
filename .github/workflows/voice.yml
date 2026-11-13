@@ -5,6 +5,7 @@ on:
     paths:
       - 'src/**'
       - 'voice.json'
+      - 'NovaVoice.cmd'
       - 'tests/Test-Voice.ps1'
       - 'tests/voice/**'
       - '.github/workflows/voice.yml'
@@ -23,12 +24,13 @@ jobs:
         with:
           persist-credentials: false
 
-      # Only ASCII in run blocks: GitHub saves them without BOM, Windows PowerShell 5.1 would misread Cyrillic.
-      - name: Discover Vosk engine hash and files
-        shell: pwsh
+      - name: Голосовые команды на записях
+        shell: powershell
+        run: ./tests/Test-Voice.ps1
+
+      - name: Запуск из NovaVoice.cmd на записи
+        shell: powershell
+        # Only ASCII inside: GitHub saves this script without BOM.
         run: |
-          $url = 'https://github.com/alphacep/vosk-api/releases/download/v0.3.45/vosk-win64-0.3.45.zip'
-          Invoke-WebRequest $url -OutFile "$env:RUNNER_TEMP\vosk.zip"
-          Write-Host ('ENGINE size={0} sha256={1}' -f (Get-Item "$env:RUNNER_TEMP\vosk.zip").Length, (Get-FileHash "$env:RUNNER_TEMP\vosk.zip" -Algorithm SHA256).Hash)
-          Expand-Archive "$env:RUNNER_TEMP\vosk.zip" -DestinationPath "$env:RUNNER_TEMP\vosk" -Force
-          Get-ChildItem "$env:RUNNER_TEMP\vosk" -Recurse | ForEach-Object { Write-Host ('{0}  {1}' -f $_.FullName, $_.Length) }
+          ./src/NovaVoice.ps1 -WavFile ./tests/voice/minimize.wav -Yes
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

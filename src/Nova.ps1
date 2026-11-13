@@ -288,6 +288,17 @@ function Invoke-NovaFpsFlow {
     return 0
 }
 
+# Голосовые команды открываются в своём окне через Проводник — так они работают
+# без прав администратора, как обычная программа.
+function Start-NovaVoiceFlow {
+    $cmd = Join-Path $projectRoot 'NovaVoice.cmd'
+    if (-not (Test-Path -LiteralPath $cmd)) { throw 'Не найден NovaVoice.cmd рядом с Nova.cmd.' }
+    Start-Process -FilePath 'explorer.exe' -ArgumentList ('"{0}"' -f $cmd)
+    Write-Host ''
+    Write-Nova 'Открываю «Nova Голос» в отдельном окне. Скажи, например: «Нова, сверни все окна».' ok
+    Write-Nova 'Команды и свои бинды — в файле voice.json. Голос работает, пока открыто его окно.' dim
+}
+
 function Invoke-NovaUndoFlow {
     $backups = @(Get-NovaBackup)
     if ($backups.Count -eq 0) {
@@ -341,6 +352,7 @@ function Start-NovaMenu {
         Write-Host '  5  Замерить: было → стало (процессы, службы, память)' -ForegroundColor White
         Write-Host '  6  Проверить систему' -ForegroundColor White
         Write-Host '  7  Замерить FPS в игре: до и после Nova' -ForegroundColor White
+        Write-Host '  8  Голосовые команды: «Нова, сверни все окна»' -ForegroundColor White
         Write-Host '  0  Выход' -ForegroundColor White
         Write-Host ''
         $choice = (Read-Host '  Выбери пункт').Trim()
@@ -353,6 +365,7 @@ function Start-NovaMenu {
                 '5' { [void](Invoke-NovaMeasureFlow); Wait-NovaKey }
                 '6' { [void](Invoke-NovaCheckFlow); Wait-NovaKey }
                 '7' { [void](Invoke-NovaFpsFlow); Wait-NovaKey }
+                '8' { Start-NovaVoiceFlow; Wait-NovaKey }
                 '0' { return }
             }
         } catch {
