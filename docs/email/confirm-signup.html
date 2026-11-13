@@ -3,7 +3,9 @@
   Письмо с кодом подтверждения для Supabase.
   Куда вставить: Authentication → Emails → Templates → Confirm signup → Message body.
   Тема письма: Код подтверждения Nova
-  Подставляет сервер: .Token — код, .Email — почта, .Data.name — имя из формы регистрации.
+  Подставляет сервер: .Token — код, .Email — почта.
+  Имя из формы регистрации в письмо не вставляем: иначе через регистрацию можно было бы
+  разослать чужим людям письмо от Nova с любым текстом в поле «Имя».
   Подробно — docs/AUTH-SETUP.md.
 -->
 <html lang="ru">
@@ -32,7 +34,7 @@
         <tr>
           <td style="background:#141414;border:1px solid #3a2f12;border-radius:20px;padding:32px 28px 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#f5f1e8;">
             <p style="margin:0 0 6px;font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#ffc940;font-weight:600;">Подтверждение почты</p>
-            <h1 style="margin:0 0 14px;font-size:26px;line-height:1.2;font-weight:800;color:#ffffff;">Привет{{ with .Data.name }}, {{ . }}{{ end }}!</h1>
+            <h1 style="margin:0 0 14px;font-size:26px;line-height:1.2;font-weight:800;color:#ffffff;">Привет!</h1>
             <p style="margin:0 0 22px;font-size:15px;line-height:1.55;color:#c9c3b6;">Ты создаёшь аккаунт Nova. Введи этот код на странице регистрации:</p>
 
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">

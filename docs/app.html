@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Странице можно ходить только к себе и к серверу аккаунтов: чужие скрипты и отправка данных на другие сайты запрещены. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://udnjvgvdiyfafsiqdkox.supabase.co; connect-src 'self' https://udnjvgvdiyfafsiqdkox.supabase.co; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>Nova — кабинет</title>
 <meta name="theme-color" content="#050505">
 <style>

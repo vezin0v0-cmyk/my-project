@@ -34,14 +34,15 @@ jobs:
 
       - name: Nova.cmd из папки со сложным именем и без распаковки
         shell: powershell
+        # Only ASCII inside: GitHub saves this script without BOM, and Windows PowerShell 5.1 would misread Cyrillic.
         run: |
           function Invoke-Cmd([string]$Path, [string]$InputText) {
             $in = Join-Path $env:RUNNER_TEMP 'cmd-in.txt'
             $out = Join-Path $env:RUNNER_TEMP 'cmd-out.txt'
             Set-Content -LiteralPath $in -Value $InputText -Encoding Ascii
-            # Так Проводник запускает .cmd по двойному клику: cmd /c ""путь"".
+            # This is how Explorer runs a .cmd on double click: cmd /c ""path"".
             $p = Start-Process -FilePath cmd.exe -ArgumentList ('/c ""{0}""' -f $Path) -RedirectStandardInput $in -RedirectStandardOutput $out -NoNewWindow -PassThru
-            if (-not $p.WaitForExit(180000)) { & taskkill.exe /T /F /PID $p.Id | Out-Null; throw "Nova.cmd завис: $Path" }
+            if (-not $p.WaitForExit(180000)) { & taskkill.exe /T /F /PID $p.Id | Out-Null; throw "Nova.cmd hung: $Path" }
             $text = Get-Content -LiteralPath $out -Raw
             Write-Host $text
             return $text
@@ -50,12 +51,12 @@ jobs:
           New-Item -ItemType Directory -Path $dir -Force | Out-Null
           foreach ($item in @('Nova.cmd', 'config.json', 'src', 'assets')) { Copy-Item -Path $item -Destination $dir -Recurse -Force }
           $menu = Invoke-Cmd (Join-Path $dir 'Nova.cmd') '0'
-          if ($menu -notmatch 'Nova 0\.\d') { throw 'Меню Nova не открылось из папки со сложным именем.' }
+          if ($menu -notmatch 'Nova 0\.\d') { throw 'Nova menu did not open from a folder with a tricky name.' }
           $lonely = Join-Path $env:RUNNER_TEMP 'only-cmd'
           New-Item -ItemType Directory -Path $lonely -Force | Out-Null
           Copy-Item -Path 'Nova.cmd' -Destination $lonely
           $hint = Invoke-Cmd (Join-Path $lonely 'Nova.cmd') ''
-          if ($hint -notmatch 'Nova\.cmd') { throw 'Nova.cmd без остальных файлов не подсказал распаковать архив.' }
+          if ($hint -notmatch 'Nova\.cmd') { throw 'Nova.cmd alone did not ask to unpack the archive.' }
 
       - name: Режим просмотра
         shell: powershell
