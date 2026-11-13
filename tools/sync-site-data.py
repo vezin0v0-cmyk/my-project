@@ -33,6 +33,9 @@ def build_data() -> str:
 
 
 def main() -> int:
+    # Консоль Windows по умолчанию не в UTF-8 — без этого русские сообщения роняют скрипт.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     page = PAGE.read_text(encoding="utf-8")
     if not PATTERN.search(page):
         print(f"Не нашёл метки DATA-START/DATA-END в {PAGE}")
