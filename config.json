@@ -16,6 +16,10 @@
     "update-sharing-off": true,
     "telemetry-tasks-off": true,
     "error-reporting-off": true,
+    "sync-off": true,
+    "input-data-off": true,
+    "account-nags-off": true,
+    "location-off": false,
 
     "dark-theme": true,
     "show-extensions": true,
@@ -55,7 +59,9 @@
     "printing-off": false,
     "bluetooth-off": false,
     "xbox-services-off": false,
-    "security-updates-only": false
+    "security-updates-only": false,
+    "edge-quiet": true,
+    "onedrive-remove": true
   },
 
   "removeApps": {
@@ -81,16 +87,24 @@
     "MSTeams": true,
     "MicrosoftTeams": true,
     "Microsoft.OutlookForWindows": false,
-    "Microsoft.YourPhone": false,
-    "Microsoft.MicrosoftStickyNotes": false,
+    "Microsoft.YourPhone": true,
+    "Microsoft.MicrosoftStickyNotes": true,
     "Microsoft.ZuneMusic": false,
     "Microsoft.GamingApp": false,
     "Microsoft.XboxGamingOverlay": false,
     "MicrosoftCorporationII.MicrosoftFamily": true,
     "Microsoft.Office.OneNote": true,
     "Microsoft.Wallet": true,
-    "Microsoft.WindowsSoundRecorder": false,
-    "MicrosoftWindows.CrossDevice": false
+    "Microsoft.WindowsSoundRecorder": true,
+    "MicrosoftWindows.CrossDevice": true,
+    "microsoft.windowscommunicationsapps": true,
+    "Microsoft.ZuneVideo": true,
+    "Microsoft.BingFinance": true,
+    "Microsoft.BingSports": true,
+    "Microsoft.Messaging": true,
+    "Microsoft.Print3D": true,
+    "Microsoft.OneConnect": true,
+    "Microsoft.MSPaint": true
   },
 
   "installApps": {

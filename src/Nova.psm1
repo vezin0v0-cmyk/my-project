@@ -4,7 +4,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-$script:NovaVersion = '0.3.0'
+$script:NovaVersion = '0.4.0'
 $script:Categories = [ordered]@{
     privacy     = 'ПРИВАТНОСТЬ'
     interface   = 'ИНТЕРФЕЙС'
@@ -312,6 +312,55 @@ function Get-NovaHibernateState {
 
 #endregion
 
+#region OneDrive
+
+# Где OneDrive и вошёл ли в него пользователь. Удаляем, только если не вошёл — чтобы не потерять файлы.
+function Get-NovaOneDriveInfo {
+    $uninstall = $null
+    foreach ($root in @('HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\OneDriveSetup.exe',
+            'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OneDriveSetup.exe',
+            'HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\OneDriveSetup.exe')) {
+        $state = Get-NovaRegValue -Path $root -Name 'UninstallString'
+        if ($state.Exists -and $state.Value) { $uninstall = [string]$state.Value; break }
+    }
+    $signedIn = $false
+    $accounts = Get-NovaRegValue -Path 'HKCU\Software\Microsoft\OneDrive\Accounts\Personal' -Name 'UserEmail'
+    if ($accounts.Exists -and $accounts.Value) { $signedIn = $true }
+    if (-not $signedIn) {
+        $base = Open-NovaBaseKey ([Microsoft.Win32.RegistryHive]::CurrentUser)
+        try {
+            $key = $base.OpenSubKey('Software\Microsoft\OneDrive\Accounts', $false)
+            if ($null -ne $key) {
+                try {
+                    foreach ($name in $key.GetSubKeyNames()) {
+                        if ($name -like 'Business*') {
+                            $email = Get-NovaRegValue -Path ("HKCU\Software\Microsoft\OneDrive\Accounts\$name") -Name 'UserEmail'
+                            if ($email.Exists -and $email.Value) { $signedIn = $true }
+                        }
+                    }
+                } finally { $key.Close() }
+            }
+        } finally { $base.Close() }
+    }
+    return [pscustomobject]@{ Installed = [bool]$uninstall; Uninstall = $uninstall; SignedIn = $signedIn }
+}
+
+function Remove-NovaOneDrive {
+    param([Parameter(Mandatory)][string]$UninstallString)
+    if ($UninstallString -match '^\s*"([^"]+)"\s*(.*)$') {
+        $exe = $Matches[1]; $arguments = $Matches[2]
+    } else {
+        $index = $UninstallString.IndexOf(' /')
+        if ($index -lt 0) { $exe = $UninstallString.Trim(); $arguments = '/uninstall' } else { $exe = $UninstallString.Substring(0, $index).Trim(); $arguments = $UninstallString.Substring($index + 1) }
+    }
+    if (-not (Test-Path -LiteralPath $exe)) { throw "Не найден установщик OneDrive: $exe" }
+    Get-Process -Name OneDrive -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    $process = Start-Process -FilePath $exe -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+    if ($process.ExitCode -ne 0) { throw "Удаление OneDrive завершилось с кодом $($process.ExitCode)" }
+}
+
+#endregion
+
 #region Обои и файлы
 
 $script:DesktopKey = 'HKCU\Control Panel\Desktop'
@@ -387,6 +436,7 @@ function Get-NovaActionLabel {
         'wallpaper' { return 'обои рабочего стола' }
         'copyFile' { return "файл $(Expand-NovaText $Action.to)" }
         'scheduledTask' { return "задача $($Action.path)$($Action.name)" }
+        'oneDrive' { return 'OneDrive' }
     }
     return [string]$Action.type
 }
@@ -420,6 +470,12 @@ function Get-NovaActionState {
             $current = Get-NovaTaskState $Action.path $Action.name
             if ($null -eq $current) { return New-NovaState $false 'нет' 'Disabled' 'задачи нет в этой системе' }
             return New-NovaState ($current -ne 'Disabled') $current 'Disabled' ''
+        }
+        'oneDrive' {
+            $info = Get-NovaOneDriveInfo
+            if (-not $info.Installed) { return New-NovaState $false 'не установлен' 'удалён' '' }
+            if ($info.SignedIn) { return New-NovaState $false 'установлен' 'удалён' 'ты вошёл в OneDrive — не трогаем, чтобы не потерять файлы' }
+            return New-NovaState $true 'установлен' 'удалён' ''
         }
         'copyFile' {
             $to = Expand-NovaText $Action.to
@@ -469,6 +525,14 @@ function Invoke-NovaAction {
             Set-NovaRegValue -Path $script:DesktopKey -Name 'WallpaperStyle' -Value '10' -Kind 'String'
             Set-NovaRegValue -Path $script:DesktopKey -Name 'TileWallpaper' -Value '0' -Kind 'String'
             Set-NovaWallpaper -Path $target
+            return
+        }
+        'oneDrive' {
+            $info = Get-NovaOneDriveInfo
+            if (-not $info.Installed -or $info.SignedIn) { return }
+            Remove-NovaOneDrive -UninstallString $info.Uninstall
+            # Как и приложения из Store: при отмене подскажем, откуда поставить заново.
+            [void]$Journal.Add([pscustomobject]@{ type = 'appRemoved'; tweak = $Tweak; name = 'OneDrive' })
             return
         }
         'scheduledTask' {
@@ -639,6 +703,8 @@ function Test-NovaDefinition {
                 if ([string](Get-NovaProp $action 'guid') -notmatch '^[0-9a-fA-F-]{36}$') { $problems.Add("tweaks.json: у '$id' неверный guid схемы питания") }
             } elseif ($type -eq 'hibernate') {
                 if (@('on', 'off') -notcontains (Get-NovaProp $action 'state')) { $problems.Add("tweaks.json: у '$id' state должен быть on или off") }
+            } elseif ($type -eq 'oneDrive') {
+                Write-Verbose 'Для OneDrive параметры не нужны.'
             } elseif ($type -eq 'scheduledTask') {
                 if ([string](Get-NovaProp $action 'path') -notmatch '^\\.*\\$') { $problems.Add("tweaks.json: у '$id' путь задачи должен начинаться и заканчиваться на \") }
                 if (-not (Get-NovaProp $action 'name')) { $problems.Add("tweaks.json: у '$id' не указано имя задачи") }

@@ -145,6 +145,50 @@
       ]
     },
     {
+      "id": "sync-off",
+      "category": "privacy",
+      "title": "Не синхронизировать настройки с Microsoft",
+      "description": "Тема, пароли браузера Edge, язык и другие настройки не отправляются в облако Microsoft и не переносятся на другие устройства. Буфер обмена тоже не уходит в облако.",
+      "actions": [
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync", "name": "DisableSettingSync", "kind": "DWord", "value": 2 },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync", "name": "DisableSettingSyncUserOverride", "kind": "DWord", "value": 1 },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System", "name": "AllowCrossDeviceClipboard", "kind": "DWord", "value": 0 }
+      ]
+    },
+    {
+      "id": "input-data-off",
+      "category": "privacy",
+      "title": "Не собирать то, что ты печатаешь и говоришь",
+      "description": "Windows перестаёт собирать образцы набранного текста и рукописного ввода «для улучшения» и отправлять голос в онлайн-распознавание.",
+      "actions": [
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\InputPersonalization", "name": "RestrictImplicitInkCollection", "kind": "DWord", "value": 1 },
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\InputPersonalization", "name": "RestrictImplicitTextCollection", "kind": "DWord", "value": 1 },
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\InputPersonalization\\TrainedDataStore", "name": "HarvestContacts", "kind": "DWord", "value": 0 },
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Personalization\\Settings", "name": "AcceptedPrivacyPolicy", "kind": "DWord", "value": 0 },
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Speech_OneCore\\Settings\\OnlineSpeechPrivacy", "name": "HasAccepted", "kind": "DWord", "value": 0 }
+      ]
+    },
+    {
+      "id": "account-nags-off",
+      "category": "privacy",
+      "title": "Без напоминаний «войди в аккаунт Microsoft»",
+      "description": "Убирает значки и подсказки в «Пуске» и Параметрах, которые уговаривают войти в аккаунт Microsoft или купить подписку.",
+      "restartExplorer": true,
+      "actions": [
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "name": "Start_AccountNotifications", "kind": "DWord", "value": 0 },
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\SystemSettings\\AccountNotifications", "name": "EnableAccountNotifications", "kind": "DWord", "value": 0 }
+      ]
+    },
+    {
+      "id": "location-off",
+      "category": "privacy",
+      "title": "Запретить доступ к местоположению",
+      "description": "Приложения не узнают, где ты находишься. Погода и карты перестанут определять город сами.",
+      "actions": [
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\location", "name": "Value", "kind": "String", "value": "Deny" }
+      ]
+    },
+    {
       "id": "dark-theme",
       "category": "interface",
       "title": "Тёмная тема",
@@ -322,7 +366,7 @@
       "actions": [
         { "type": "copyFile", "from": "assets/oem/nova-logo.bmp", "to": "{NovaData}\\oem\\nova-logo.bmp" },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Manufacturer", "kind": "String", "value": "Nova" },
-        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Model", "kind": "String", "value": "Nova 0.3 · твоя Windows" },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Model", "kind": "String", "value": "Nova 0.4 · твоя Windows" },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "SupportURL", "kind": "String", "value": "https://github.com/vezin0v0-cmyk/my-project" },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Logo", "kind": "String", "value": "{NovaData}\\oem\\nova-logo.bmp" }
       ]
@@ -507,11 +551,35 @@
       "id": "security-updates-only",
       "category": "system",
       "title": "Только обновления безопасности",
-      "description": "Windows продолжит ставить исправления безопасности, но не будет сама переходить на новую большую версию (например, с 24H2 на следующую) и ломать твои настройки. Работает на Pro и выше.",
+      "description": "Windows продолжит ставить исправления безопасности, но не будет сама переходить на новую большую версию (например, с 24H2 на следующую) и ломать твои настройки. Работает на Pro и выше. Важно: у каждой версии Windows есть срок поддержки — когда он заканчивается, исправления перестают приходить. Тогда выключи этот пункт и обновись.",
       "actions": [
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate", "name": "ProductVersion", "kind": "String", "value": "{WindowsName}" },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate", "name": "TargetReleaseVersion", "kind": "DWord", "value": 1 },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate", "name": "TargetReleaseVersionInfo", "kind": "String", "value": "{DisplayVersion}" }
+      ]
+    },
+    {
+      "id": "edge-quiet",
+      "category": "system",
+      "title": "«Тихий» Microsoft Edge",
+      "description": "Edge больше не висит в фоне и не запускается вместе с Windows, не показывает рекламу, советы и «помощника покупок», не отправляет данные о просмотре. Удалять Edge не будем: на нём работают другие программы.",
+      "actions": [
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge", "name": "StartupBoostEnabled", "kind": "DWord", "value": 0 },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge", "name": "BackgroundModeEnabled", "kind": "DWord", "value": 0 },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge", "name": "HideFirstRunExperience", "kind": "DWord", "value": 1 },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge", "name": "ShowRecommendationsEnabled", "kind": "DWord", "value": 0 },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge", "name": "EdgeShoppingAssistantEnabled", "kind": "DWord", "value": 0 },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge", "name": "PersonalizationReportingEnabled", "kind": "DWord", "value": 0 },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge", "name": "DiagnosticData", "kind": "DWord", "value": 0 }
+      ]
+    },
+    {
+      "id": "onedrive-remove",
+      "category": "system",
+      "title": "Удалить OneDrive (если он не настроен)",
+      "description": "Если ты не входил в OneDrive, он просто висит в фоне и предлагает сохранять файлы в облако. Nova удалит его. Если ты в OneDrive вошёл — Nova его не тронет, чтобы не потерять файлы. Вернуть можно из Microsoft Store.",
+      "actions": [
+        { "type": "oneDrive" }
       ]
     }
   ]
