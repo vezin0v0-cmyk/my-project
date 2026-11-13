@@ -25,6 +25,17 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# В ограниченном режиме PowerShell (его включают Smart App Control и некоторые политики) Nova работать не сможет.
+if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
+    Write-Host ''
+    Write-Host '  Windows запустила PowerShell в ограниченном режиме — так Nova работать не сможет.' -ForegroundColor Red
+    Write-Host '  Обычно это «Интеллектуальное управление приложениями» (Smart App Control) или политика организации.' -ForegroundColor Yellow
+    Write-Host '  Что делать — в инструкции docs/CLEAN-INSTALL.md, раздел «Если Windows блокирует Nova».' -ForegroundColor Yellow
+    if ($PauseAtEnd) { [void](Read-Host '  Нажми Enter, чтобы закрыть') }
+    exit 1
+}
+
 $projectRoot = Split-Path -Parent $PSScriptRoot
 if (-not $ConfigPath) { $ConfigPath = Join-Path $projectRoot 'config.json' }
 $tweaksPath = Join-Path $PSScriptRoot 'tweaks.json'

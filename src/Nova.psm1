@@ -54,7 +54,34 @@ function Get-NovaDataDir {
         $path = Join-Path $dir $sub
         if (-not (Test-Path -LiteralPath $path)) { New-Item -ItemType Directory -Path $path -Force | Out-Null }
     }
+    Protect-NovaDataDir $dir
     return $dir
+}
+
+# В C:\ProgramData любой пользователь может создавать файлы. Резервные копии Nova выполняются
+# с правами администратора, поэтому папку закрываем: менять — только администраторы и система,
+# читать — все (обои и логотип Nova должны быть видны обычному пользователю).
+$script:DataDirProtected = $false
+function Protect-NovaDataDir {
+    param([Parameter(Mandatory)][string]$Path)
+    if ($script:DataDirProtected -or -not (Test-NovaAdmin)) { return }
+    $script:DataDirProtected = $true
+    try {
+        $admins = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')
+        $acl = New-Object System.Security.AccessControl.DirectorySecurity
+        $acl.SetOwner($admins)
+        $acl.SetAccessRuleProtection($true, $false)
+        $inherit = [System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+        $propagate = [System.Security.AccessControl.PropagationFlags]::None
+        foreach ($pair in @(@('S-1-5-32-544', 'FullControl'), @('S-1-5-18', 'FullControl'), @('S-1-5-32-545', 'ReadAndExecute'))) {
+            $sid = New-Object System.Security.Principal.SecurityIdentifier($pair[0])
+            $rights = [System.Security.AccessControl.FileSystemRights]$pair[1]
+            $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($sid, $rights, $inherit, $propagate, 'Allow')))
+        }
+        [System.IO.Directory]::SetAccessControl($Path, $acl)
+    } catch {
+        Write-Nova ('Не удалось закрыть папку {0} от изменений: {1}' -f $Path, $_.Exception.Message) warn
+    }
 }
 
 # Подставляет значения в текст настроек:
@@ -260,11 +287,70 @@ function Remove-NovaRegValue {
     }
 }
 
-function Remove-NovaRegKey {
+# Удаляет раздел, который создала Nova, но только если в нём не осталось значений.
+# Если туда успела что-то записать другая программа, раздел остаётся. Возвращает $true, если удалён.
+function Remove-NovaRegKeyIfEmpty {
     param([Parameter(Mandatory)][string]$Path)
     $rp = Split-NovaRegPath $Path
     $base = Open-NovaBaseKey $rp.Hive
-    try { $base.DeleteSubKeyTree($rp.SubKey, $false) } finally { $base.Close() }
+    try { return (Remove-NovaEmptySubKey -Parent $base -SubKey $rp.SubKey) } finally { $base.Close() }
+}
+
+function Remove-NovaEmptySubKey {
+    param([Parameter(Mandatory)][Microsoft.Win32.RegistryKey]$Parent, [Parameter(Mandatory)][string]$SubKey)
+    $key = $Parent.OpenSubKey($SubKey, $true)
+    if ($null -eq $key) { return $true }
+    $empty = $true
+    try {
+        foreach ($child in @($key.GetSubKeyNames())) {
+            if (-not (Remove-NovaEmptySubKey -Parent $key -SubKey $child)) { $empty = $false }
+        }
+        if ($key.ValueCount -gt 0) { $empty = $false }
+    } finally {
+        $key.Close()
+    }
+    if ($empty) { $Parent.DeleteSubKey($SubKey, $false) }
+    return $empty
+}
+
+# Удаляет раздел, только если в нём нет ни значений, ни подразделов. $true — раздела больше нет.
+function Remove-NovaRegKeyIfLeaf {
+    param([Parameter(Mandatory)][string]$Path)
+    $rp = Split-NovaRegPath $Path
+    $base = Open-NovaBaseKey $rp.Hive
+    try {
+        $key = $base.OpenSubKey($rp.SubKey, $false)
+        if ($null -eq $key) { return $true }
+        try { $empty = ($key.ValueCount -eq 0 -and $key.SubKeyCount -eq 0) } finally { $key.Close() }
+        if ($empty) { $base.DeleteSubKey($rp.SubKey, $false) }
+        return $empty
+    } finally {
+        $base.Close()
+    }
+}
+
+# Отмена «создала раздел»: идём от разделов из настроек Nova вверх до созданного и убираем пустые.
+# Чужие разделы и значения не трогаем — даже если они лежат внутри созданного Nova.
+function Remove-NovaCreatedKey {
+    param([Parameter(Mandatory)][string]$Path, [string[]]$Known)
+    $top = Get-NovaRegPathKey $Path
+    $chains = @($Known | Where-Object { $_ -eq $top -or $_.StartsWith($top + '\') } | Sort-Object -Unique | Sort-Object { $_.Length } -Descending)
+    foreach ($chain in $chains) {
+        $current = $chain
+        while ($true) {
+            if (-not (Remove-NovaRegKeyIfLeaf $current)) { break }
+            if ($current -eq $top) { break }
+            $current = $current.Substring(0, $current.LastIndexOf('\'))
+        }
+    }
+    return -not (Get-NovaRegValue -Path $top -Name '__nova_probe__').KeyExists
+}
+
+# Путь реестра в одном виде: HKLM\путь в нижнем регистре — чтобы сравнивать.
+function Get-NovaRegPathKey {
+    param([string]$Path)
+    $rp = Split-NovaRegPath $Path
+    return ('{0}\{1}' -f $rp.HiveName, $rp.SubKey).ToLowerInvariant()
 }
 
 # Значение для файла резервной копии (JSON).
@@ -288,6 +374,13 @@ function Get-NovaServiceStartup {
     $service = Get-Service -Name $Name -ErrorAction SilentlyContinue
     if ($null -eq $service) { return $null }
     return $service.StartType.ToString()
+}
+
+# «Автоматически (отложенный запуск)» Windows PowerShell показывает просто как Automatic — смотрим в реестре.
+function Get-NovaServiceDelayed {
+    param([string]$Name)
+    $value = Get-NovaRegValue -Path ('HKLM\SYSTEM\CurrentControlSet\Services\{0}' -f $Name) -Name 'DelayedAutostart'
+    return ($value.Exists -and [int]$value.Value -eq 1)
 }
 
 function Get-NovaActivePowerScheme {
@@ -570,7 +663,7 @@ function Invoke-NovaAction {
         'service' {
             $before = Get-NovaServiceStartup $Action.name
             if ($null -eq $before) { return }
-            [void]$Journal.Add([pscustomobject]@{ type = 'service'; tweak = $Tweak; name = $Action.name; startup = $before })
+            [void]$Journal.Add([pscustomobject]@{ type = 'service'; tweak = $Tweak; name = $Action.name; startup = $before; delayed = (Get-NovaServiceDelayed $Action.name) })
             Set-Service -Name $Action.name -StartupType $Action.startup
             if ($Action.startup -eq 'Disabled') { Stop-Service -Name $Action.name -Force -ErrorAction SilentlyContinue }
             return
@@ -595,7 +688,7 @@ function Invoke-NovaAction {
 
 # Возвращает одну запись журнала в исходное состояние.
 function Undo-NovaEntry {
-    param($Entry)
+    param($Entry, $Allowed)
     switch ($Entry.type) {
         'registry' {
             if ($Entry.existed) {
@@ -606,12 +699,20 @@ function Undo-NovaEntry {
             return
         }
         'keyCreated' {
-            Remove-NovaRegKey -Path $Entry.path
+            $known = @()
+            if ($Allowed) { $known = @($Allowed.keys) } else { $known = @(Get-NovaRegPathKey $Entry.path) }
+            if (-not (Remove-NovaCreatedKey -Path $Entry.path -Known $known)) {
+                Write-Nova ('раздел {0} оставлен: в нём есть настройки других программ' -f $Entry.path) dim
+            }
             return
         }
         'service' {
             if ($script:ServiceStartups -contains $Entry.startup) {
                 Set-Service -Name $Entry.name -StartupType $Entry.startup
+                if ($Entry.startup -eq 'Automatic' -and [bool](Get-NovaProp $Entry 'delayed' $false) -and -not (Get-NovaServiceDelayed $Entry.name)) {
+                    $result = Invoke-NovaNative 'sc.exe' @('config', [string]$Entry.name, 'start=', 'delayed-auto')
+                    if ($result.Code -ne 0) { throw "не удалось вернуть отложенный запуск службы $($Entry.name)" }
+                }
                 if ($Entry.startup -eq 'Automatic') { Start-Service -Name $Entry.name -ErrorAction SilentlyContinue }
             }
             return
@@ -1001,9 +1102,11 @@ function Invoke-NovaApply {
                 $failed = $true
                 Write-Nova ('{0}: {1}' -f $item.Title, $_.Exception.Message) err
             }
+            # Сохраняем после каждого действия: если окно закроют посередине, отменить можно будет всё сделанное.
+            if ($journal.Count -gt 0) { Save-NovaJournal -Path $backupPath -Context $Context -Journal $journal -RestartExplorer $result.RestartExplorer }
         }
         if ($item.RestartExplorer) { $result.RestartExplorer = $true }
-        Save-NovaJournal -Path $backupPath -Context $Context -Journal $journal -RestartExplorer $result.RestartExplorer
+        if ($journal.Count -gt 0) { Save-NovaJournal -Path $backupPath -Context $Context -Journal $journal -RestartExplorer $result.RestartExplorer }
         if ($failed) { $result.Failed++ } else { $result.Applied++; Write-Nova $item.Title ok }
     }
 
@@ -1128,15 +1231,102 @@ function Get-NovaBackup {
             Sort-Object Name -Descending)
 }
 
+# Что вообще может менять Nova: всё из tweaks.json плюс обои. Отмена трогает только это,
+# поэтому даже подменённый файл резервной копии не заставит Nova изменить что-то постороннее.
+function Get-NovaAllowedTargets {
+    param($Tweaks)
+    $allowed = @{ registry = @{}; keys = New-Object System.Collections.Generic.List[string]; service = @{}; task = @{}; file = @{} }
+    foreach ($tweak in @($Tweaks)) {
+        foreach ($action in @($tweak.actions)) {
+            switch ($action.type) {
+                'registry' {
+                    $key = Get-NovaRegPathKey $action.path
+                    $allowed.registry[('{0}|{1}' -f $key, $action.name).ToLowerInvariant()] = $true
+                    $allowed.keys.Add($key)
+                }
+                'service' { $allowed.service[([string]$action.name).ToLowerInvariant()] = $true }
+                'scheduledTask' { $allowed.task[('{0}{1}' -f $action.path, $action.name).ToLowerInvariant()] = $true }
+                'copyFile' { $allowed.file[(Expand-NovaText $action.to).ToLowerInvariant()] = $true }
+            }
+        }
+    }
+    $desktop = Get-NovaRegPathKey $script:DesktopKey
+    foreach ($name in @('WallpaperStyle', 'TileWallpaper')) { $allowed.registry[('{0}|{1}' -f $desktop, $name).ToLowerInvariant()] = $true }
+    return $allowed
+}
+
+# Возвращает причину, по которой запись нельзя выполнять, или пустую строку, если всё в порядке.
+function Test-NovaJournalEntry {
+    param($Entry, $Allowed)
+    $dataDir = (Join-Path $env:ProgramData 'Nova').ToLowerInvariant() + '\'
+    try {
+        switch ([string]$Entry.type) {
+            'registry' {
+                $id = ('{0}|{1}' -f (Get-NovaRegPathKey $Entry.path), $Entry.name).ToLowerInvariant()
+                if (-not $Allowed.registry.ContainsKey($id)) { return 'этого значения нет в настройках Nova' }
+                if ($Entry.existed -and $script:RegistryKinds -notcontains [string]$Entry.kind) { return 'неизвестный тип значения' }
+                return ''
+            }
+            'keyCreated' {
+                $key = Get-NovaRegPathKey $Entry.path
+                if (@($key.Split('\')).Count -lt 3) { return 'слишком общий раздел реестра' }
+                foreach ($known in $Allowed.keys) { if ($known -eq $key -or $known.StartsWith($key + '\')) { return '' } }
+                return 'этого раздела нет в настройках Nova'
+            }
+            'service' {
+                if (-not $Allowed.service.ContainsKey(([string]$Entry.name).ToLowerInvariant())) { return 'этой службы нет в настройках Nova' }
+                return ''
+            }
+            'scheduledTask' {
+                if (-not $Allowed.task.ContainsKey(('{0}{1}' -f $Entry.path, $Entry.name).ToLowerInvariant())) { return 'этой задачи нет в настройках Nova' }
+                return ''
+            }
+            'copyFile' {
+                $path = ([string]$Entry.path).ToLowerInvariant()
+                if (-not $Allowed.file.ContainsKey($path)) { return 'этого файла нет в настройках Nova' }
+                if ($Entry.backup -and ([string]$Entry.backup).ToLowerInvariant() -ne ($path + '.nova-backup')) { return 'неожиданная копия файла' }
+                return ''
+            }
+            'wallpaper' {
+                if ($Entry.installed -and -not ([string]$Entry.installed).ToLowerInvariant().StartsWith($dataDir)) { return 'обои Nova лежат не в папке Nova' }
+                return ''
+            }
+            'powerScheme' {
+                if ([string]$Entry.guid -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') { return 'неверная схема питания' }
+                return ''
+            }
+            'hibernate' {
+                if (@('on', 'off') -notcontains [string]$Entry.state) { return 'неверное состояние гибернации' }
+                return ''
+            }
+            'appRemoved' { return '' }
+            'appInstalled' { return '' }
+        }
+    } catch {
+        return ('не удалось проверить запись: {0}' -f $_.Exception.Message)
+    }
+    return 'неизвестный тип записи'
+}
+
 function Invoke-NovaUndo {
-    param([Parameter(Mandatory)][string]$BackupPath)
+    param([Parameter(Mandatory)][string]$BackupPath, $Tweaks)
+    if ($null -eq $Tweaks) {
+        $Tweaks = @(Get-NovaProp (Read-NovaJson (Join-Path $script:NovaRoot 'src\tweaks.json')) 'tweaks' @())
+    }
+    $allowed = Get-NovaAllowedTargets $Tweaks
     $doc = Read-NovaJson $BackupPath
     $entries = @(Get-NovaProp $doc 'entries' @())
     $failed = 0
     # Идём с конца: последнее изменение отменяем первым.
     for ($i = $entries.Count - 1; $i -ge 0; $i--) {
+        $problem = Test-NovaJournalEntry -Entry $entries[$i] -Allowed $allowed
+        if ($problem) {
+            $failed++
+            Write-Nova ('пропускаю запись {0}: {1}' -f $entries[$i].type, $problem) err
+            continue
+        }
         try {
-            Undo-NovaEntry $entries[$i]
+            Undo-NovaEntry -Entry $entries[$i] -Allowed $allowed
         } catch {
             $failed++
             Write-Nova ('не удалось вернуть {0}: {1}' -f $entries[$i].type, $_.Exception.Message) err

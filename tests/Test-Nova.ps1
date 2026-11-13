@@ -39,7 +39,7 @@ function Get-Snapshot {
                     $snapshot["value|$($action.path)|$($action.name)"] = '{0}|{1}|{2}' -f $state.Exists, $state.Kind, (@($state.Value) -join ',')
                     $snapshot["key|$($action.path)"] = [string](Get-RegistryKeyPath $action.path)
                 }
-                'service' { $snapshot["service|$($action.name)"] = [string](Get-NovaServiceStartup $action.name) }
+                'service' { $snapshot["service|$($action.name)"] = '{0}|{1}' -f (Get-NovaServiceStartup $action.name), (Get-NovaServiceDelayed $action.name) }
                 'powerScheme' { $snapshot['power'] = [string](Get-NovaActivePowerScheme) }
                 'hibernate' { $snapshot['hibernate'] = Get-NovaHibernateState }
                 'wallpaper' {
@@ -101,4 +101,56 @@ if ($mismatches.Count -gt 0) {
     throw 'После отмены система не вернулась в исходное состояние.'
 }
 Write-Host ('Отмена вернула все {0} параметров точно как было.' -f $before.Count)
+
+# --- Защита отмены ---
+$backups = Join-Path (Get-NovaDataDir) 'backups'
+
+# 1. Подменённая резервная копия: чужое значение реестра не должно записаться.
+$probeKey = 'HKCU\Software\NovaTamperTest'
+$fake = [pscustomobject]@{
+    tool    = 'Nova'
+    entries = @(
+        [pscustomobject]@{ type = 'registry'; path = $probeKey; name = 'Owned'; existed = $true; kind = 'String'; value = 'hacked' },
+        [pscustomobject]@{ type = 'keyCreated'; path = 'HKCU\Software\Microsoft' },
+        [pscustomobject]@{ type = 'service'; name = 'EventLog'; startup = 'Disabled' }
+    )
+}
+$fakePath = Join-Path $backups 'backup-test-tamper.json'
+[System.IO.File]::WriteAllText($fakePath, ($fake | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
+$tamper = Invoke-NovaUndo -BackupPath $fakePath
+Remove-Item -LiteralPath ($fakePath -replace '\.json$', '.restored.json') -Force -ErrorAction SilentlyContinue
+if ((Get-NovaRegValue -Path $probeKey -Name 'Owned').Exists) { throw 'Подменённая резервная копия записала чужое значение в реестр.' }
+if (-not (Get-NovaRegValue -Path 'HKCU\Software\Microsoft' -Name '__nova_probe__').KeyExists) { throw 'Подменённая резервная копия удалила раздел реестра.' }
+if ((Get-NovaServiceStartup 'EventLog') -eq 'Disabled') { throw 'Подменённая резервная копия отключила службу.' }
+if ($tamper.Failed -ne 2) { throw ('Ожидалось 2 пропущенные записи, а пропущено {0}.' -f $tamper.Failed) }
+Write-Host 'Подменённая резервная копия не выполнилась.'
+
+# 2. Раздел, созданный Nova, не удаляется, если в него записала другая программа.
+$created = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Serialize'
+$hadKey = (Get-NovaRegValue -Path $created -Name '__nova_probe__').KeyExists
+$journal = New-Object System.Collections.ArrayList
+Set-NovaRegValue -Path $created -Name 'StartupDelayInMSec' -Value 0 -Kind 'DWord' -Journal $journal -Tweak 'no-startup-delay'
+[void]$journal.Add([pscustomobject]@{ type = 'registry'; tweak = 'no-startup-delay'; path = $created; name = 'StartupDelayInMSec'; existed = $false; kind = $null; value = $null })
+Set-NovaRegValue -Path $created -Name 'OtherProgram' -Value 'keep me' -Kind 'String'
+$keepPath = Join-Path $backups 'backup-test-keep.json'
+Save-NovaJournal -Path $keepPath -Context $context -Journal $journal -RestartExplorer $false
+[void](Invoke-NovaUndo -BackupPath $keepPath)
+Remove-Item -LiteralPath ($keepPath -replace '\.json$', '.restored.json') -Force -ErrorAction SilentlyContinue
+if (-not (Get-NovaRegValue -Path $created -Name 'OtherProgram').Exists) { throw 'Отмена удалила значение другой программы.' }
+if ((Get-NovaRegValue -Path $created -Name 'StartupDelayInMSec').Exists) { throw 'Отмена не убрала значение Nova.' }
+Remove-NovaRegValue -Path $created -Name 'OtherProgram'
+if (-not $hadKey) { [void](Remove-NovaRegKeyIfEmpty -Path $created) }
+Write-Host 'Чужие настройки в разделах Nova сохраняются.'
+
+# 3. Папку Nova может менять только администратор.
+$acl = Get-Acl -LiteralPath (Get-NovaDataDir)
+$usersWrite = @($acl.Access | Where-Object {
+        $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -in @('S-1-5-32-545', 'S-1-5-11', 'S-1-1-0') -and
+        $_.AccessControlType -eq 'Allow' -and
+        ($_.FileSystemRights -band ([System.Security.AccessControl.FileSystemRights]'WriteData, AppendData, WriteExtendedAttributes, WriteAttributes, Delete, DeleteSubdirectoriesAndFiles, ChangePermissions, TakeOwnership')) -ne 0
+    })
+if ($usersWrite.Count -gt 0) { throw 'Обычные пользователи могут менять папку Nova.' }
+if (-not $acl.AreAccessRulesProtected) { throw 'Права на папку Nova наследуются от ProgramData.' }
+Write-Host 'Папка Nova закрыта от изменений обычными пользователями.'
+
 Write-Host 'ТЕСТ ПРОЙДЕН'

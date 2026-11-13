@@ -32,6 +32,31 @@ jobs:
         shell: powershell
         run: ./src/Nova.ps1 -Mode Check
 
+      - name: Nova.cmd из папки со сложным именем и без распаковки
+        shell: powershell
+        run: |
+          function Invoke-Cmd([string]$Path, [string]$InputText) {
+            $in = Join-Path $env:RUNNER_TEMP 'cmd-in.txt'
+            $out = Join-Path $env:RUNNER_TEMP 'cmd-out.txt'
+            Set-Content -LiteralPath $in -Value $InputText -Encoding Ascii
+            # Так Проводник запускает .cmd по двойному клику: cmd /c ""путь"".
+            $p = Start-Process -FilePath cmd.exe -ArgumentList ('/c ""{0}""' -f $Path) -RedirectStandardInput $in -RedirectStandardOutput $out -NoNewWindow -PassThru
+            if (-not $p.WaitForExit(180000)) { & taskkill.exe /T /F /PID $p.Id | Out-Null; throw "Nova.cmd завис: $Path" }
+            $text = Get-Content -LiteralPath $out -Raw
+            Write-Host $text
+            return $text
+          }
+          $dir = Join-Path $env:RUNNER_TEMP "Vadim's Nova & Co (1)"
+          New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          foreach ($item in @('Nova.cmd', 'config.json', 'src', 'assets')) { Copy-Item -Path $item -Destination $dir -Recurse -Force }
+          $menu = Invoke-Cmd (Join-Path $dir 'Nova.cmd') '0'
+          if ($menu -notmatch 'Nova 0\.\d') { throw 'Меню Nova не открылось из папки со сложным именем.' }
+          $lonely = Join-Path $env:RUNNER_TEMP 'only-cmd'
+          New-Item -ItemType Directory -Path $lonely -Force | Out-Null
+          Copy-Item -Path 'Nova.cmd' -Destination $lonely
+          $hint = Invoke-Cmd (Join-Path $lonely 'Nova.cmd') ''
+          if ($hint -notmatch 'Nova\.cmd') { throw 'Nova.cmd без остальных файлов не подсказал распаковать архив.' }
+
       - name: Режим просмотра
         shell: powershell
         run: ./src/Nova.ps1 -Mode Preview
