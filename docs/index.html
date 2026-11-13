@@ -3,6 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<!-- Защита от «невидимой рамки» (кликджекинга): на настоящем сайте страницу нельзя открыть внутри чужой. -->
+<style id="nova-frame-guard">html { display: none !important; }</style>
+<script>
+  (function () {
+    var guard = document.getElementById('nova-frame-guard');
+    var ours = /\.github\.io$/.test(location.hostname);
+    if (self === top || !ours) { guard.parentNode.removeChild(guard); return; }
+    try { top.location = self.location; } catch (e) { /* остаётся скрытой */ }
+  })();
+</script>
 <title>Nova — твоя Windows, настроенная под тебя</title>
 <meta name="description" content="Nova — бесплатный инструмент с открытым кодом: убирает рекламу, слежку и мусор из Windows 10/11, включает тёмную тему и игровые настройки. Всё отменяется в один клик.">
 <meta name="theme-color" content="#07080b">

@@ -776,6 +776,36 @@ function Get-NovaSystemInfo {
     return [pscustomobject]@{ Name = $name; Build = $build; Version = $version; Edition = $edition; IsServer = $isServer }
 }
 
+# Защиту Windows Nova не трогает никогда: антивирус, брандмауэр, контроль учётных записей,
+# SmartScreen, обновления и центр безопасности. Если такое окажется в tweaks.json (по ошибке или
+# если файл подменили), Nova откажется работать. Единственное исключение — «Целостность памяти»:
+# её пользователь выключает сам отдельным пунктом с предупреждением.
+$script:ProtectedRegistry = @('windows defender', 'microsoft antimalware', 'windowsfirewall', 'firewallpolicy', 'smartscreen',
+    'policies\system|enablelua', 'policies\system|consentpromptbehavioradmin', 'policies\system|promptonsecuredesktop',
+    '|noautoupdate', '|disablewindowsupdateaccess', '|setdisableuxwuaccess', '|donotconnecttowindowsupdateinternetlocations',
+    'deviceguard', 'control\lsa|', 'securityhealth', 'windows security', 'memory management|featuresettingsoverride')
+$script:ProtectedServices = @('windefend', 'wdnissvc', 'sense', 'mpssvc', 'bfe', 'wuauserv', 'waasmedicsvc', 'usosvc', 'securityhealthservice',
+    'wscsvc', 'sgrmbroker', 'cryptsvc', 'trustedinstaller', 'bits', 'appidsvc', 'eventlog')
+$script:ProtectedTasks = @('\microsoft\windows\windows defender\', '\microsoft\windows\updateorchestrator\', '\microsoft\windows\windowsupdate\',
+    '\microsoft\windows\waasmedic\')
+$script:SecurityExceptions = @('memory-integrity-off')
+
+# Причина, по которой действие трогает защиту Windows, или пустая строка.
+function Get-NovaProtectedReason {
+    param($Action)
+    $type = [string](Get-NovaProp $Action 'type')
+    if ($type -eq 'registry') {
+        $target = ('{0}|{1}' -f (Get-NovaProp $Action 'path'), (Get-NovaProp $Action 'name')).ToLowerInvariant()
+        foreach ($pattern in $script:ProtectedRegistry) { if ($target.Contains($pattern)) { return 'реестр защиты Windows' } }
+    } elseif ($type -eq 'service') {
+        if ($script:ProtectedServices -contains ([string](Get-NovaProp $Action 'name')).ToLowerInvariant()) { return 'служба защиты или обновлений Windows' }
+    } elseif ($type -eq 'scheduledTask') {
+        $path = ([string](Get-NovaProp $Action 'path')).ToLowerInvariant()
+        foreach ($prefix in $script:ProtectedTasks) { if ($path.StartsWith($prefix)) { return 'задача защиты или обновлений Windows' } }
+    }
+    return ''
+}
+
 # Проверяет tweaks.json и config.json на ошибки. Возвращает список проблем (пустой — всё хорошо).
 function Test-NovaDefinition {
     param($Config, $Tweaks)
@@ -792,6 +822,8 @@ function Test-NovaDefinition {
         if ($actions.Count -eq 0) { $problems.Add("tweaks.json: у '$id' нет действий (actions)") }
         foreach ($action in $actions) {
             $type = [string](Get-NovaProp $action 'type')
+            $protected = Get-NovaProtectedReason $action
+            if ($protected -and $script:SecurityExceptions -notcontains $id) { $problems.Add("tweaks.json: '$id' трогает защиту Windows ($protected) — Nova так не делает") }
             if ($type -eq 'registry') {
                 if ([string](Get-NovaProp $action 'path') -notmatch '^(HKLM|HKCU)\\.+') { $problems.Add("tweaks.json: у '$id' неверный путь реестра") }
                 if (-not (Get-NovaProp $action 'name')) { $problems.Add("tweaks.json: у '$id' не указано имя значения (name)") }
@@ -1688,6 +1720,42 @@ function Get-NovaHealth {
         } else {
             $checks.Add((New-NovaCheck 'Ноутбук' 'ok' 'Настройки, которые сажают батарею, выключены.' -Id 'battery'))
         }
+    }
+
+    # Защита Windows. Nova её не выключает, но предупредит, если что-то уже выключено.
+    try {
+        $mp = Get-MpComputerStatus -ErrorAction Stop
+        if ($mp.AntivirusEnabled -and $mp.RealTimeProtectionEnabled) {
+            $checks.Add((New-NovaCheck 'Антивирус' 'ok' 'Microsoft Defender работает.' -Id 'antivirus'))
+        } else {
+            $other = @()
+            try { $other = @(Get-CimInstance -Namespace 'root/SecurityCenter2' -ClassName AntiVirusProduct -ErrorAction Stop | Where-Object { $_.displayName -notlike '*Defender*' }) } catch { $other = @() }
+            if ($other.Count -gt 0) {
+                $checks.Add((New-NovaCheck 'Антивирус' 'ok' ('Работает {0}.' -f $other[0].displayName) -Id 'antivirus'))
+            } else {
+                $checks.Add((New-NovaCheck 'Антивирус' 'warn' 'Защита в реальном времени выключена.' 'Включи её: «Безопасность Windows → Защита от вирусов и угроз». Nova её не трогает.' 'antivirus'))
+            }
+        }
+    } catch {
+        Write-Verbose 'Defender недоступен — пропускаем.'
+    }
+    try {
+        $off = @(Get-NetFirewallProfile -ErrorAction Stop | Where-Object { -not $_.Enabled } | ForEach-Object { $_.Name })
+        if ($off.Count -gt 0) {
+            $checks.Add((New-NovaCheck 'Брандмауэр' 'warn' ('Выключен для сетей: {0}.' -f ($off -join ', ')) 'Включи его: «Безопасность Windows → Брандмауэр и защита сети». Nova его не трогает.' 'firewall'))
+        } else {
+            $checks.Add((New-NovaCheck 'Брандмауэр' 'ok' 'Включён.' -Id 'firewall'))
+        }
+    } catch {
+        Write-Verbose 'Брандмауэр недоступен — пропускаем.'
+    }
+    $lua = Get-NovaRegValue -Path 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name 'EnableLUA'
+    if ($lua.Exists -and [int]$lua.Value -eq 0) {
+        $checks.Add((New-NovaCheck 'Контроль учётных записей' 'warn' 'UAC выключен: любая программа получает права администратора без вопроса.' 'Включи его: Пуск → «Изменение параметров контроля учётных записей».' 'uac'))
+    }
+    $wu = Get-NovaServiceStartup 'wuauserv'
+    if ($wu -eq 'Disabled') {
+        $checks.Add((New-NovaCheck 'Обновления' 'warn' 'Служба обновлений Windows отключена — исправления безопасности не придут.' 'Похоже, это сделала другая программа. Nova обновления не отключает.' 'updates'))
     }
 
     # Установка программ: нужен winget и интернет

@@ -364,6 +364,9 @@ function Start-NovaMenu {
 
 $exitCode = 0
 $logPath = Join-Path (Get-NovaDataDir) ('logs\nova-{0}.log' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+# Храним последние 30 логов, чтобы папка не разрасталась.
+Get-ChildItem -LiteralPath (Split-Path -Parent $logPath) -Filter 'nova-*.log' -ErrorAction SilentlyContinue |
+    Sort-Object Name -Descending | Select-Object -Skip 29 | Remove-Item -Force -ErrorAction SilentlyContinue
 $transcript = $false
 try {
     Start-Transcript -LiteralPath $logPath -ErrorAction Stop | Out-Null

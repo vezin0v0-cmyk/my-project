@@ -17,6 +17,17 @@ if ($context.Problems.Count -gt 0) {
 }
 Write-Host ('Система: {0} {1}, сборка {2}' -f $context.System.Name, $context.System.Version, $context.System.Build)
 
+# Предохранитель: настройка, которая трогает защиту Windows, не проходит проверку.
+$evil = @(
+    [pscustomobject]@{ id = 'evil-av'; category = 'system'; title = 'x'; actions = @([pscustomobject]@{ type = 'registry'; path = 'HKLM\SOFTWARE\Policies\Microsoft\Windows Defender'; name = 'DisableAntiSpyware'; kind = 'DWord'; value = 1 }) },
+    [pscustomobject]@{ id = 'evil-fw'; category = 'system'; title = 'x'; actions = @([pscustomobject]@{ type = 'service'; name = 'mpssvc'; startup = 'Disabled' }) },
+    [pscustomobject]@{ id = 'evil-uac'; category = 'system'; title = 'x'; actions = @([pscustomobject]@{ type = 'registry'; path = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'; name = 'EnableLUA'; kind = 'DWord'; value = 0 }) },
+    [pscustomobject]@{ id = 'evil-wu'; category = 'system'; title = 'x'; actions = @([pscustomobject]@{ type = 'scheduledTask'; path = '\Microsoft\Windows\WindowsUpdate\'; name = 'Scheduled Start' }) }
+)
+$evilProblems = @(Test-NovaDefinition -Config ([pscustomobject]@{ tweaks = [pscustomobject]@{} }) -Tweaks $evil | Where-Object { $_ -like '*защиту Windows*' })
+if ($evilProblems.Count -ne 4) { throw ('Предохранитель пропустил отключение защиты: поймано {0} из 4.' -f $evilProblems.Count) }
+Write-Host 'Предохранитель не пропускает отключение защиты Windows.'
+
 # Включаем все настройки. Гибернацию не трогаем: на виртуальных машинах её обычно нельзя включить обратно.
 foreach ($tweak in $context.Tweaks) {
     $context.Config.tweaks.($tweak.id) = ($tweak.id -ne 'hibernation-off')

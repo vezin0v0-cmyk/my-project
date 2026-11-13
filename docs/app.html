@@ -3,6 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<!-- Защита от «невидимой рамки» (кликджекинга): на настоящем сайте страницу нельзя открыть внутри чужой. -->
+<style id="nova-frame-guard">html { display: none !important; }</style>
+<script>
+  (function () {
+    var guard = document.getElementById('nova-frame-guard');
+    var ours = /\.github\.io$/.test(location.hostname);
+    if (self === top || !ours) { guard.parentNode.removeChild(guard); return; }
+    try { top.location = self.location; } catch (e) { /* остаётся скрытой */ }
+  })();
+</script>
 <!-- Странице можно ходить только к себе и к серверу аккаунтов: чужие скрипты и отправка данных на другие сайты запрещены. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://udnjvgvdiyfafsiqdkox.supabase.co; connect-src 'self' https://udnjvgvdiyfafsiqdkox.supabase.co; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>Nova — кабинет</title>
@@ -469,7 +480,7 @@
           <div class="two">
             <div class="field">
               <label for="r-pass">Пароль</label>
-              <div class="input"><svg class="i lead"><use href="#i-lock"/></svg><input id="r-pass" name="password" type="password" autocomplete="new-password" placeholder="8+ символов">
+              <div class="input"><svg class="i lead"><use href="#i-lock"/></svg><input id="r-pass" name="password" type="password" autocomplete="new-password" placeholder="8+ символов, буквы и цифры">
                 <button class="eye" type="button" aria-label="Показать пароль"><svg class="i"><use href="#i-eye"/></svg></button></div>
               <div class="meter" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
               <div class="meter-label" id="meter-label"></div>
@@ -904,7 +915,7 @@
     if (code === 'invalid_credentials' || /invalid login credentials/i.test(msg)) return { field: 'password', text: 'Неверная почта или пароль' };
     if (code === 'email_not_confirmed' || /email not confirmed/i.test(msg)) return { unconfirmed: true, text: 'Почта ещё не подтверждена' };
     if (code === 'otp_expired' || /token has expired|otp.*(expired|invalid)|invalid.*(token|otp)/i.test(msg)) return { text: 'Код не подошёл или устарел. Проверь последнее письмо или запроси новый код.' };
-    if (code === 'weak_password' || /password should/i.test(msg)) return { field: 'password', text: 'Пароль слишком простой: добавь цифры и большие буквы' };
+    if (code === 'weak_password' || /password should/i.test(msg)) return { field: 'password', text: 'Пароль слишком простой: нужны латинские буквы и цифры, от 8 символов' };
     if (code === 'email_address_invalid' || /email address .*invalid/i.test(msg)) return { field: 'email', text: 'Такая почта не подходит. Проверь адрес.' };
     if (code === 'signup_disabled' || /signups not allowed/i.test(msg)) return { text: 'Регистрация сейчас закрыта. Загляни позже.' };
     if (secs) return { text: 'Новое письмо можно отправить через ' + secs[1] + ' сек.' };
@@ -1012,7 +1023,10 @@
     var name = f.fullname.value.trim(), email = f.email.value.trim();
     if (name.length < 2) { setErr(f.fullname, 'Напиши имя — хотя бы 2 буквы'); ok = false; } else setErr(f.fullname, '');
     if (!EMAIL_RE.test(email)) { setErr(f.email, 'Введи почту, например name@mail.ru'); ok = false; } else setErr(f.email, '');
-    if (f.password.value.length < 8) { setErr(f.password, 'Минимум 8 символов'); ok = false; } else setErr(f.password, '');
+    var pv = f.password.value;
+    if (pv.length < 8) { setErr(f.password, 'Минимум 8 символов'); ok = false; }
+    else if (!/[A-Za-z]/.test(pv) || !/[0-9]/.test(pv)) { setErr(f.password, 'Нужны латинские буквы и хотя бы одна цифра'); ok = false; }
+    else setErr(f.password, '');
     if (f.password2.value !== f.password.value || !f.password2.value) { setErr(f.password2, 'Пароли не совпадают'); ok = false; } else setErr(f.password2, '');
     $('#terms-label').classList.toggle('invalid', !f.terms.checked);
     if (!f.terms.checked) ok = false;

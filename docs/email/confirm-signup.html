@@ -17,7 +17,7 @@
 <title>Код подтверждения Nova</title>
 </head>
 <body style="margin:0;padding:0;background:#0a0a0a;-webkit-text-size-adjust:100%;">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#0a0a0a;">Твой код подтверждения: {{ .Token }}. Он действует 1 час.</div>
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#0a0a0a;">Твой код подтверждения: {{ .Token }}. Он действует 15 минут.</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0a0a0a;">
   <tr>
     <td align="center" style="padding:32px 14px;">
@@ -45,7 +45,7 @@
               </tr>
             </table>
 
-            <p style="margin:18px 0 0;font-size:14px;line-height:1.55;color:#c9c3b6;">Код действует <b style="color:#f5f1e8;">1 час</b> и подходит только для <span style="color:#f5f1e8;">{{ .Email }}</span>.</p>
+            <p style="margin:18px 0 0;font-size:14px;line-height:1.55;color:#c9c3b6;">Код действует <b style="color:#f5f1e8;">15 минут</b> и подходит только для <span style="color:#f5f1e8;">{{ .Email }}</span>.</p>
 
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:22px;">
               <tr>
