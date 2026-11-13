@@ -63,6 +63,9 @@
   .nav { display: flex; gap: 22px; margin-left: auto; font: 13px/1 var(--mono); }
   .nav a { color: var(--muted); text-decoration: none; }
   .nav a:hover { color: var(--text); }
+  .nav { align-items: center; }
+  .nav .nav-login { color: #17120a; background: var(--accent); padding: 8px 14px; border-radius: 6px; font-weight: 700; }
+  .nav .nav-login:hover { color: #17120a; background: #ffc566; }
 
   /* Кнопки */
   .btn {
@@ -169,7 +172,7 @@
     .hero { grid-template-columns: 1fr; padding-top: 44px; gap: 32px; }
     .grid, .steps { grid-template-columns: 1fr 1fr; }
     .two, .support { grid-template-columns: 1fr; }
-    .nav a:not(.nav-gh) { display: none; }
+    .nav a:not(.nav-gh):not(.nav-login) { display: none; }
   }
   @media (max-width: 600px) {
     .wrap { width: calc(100% - 28px); }
@@ -202,6 +205,7 @@
       <a href="#install">Установка</a>
       <a href="#faq">Вопросы</a>
       <a class="nav-gh" data-link="repo" href="#">GitHub ↗</a>
+      <a class="nav-login" href="app.html#login">Войти</a>
     </nav>
   </div>
 </header>

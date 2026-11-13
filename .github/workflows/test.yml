@@ -16,6 +16,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Конструктор на сайте совпадает с программой
+        shell: pwsh
+        run: python tools/sync-site-data.py --check
+
       - name: Синтаксис, кодировка и стиль кода
         shell: pwsh
         run: ./tests/Lint.ps1
