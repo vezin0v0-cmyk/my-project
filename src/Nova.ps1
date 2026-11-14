@@ -53,6 +53,7 @@ Import-Module (Join-Path $PSScriptRoot 'Nova.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaClean.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaGame.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaStartup.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'NovaMove.psm1') -Force -DisableNameChecking
 
 # Без прав администратора Windows не даст менять системные настройки — перезапускаемся с ними.
 if (-not (Test-NovaAdmin)) {
@@ -429,6 +430,64 @@ function Invoke-NovaStartupFlow {
     }
 }
 
+# Переезд на чистую Windows: сохранить свои программы перед переустановкой и вернуть после.
+function Invoke-NovaMoveFlow {
+    Write-Host ''
+    Write-Nova 'ПЕРЕЕЗД НА ЧИСТУЮ WINDOWS' title
+    Write-Nova 'Перед переустановкой сохрани список своих программ — после неё Nova поставит их обратно.' info
+    Write-Host ''
+    Write-Host '  1  Сохранить мои программы и настройки Nova (перед переустановкой)' -ForegroundColor White
+    Write-Host '  2  Вернуть программы из сохранённого списка (после переустановки)' -ForegroundColor White
+    Write-Host '  0  Назад' -ForegroundColor White
+    $choice = (Read-Host '  Выбери пункт').Trim()
+    if ($choice -eq '1') {
+        $targets = @(Get-NovaMoveTarget)
+        if ($targets.Count -eq 0) { Write-Nova 'Некуда сохранить: не нашла ни флешки, ни рабочего стола.' warn; return 1 }
+        Write-Host ''
+        Write-Nova 'Куда сохранить? Лучше всего — на флешку: при переустановке диск C: сотрётся.' info
+        for ($i = 0; $i -lt $targets.Count; $i++) { Write-Host ('  {0}  {1}' -f ($i + 1), $targets[$i].Title) -ForegroundColor White }
+        $n = 0
+        $answer = (Read-Host '  Номер (Enter — 1)').Trim()
+        if (-not $answer) { $answer = '1' }
+        if (-not [int]::TryParse($answer, [ref]$n) -or $n -lt 1 -or $n -gt $targets.Count) { Write-Nova 'Нет такого номера.' warn; return 1 }
+        $target = $targets[$n - 1]
+        Write-Nova 'Составляю список программ через winget (до минуты)...' dim
+        $saved = Export-NovaMove -Target $target.Path -ProjectRoot $projectRoot
+        Write-Host ''
+        Write-Nova ('Сохранено программ: {0}. Папка: {1}' -f @($saved.Apps).Count, $saved.Folder) ok
+        if ($saved.Copied.Count -gt 0) { Write-Nova ('Рядом лежат твои настройки Nova: {0}.' -f ($saved.Copied -join ', ')) ok }
+        Write-Nova 'В список попадают программы, которые знает winget. Игры из Steam и Epic, драйверы и программы только с сайтов поставь потом вручную.' dim
+        if (-not $target.Removable) { Write-Nova 'Скопируй папку «Nova-переезд» на флешку или в облако: рабочий стол при переустановке сотрётся.' warn }
+        return 0
+    }
+    if ($choice -eq '2') {
+        $files = @(Find-NovaMoveList)
+        if ($files.Count -eq 0) {
+            Write-Nova 'Не нашла сохранённый список. Вставь флешку с папкой «Nova-переезд» (или положи её на рабочий стол) и выбери этот пункт снова.' warn
+            return 1
+        }
+        $list = Read-NovaMoveList -Path $files[0]
+        $apps = @($list.Apps)
+        Write-Host ''
+        Write-Nova ('Нашла список от {0}: {1}' -f $list.Created, $list.Path) info
+        if ($list.Skipped -gt 0) { Write-Nova ('Пропущено подозрительных записей: {0} — их Nova ставить не будет.' -f $list.Skipped) warn }
+        if ($apps.Count -eq 0) { Write-Nova 'В списке нет программ, которые можно поставить.' warn; return 1 }
+        $shown = @($apps | Select-Object -First 40 | ForEach-Object { $_.Id })
+        Write-Host ('  ' + ($shown -join ', ')) -ForegroundColor White
+        if ($apps.Count -gt $shown.Count) { Write-Nova ('… и ещё {0}' -f ($apps.Count - $shown.Count)) dim }
+        Write-Nova 'Программы ставятся из официальных источников winget и Microsoft Store. Уже установленные Nova пропустит.' dim
+        if (-not (Confirm-NovaAction ('Поставить программы ({0})? Это может занять время.' -f $apps.Count))) { return 0 }
+        $result = Install-NovaMoveApps -Apps $apps -OnStep { param($a) Write-Nova ('ставлю {0}...' -f $a.Id) dim }
+        Write-Host ''
+        Write-Nova ('Готово. Установлено: {0}, уже были: {1}, не получилось: {2}.' -f $result.Installed, $result.Already, $result.Failed) ok
+        if ($result.Failed -gt 0) { Write-Nova ('Не получилось: {0}. Их можно поставить вручную с сайтов программ.' -f ($result.FailedIds -join ', ')) warn }
+        $savedConfig = Join-Path (Split-Path -Parent $list.Path) 'config.json'
+        if (Test-Path -LiteralPath $savedConfig) { Write-Nova ('Твои прежние настройки Nova лежат в {0} — если хочешь, положи config.json в папку Nova с заменой.' -f (Split-Path -Parent $list.Path)) info }
+        return 0
+    }
+    return 0
+}
+
 # Голосовые команды открываются в своём окне через Проводник — так они работают
 # без прав администратора, как обычная программа.
 function Start-NovaVoiceFlow {
@@ -540,6 +599,7 @@ function Start-NovaMenu {
         Write-Host '  8  Голосовые команды: «Нова, сверни все окна»' -ForegroundColor White
         Write-Host '  9  Освободить место на диске' -ForegroundColor White
         Write-Host ' 10  Автозагрузка: что запускается вместе с Windows' -ForegroundColor White
+        Write-Host ' 11  Переезд на чистую Windows: сохранить и вернуть свои программы' -ForegroundColor White
         Write-Host '  0  Выход' -ForegroundColor White
         Write-Host ''
         $choice = (Read-Host '  Выбери пункт').Trim()
@@ -560,6 +620,7 @@ function Start-NovaMenu {
                 '8' { Start-NovaVoiceFlow; Wait-NovaKey }
                 '9' { [void](Invoke-NovaCleanFlow); Wait-NovaKey }
                 '10' { [void](Invoke-NovaStartupFlow) }
+                '11' { [void](Invoke-NovaMoveFlow); Wait-NovaKey }
                 '0' { return }
             }
         } catch {

@@ -52,6 +52,10 @@ jobs:
           ./src/Nova.ps1 -Mode Startup
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Переезд на чистую Windows (список программ с флешки не доверенный)
+        shell: powershell
+        run: ./tests/Test-Move.ps1
+
       - name: Освободить место (без долгого DISM)
         shell: powershell
         run: ./src/Nova.ps1 -Mode Clean -Yes -Quick
