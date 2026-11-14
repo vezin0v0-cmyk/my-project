@@ -21,7 +21,8 @@ Write-Host 'ok  путь к программе из строки запуска'
 if (Test-NovaLocalPath '\\192.0.2.1\share\x.exe') { throw 'сетевой путь принят за локальный' }
 if (-not (Test-NovaLocalPath $notepad)) { throw 'системный диск не принят за локальный' }
 $esc = 'A' + [char]27 + '[2J' + [char]0x202E + 'B' + "`r`n"
-if ((Get-NovaCleanText $esc) -ne 'AB') { throw ('управляющие символы не вычищены: «{0}»' -f (Get-NovaCleanText $esc)) }
+# ESC, U+202E и перевод строки убираются; «[2J» без ESC — просто безобидные буквы.
+if ((Get-NovaCleanText $esc) -ne 'A[2JB') { throw ('управляющие символы не вычищены: «{0}»' -f (Get-NovaCleanText $esc)) }
 Write-Host 'ok  сетевые пути и управляющие символы распознаются'
 
 if (-not (Test-NovaStartupEnabled $null)) { throw 'нет отметки — значит включено' }
