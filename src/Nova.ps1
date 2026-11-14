@@ -158,9 +158,9 @@ function Read-NovaTimedYes {
     param([int]$Seconds = 15)
     try { if ([Console]::IsInputRedirected) { return $false } } catch { return $false }
     while ([Console]::KeyAvailable) { [void][Console]::ReadKey($true) }
-    $end = (Get-Date).AddSeconds($Seconds)
-    while ((Get-Date) -lt $end) {
-        $left = [int][math]::Ceiling(($end - (Get-Date)).TotalSeconds)
+    $watch = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($watch.Elapsed.TotalSeconds -lt $Seconds) {
+        $left = [int][math]::Ceiling($Seconds - $watch.Elapsed.TotalSeconds)
         Write-Host ("`r  Картинка в порядке? Нажми 1, чтобы оставить. Иначе верну как было через {0,2} с " -f $left) -NoNewline -ForegroundColor Yellow
         if ([Console]::KeyAvailable) {
             $key = [Console]::ReadKey($true)
@@ -188,17 +188,21 @@ function Invoke-NovaHzFix {
         Write-Nova 'Не получилось переключить частоту — оставил как было.' warn
         return
     }
-    if (Read-NovaTimedYes -Seconds 15) {
-        if ((Set-NovaDisplayHz -Device $Fix.Device -Hz $Fix.Hz -Persist) -eq 0) {
-            Write-Nova ('Готово: {0} работает на {1} Гц. Вернуть можно в «Параметры → Дисплей».' -f $Fix.Name.ToLowerInvariant(), $Fix.Hz) ok
-            return
+    # Что бы ни случилось дальше (ошибка, Ctrl+C) — без подтверждения частота возвращается.
+    # Даже если окно Nova закрыть, новая частота не сохранена и пропадёт при выходе из системы.
+    $kept = $false
+    try {
+        if (Read-NovaTimedYes -Seconds 15) {
+            if ((Set-NovaDisplayHz -Device $Fix.Device -Hz $Fix.Hz -Persist) -eq 0) {
+                $kept = $true
+                Write-Nova ('Готово: {0} работает на {1} Гц. Вернуть можно в «Параметры → Дисплей».' -f $Fix.Name.ToLowerInvariant(), $Fix.Hz) ok
+            } else {
+                Write-Nova 'Windows не сохранила новую частоту — возвращаю прежнюю.' warn
+            }
         }
-        [void](Restore-NovaDisplay -Device $Fix.Device)
-        Write-Nova 'Windows не сохранила новую частоту — вернул прежнюю.' warn
-        return
+    } finally {
+        if (-not $kept) { [void](Restore-NovaDisplay -Device $Fix.Device); Write-Nova ('Вернул {0} Гц.' -f $Fix.From) info }
     }
-    [void](Restore-NovaDisplay -Device $Fix.Device)
-    Write-Nova ('Вернул {0} Гц.' -f $Fix.From) info
 }
 
 # Короткий итог проверки для главного меню.
@@ -393,6 +397,7 @@ function Show-NovaStartupList {
     param($Items)
     Write-Host ''
     Write-Nova 'АВТОЗАГРУЗКА — что запускается вместе с Windows' title
+    Write-Nova ('Пользователь Windows: {0}. Издатель указан по цифровой подписи программы.' -f $env:USERNAME) dim
     if ($Items.Count -eq 0) { Write-Nova 'Вместе с Windows ничего не запускается.' ok; return }
     $i = 0
     foreach ($it in $Items) {
@@ -400,10 +405,11 @@ function Show-NovaStartupList {
         $state = 'вкл '
         $color = 'Green'
         if ($it.Protected) { $state = 'защ '; $color = 'DarkGray' } elseif (-not $it.Enabled) { $state = 'выкл'; $color = 'DarkGray' }
-        $who = ''
+        $who = ' — без подписи'
         if ($it.Company) { $who = ' — ' + $it.Company }
         $note = ''
         if ($it.Missing) { $note = '  (файла нет — программу, похоже, удалили)' }
+        if ($it.Network) { $note = '  (запуск из сети — проверь, что это за программа)' }
         Write-Host ('  {0,2}  [{1}]  {2}{3}{4}' -f $i, $state, $it.Title, $who, $note) -ForegroundColor $color
     }
     $on = @($Items | Where-Object { $_.Enabled -and -not $_.Protected }).Count

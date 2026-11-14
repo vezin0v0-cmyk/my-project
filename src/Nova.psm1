@@ -635,14 +635,30 @@ function Get-NovaCurrentWallpaper {
     return ''
 }
 
+# Add-Type в Windows PowerShell 5.1 пишет исходник и готовую DLL во временную папку и загружает DLL оттуда.
+# У Nova с правами администратора это обычно %TEMP% пользователя: туда может писать любая программа без прав
+# и подменить DLL между записью и загрузкой. Поэтому собираем через папку Nova, закрытую от всех, кроме администраторов.
+function Invoke-NovaAddType {
+    param([Parameter(Mandatory)][hashtable]$Arguments)
+    $oldTmp = $env:TMP; $oldTemp = $env:TEMP
+    if (Test-NovaAdmin) {
+        $dir = Join-Path (Get-NovaDataDir) 'build'
+        if (-not (Test-Path -LiteralPath $dir)) { [void][System.IO.Directory]::CreateDirectory($dir) }
+        $problem = Get-NovaTreeProblem -Path $dir -Trusted (Get-NovaTrustedSid)
+        if ($problem) { throw ('Папка для сборки небезопасна: {0}' -f $problem) }
+        $env:TMP = $dir; $env:TEMP = $dir
+    }
+    try { Add-Type @Arguments } finally { $env:TMP = $oldTmp; $env:TEMP = $oldTemp }
+}
+
 # Ставит обои сразу, без перезагрузки (SystemParametersInfo).
 function Set-NovaWallpaper {
     param([string]$Path)
     if (-not ('NovaNative.Desktop' -as [type])) {
-        Add-Type -Namespace NovaNative -Name Desktop -MemberDefinition @'
+        Invoke-NovaAddType -Arguments @{ Namespace = 'NovaNative'; Name = 'Desktop'; MemberDefinition = @'
 [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
 public static extern bool SystemParametersInfo(int uiAction, int uiParam, string pvParam, int fWinIni);
-'@
+'@ }
     }
     # SPI_SETDESKWALLPAPER = 0x14, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE = 0x03
     if (-not [NovaNative.Desktop]::SystemParametersInfo(0x14, 0, $Path, 0x03)) {

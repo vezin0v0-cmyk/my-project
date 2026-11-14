@@ -7,16 +7,50 @@ Import-Module (Join-Path $PSScriptRoot 'Nova.psm1') -DisableNameChecking
 
 $script:Approved = 'Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved'
 # Значок «Безопасность Windows» и сам Защитник. Их Nova не выключает, как и всё остальное, что защищает Windows.
-$script:ProtectedNames = @('SecurityHealth', 'Windows Defender', 'WindowsDefender', 'MSASCui', 'MSASCuiL')
-$script:ProtectedFiles = @('securityhealthsystray.exe', 'msascuil.exe', 'msascui.exe')
+# Узнаём их только по настоящему пути в системной папке и только в разделе HKLM, куда пишут лишь администраторы:
+# иначе вирус мог бы назвать себя «SecurityHealth», и Nova не дала бы его выключить.
+$script:ProtectedPaths = @(
+    (Join-Path $env:SystemRoot 'System32\SecurityHealthSystray.exe'),
+    (Join-Path $env:ProgramFiles 'Windows Defender\MSASCuiL.exe'),
+    (Join-Path $env:ProgramFiles 'Windows Defender\MSASCui.exe')
+) | ForEach-Object { $_.ToLowerInvariant() }
+
+# Текст из реестра и из файлов чужих программ: без управляющих и невидимых символов, не длиннее Max.
+function Get-NovaCleanText {
+    param([string]$Text, [int]$Max = 80)
+    $t = ([string]$Text -replace '[\p{Cc}\p{Cf}]', '').Trim()
+    if ($t.Length -gt $Max) { $t = $t.Substring(0, $Max) + '…' }
+    return $t
+}
+
+# Путь на локальном жёстком диске? Сетевые пути (\\сервер\папка, сетевые диски) не трогаем:
+# проверка такого пути с правами администратора может надолго подвесить меню.
+function Test-NovaLocalPath {
+    param([string]$Path)
+    if ($Path -notmatch '^[A-Za-z]:\\') { return $false }
+    try { return ((New-Object System.IO.DriveInfo($Path.Substring(0, 1))).DriveType -eq [System.IO.DriveType]::Fixed) } catch { return $false }
+}
+
+# Издатель — только из цифровой подписи. То, что программа пишет о себе сама, может быть неправдой.
+function Get-NovaSigner {
+    param([string]$Path)
+    try {
+        $sig = Get-AuthenticodeSignature -LiteralPath $Path -ErrorAction Stop
+        if ($sig.Status -ne 'Valid' -or -not $sig.SignerCertificate) { return '' }
+        $subject = $sig.SignerCertificate.Subject
+        if ($subject -match '(?:^|,\s*)O="?([^",]+)') { return $Matches[1].Trim() }
+        if ($subject -match '(?:^|,\s*)CN="?([^",]+)') { return $Matches[1].Trim() }
+    } catch { Write-Verbose ('Подпись не прочитана: {0}' -f $Path) }
+    return ''
+}
 
 function Get-NovaStartupSource {
     return @(
-        [pscustomobject]@{ Kind = 'Run'; Where = 'реестр, этот пользователь'; Path = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Run'; Folder = ''; Approved = ('HKCU\{0}\Run' -f $script:Approved) }
-        [pscustomobject]@{ Kind = 'Run'; Where = 'реестр, все пользователи'; Path = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'; Folder = ''; Approved = ('HKLM\{0}\Run' -f $script:Approved) }
-        [pscustomobject]@{ Kind = 'Run'; Where = 'реестр, все пользователи (32 бита)'; Path = 'HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run'; Folder = ''; Approved = ('HKLM\{0}\Run32' -f $script:Approved) }
-        [pscustomobject]@{ Kind = 'Folder'; Where = 'папка «Автозагрузка», этот пользователь'; Path = ''; Folder = [Environment]::GetFolderPath('Startup'); Approved = ('HKCU\{0}\StartupFolder' -f $script:Approved) }
-        [pscustomobject]@{ Kind = 'Folder'; Where = 'папка «Автозагрузка», все пользователи'; Path = ''; Folder = [Environment]::GetFolderPath('CommonStartup'); Approved = ('HKLM\{0}\StartupFolder' -f $script:Approved) }
+        [pscustomobject]@{ Kind = 'Run'; Machine = $false; Where = 'реестр, этот пользователь'; Path = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Run'; Folder = ''; Approved = ('HKCU\{0}\Run' -f $script:Approved) }
+        [pscustomobject]@{ Kind = 'Run'; Machine = $true; Where = 'реестр, все пользователи'; Path = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'; Folder = ''; Approved = ('HKLM\{0}\Run' -f $script:Approved) }
+        [pscustomobject]@{ Kind = 'Run'; Machine = $true; Where = 'реестр, все пользователи (32 бита)'; Path = 'HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run'; Folder = ''; Approved = ('HKLM\{0}\Run32' -f $script:Approved) }
+        [pscustomobject]@{ Kind = 'Folder'; Machine = $false; Where = 'папка «Автозагрузка», этот пользователь'; Path = ''; Folder = [Environment]::GetFolderPath('Startup'); Approved = ('HKCU\{0}\StartupFolder' -f $script:Approved) }
+        [pscustomobject]@{ Kind = 'Folder'; Machine = $true; Where = 'папка «Автозагрузка», все пользователи'; Path = ''; Folder = [Environment]::GetFolderPath('CommonStartup'); Approved = ('HKLM\{0}\StartupFolder' -f $script:Approved) }
     )
 }
 
@@ -76,30 +110,31 @@ function Get-NovaStartupItem {
                     Where-Object { $_.Name -ne 'desktop.ini' } |
                     ForEach-Object {
                         $target = $_.FullName
-                        if ($_.Extension -eq '.lnk') { $t = Get-NovaShortcutTarget $_.FullName; if ($t) { $target = $t } }
+                        if ($_.Extension -eq '.lnk') { $sc = Get-NovaShortcutTarget $_.FullName; if ($sc) { $target = $sc } }
                         [pscustomobject]@{ Name = $_.Name; Command = $target }
                     })
         }
         foreach ($e in $entries) {
             $file = Get-NovaCommandFile $e.Command
+            $local = [bool]$file -and (Test-NovaLocalPath $file)
             $title = [IO.Path]::GetFileNameWithoutExtension($e.Name)
-            $company = ''
-            if ($file -and (Test-Path -LiteralPath $file -PathType Leaf)) {
+            $company = ''; $exists = $false
+            if ($local -and (Test-Path -LiteralPath $file -PathType Leaf)) {
+                $exists = $true
                 try {
                     $info = (Get-Item -LiteralPath $file).VersionInfo
-                    if ($info.FileDescription -and $info.FileDescription.Trim()) { $title = $info.FileDescription.Trim() }
-                    if ($info.CompanyName) { $company = $info.CompanyName.Trim() }
+                    if ($info.FileDescription -and $info.FileDescription.Trim()) { $title = $info.FileDescription }
                 } catch { Write-Verbose ('Нет сведений о {0}' -f $file) }
+                $company = Get-NovaSigner $file
             }
             $approved = Get-NovaRegValue -Path $src.Approved -Name $e.Name
-            $leaf = ''
-            if ($file) { $leaf = [IO.Path]::GetFileName($file).ToLowerInvariant() }
             $items.Add([pscustomobject]@{
-                    Name = $e.Name; Title = $title; Company = $company; Command = $e.Command; File = $file
-                    Where = $src.Where; Approved = $src.Approved
+                    RawName = $e.Name; Name = (Get-NovaCleanText $e.Name); Title = (Get-NovaCleanText $title 60); Company = (Get-NovaCleanText $company 50)
+                    Command = $e.Command; File = $file; Where = $src.Where; Approved = $src.Approved
                     Enabled = (Test-NovaStartupEnabled $approved.Value)
-                    Protected = (($script:ProtectedNames -contains $e.Name) -or ($script:ProtectedFiles -contains $leaf))
-                    Missing = ($file -and [IO.Path]::IsPathRooted($file) -and -not (Test-Path -LiteralPath $file))
+                    Signed = [bool]$company; Network = ([bool]$file -and -not $local -and [IO.Path]::IsPathRooted($file))
+                    Protected = ($src.Machine -and $exists -and $local -and ($script:ProtectedPaths -contains $file.ToLowerInvariant()) -and [bool]$company)
+                    Missing = ($local -and -not $exists)
                 })
         }
     }
@@ -117,7 +152,9 @@ function Set-NovaStartupItem {
         $bytes[0] = 3
         [BitConverter]::GetBytes([DateTime]::UtcNow.ToFileTimeUtc()).CopyTo($bytes, 4)
     }
-    Set-NovaRegValue -Path $Item.Approved -Name $Item.Name -Kind 'Binary' -Value $bytes
+    # В реестр — настоящее имя записи, а не очищенное для показа.
+    $name = $Item.RawName; if ($null -eq $name) { $name = $Item.Name }
+    Set-NovaRegValue -Path $Item.Approved -Name $name -Kind 'Binary' -Value $bytes
 }
 
 Export-ModuleMember -Function *

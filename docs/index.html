@@ -10,8 +10,7 @@
 <script>
   (function () {
     var guard = document.getElementById('nova-frame-guard');
-    var ours = /\.github\.io$/.test(location.hostname);
-    if (self === top || !ours) { guard.parentNode.removeChild(guard); return; }
+    if (self === top) { guard.parentNode.removeChild(guard); return; }
     try { top.location = self.location; } catch (e) { /* остаётся скрытой */ }
   })();
 </script>

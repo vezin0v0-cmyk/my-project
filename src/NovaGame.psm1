@@ -88,7 +88,7 @@ $script:ScreensReady = $false
 function Initialize-NovaScreen {
     if ($script:ScreensReady) { return }
     if (-not ('NovaGame.Screens' -as [type])) {
-        Add-Type -TypeDefinition @'
+        Invoke-NovaAddType -Arguments @{ TypeDefinition = @'
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -186,7 +186,7 @@ namespace NovaGame {
         }
     }
 }
-'@
+'@ }
     }
     $script:ScreensReady = $true
 }
