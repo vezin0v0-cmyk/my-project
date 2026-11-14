@@ -15,10 +15,11 @@
     .\Nova.ps1 -Mode Check        # проверить, готова ли система и что мешает играм
     .\Nova.ps1 -Mode Fps          # замер FPS в игре: до и после Nova
     .\Nova.ps1 -Mode Clean        # освободить место на диске
+    .\Nova.ps1 -Mode Startup      # что запускается вместе с Windows
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Menu', 'Preview', 'Apply', 'Undo', 'Measure', 'Check', 'Fps', 'Clean')]
+    [ValidateSet('Menu', 'Preview', 'Apply', 'Undo', 'Measure', 'Check', 'Fps', 'Clean', 'Startup')]
     [string]$Mode = 'Menu',
     [string]$ConfigPath,
     [switch]$Yes,
@@ -51,6 +52,7 @@ $tweaksPath = Join-Path $PSScriptRoot 'tweaks.json'
 Import-Module (Join-Path $PSScriptRoot 'Nova.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaClean.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaGame.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'NovaStartup.psm1') -Force -DisableNameChecking
 
 # Без прав администратора Windows не даст менять системные настройки — перезапускаемся с ними.
 if (-not (Test-NovaAdmin)) {
@@ -385,6 +387,48 @@ function Invoke-NovaFpsFlow {
     return 0
 }
 
+# Автозагрузка: список и выключатель по номеру. Выключенная программа не удаляется.
+function Show-NovaStartupList {
+    param($Items)
+    Write-Host ''
+    Write-Nova 'АВТОЗАГРУЗКА — что запускается вместе с Windows' title
+    if ($Items.Count -eq 0) { Write-Nova 'Вместе с Windows ничего не запускается.' ok; return }
+    $i = 0
+    foreach ($it in $Items) {
+        $i++
+        $state = 'вкл '
+        $color = 'Green'
+        if ($it.Protected) { $state = 'защ'; $color = 'DarkGray' } elseif (-not $it.Enabled) { $state = 'выкл'; $color = 'DarkGray' }
+        $who = ''
+        if ($it.Company) { $who = ' — ' + $it.Company }
+        $note = ''
+        if ($it.Missing) { $note = '  (файла нет — программу, похоже, удалили)' }
+        Write-Host ('  {0,2}  [{1}]  {2}{3}{4}' -f $i, $state, $it.Title, $who, $note) -ForegroundColor $color
+    }
+    $on = @($Items | Where-Object { $_.Enabled -and -not $_.Protected }).Count
+    Write-Nova ('Включено: {0}. Чем меньше программ стартует с Windows, тем быстрее она загружается и тем меньше висит в фоне.' -f $on) dim
+}
+
+function Invoke-NovaStartupFlow {
+    while ($true) {
+        $items = @(Get-NovaStartupItem | Sort-Object @{ Expression = { [int][bool]$_.Protected } }, Title)
+        Show-NovaStartupList $items
+        if ($Yes -or $Mode -ne 'Menu') { return 0 }
+        Write-Host ''
+        Write-Nova 'Введи номер, чтобы выключить или включить пункт. Пусто или 0 — назад.' info
+        Write-Nova 'Выключенная программа не удаляется: её можно открыть вручную, а вернуть — здесь же или в Диспетчере задач → Автозагрузка.' dim
+        $choice = (Read-Host '  Номер').Trim()
+        if (-not $choice -or $choice -eq '0') { return 0 }
+        $n = 0
+        if (-not [int]::TryParse($choice, [ref]$n) -or $n -lt 1 -or $n -gt $items.Count) { Write-Nova 'Нет такого номера.' warn; continue }
+        $item = $items[$n - 1]
+        if ($item.Protected) { Write-Nova ('«{0}» — часть защиты Windows. Nova её не выключает.' -f $item.Title) warn; continue }
+        Set-NovaStartupItem -Item $item -Enabled (-not $item.Enabled)
+        if ($item.Enabled) { Write-Nova ('«{0}» больше не запускается вместе с Windows.' -f $item.Title) ok }
+        else { Write-Nova ('«{0}» снова запускается вместе с Windows.' -f $item.Title) ok }
+    }
+}
+
 # Голосовые команды открываются в своём окне через Проводник — так они работают
 # без прав администратора, как обычная программа.
 function Start-NovaVoiceFlow {
@@ -495,6 +539,7 @@ function Start-NovaMenu {
         Write-Host '  7  Замерить FPS в игре: до и после Nova' -ForegroundColor White
         Write-Host '  8  Голосовые команды: «Нова, сверни все окна»' -ForegroundColor White
         Write-Host '  9  Освободить место на диске' -ForegroundColor White
+        Write-Host ' 10  Автозагрузка: что запускается вместе с Windows' -ForegroundColor White
         Write-Host '  0  Выход' -ForegroundColor White
         Write-Host ''
         $choice = (Read-Host '  Выбери пункт').Trim()
@@ -514,6 +559,7 @@ function Start-NovaMenu {
                 '7' { [void](Invoke-NovaFpsFlow); Wait-NovaKey }
                 '8' { Start-NovaVoiceFlow; Wait-NovaKey }
                 '9' { [void](Invoke-NovaCleanFlow); Wait-NovaKey }
+                '10' { [void](Invoke-NovaStartupFlow) }
                 '0' { return }
             }
         } catch {
@@ -556,6 +602,7 @@ try {
         'Check' { Show-NovaBanner; $exitCode = Invoke-NovaCheckFlow }
         'Fps' { Show-NovaBanner; $exitCode = Invoke-NovaFpsFlow }
         'Clean' { Show-NovaBanner; $exitCode = Invoke-NovaCleanFlow }
+        'Startup' { Show-NovaBanner; $exitCode = Invoke-NovaStartupFlow }
     }
 } catch {
     Write-Nova ('Ошибка: {0}' -f $_.Exception.Message) err

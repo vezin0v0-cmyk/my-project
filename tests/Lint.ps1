@@ -31,9 +31,11 @@ foreach ($file in $scripts) {
 }
 
 Write-Host '== JSON'
-foreach ($file in @(Get-ChildItem -Path $root -Recurse -Filter '*.json' | Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' })) {
+# node_modules — чужие пакеты. В package-lock.json есть ключ с пустым именем: его читает только -AsHashtable (PowerShell 7).
+foreach ($file in @(Get-ChildItem -Path $root -Recurse -Filter '*.json' | Where-Object { $_.FullName -notmatch '[\\/](\.git|node_modules)[\\/]' })) {
     try {
-        Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8 | ConvertFrom-Json | Out-Null
+        $text = Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8
+        if ($PSVersionTable.PSVersion.Major -ge 6) { $text | ConvertFrom-Json -AsHashtable | Out-Null } else { $text | ConvertFrom-Json | Out-Null }
         Write-Host ('   ok  {0}' -f $file.Name)
     } catch {
         $failed = $true
