@@ -1,0 +1,29 @@
+name: Голосовые команды (Vosk)
+
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'voice.json'
+      - 'NovaVoice.cmd'
+      - 'tests/Test-Voice.ps1'
+      - 'tests/voice/**'
+      - '.github/workflows/voice.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  voice:
+    name: Vosk на Windows
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Голосовые команды на записях
+        shell: powershell
+        run: ./tests/Test-Voice.ps1

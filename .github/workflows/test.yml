@@ -1,0 +1,104 @@
+name: Проверка Nova
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Тесты на Windows
+    runs-on: windows-latest
+    env:
+      # Рабочая папка GitHub открыта для всех пользователей машины; на настоящем ПК Nova такую папку не примет.
+      NOVA_ALLOW_SHARED_FOLDER: '1'
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Конструктор на сайте совпадает с программой
+        shell: pwsh
+        run: python tools/sync-site-data.py --check
+
+      - name: Синтаксис, кодировка и стиль кода
+        shell: pwsh
+        run: ./tests/Lint.ps1
+
+      - name: Применить всё и отменить (проверка, что система возвращается как было)
+        shell: powershell
+        run: ./tests/Test-Nova.ps1
+
+      - name: Расчёты замера FPS
+        shell: powershell
+        run: ./tests/Test-Fps.ps1
+
+      - name: Очистка диска не ходит по подложенным ссылкам
+        shell: powershell
+        run: ./tests/Test-Clean.ps1
+
+      - name: Готовность к играм (видеокарта, монитор, память, диск)
+        shell: powershell
+        run: ./tests/Test-Game.ps1
+
+      - name: Автозагрузка (выключатель как в Диспетчере задач)
+        shell: powershell
+        run: |
+          ./tests/Test-Startup.ps1
+          ./src/Nova.ps1 -Mode Startup
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Освободить место (без долгого DISM)
+        shell: powershell
+        run: ./src/Nova.ps1 -Mode Clean -Yes -Quick
+
+      - name: Проверка системы
+        shell: powershell
+        run: ./src/Nova.ps1 -Mode Check
+
+      - name: Nova.cmd из папки со сложным именем и без распаковки
+        shell: powershell
+        # Only ASCII inside: GitHub saves this script without BOM, and Windows PowerShell 5.1 would misread Cyrillic.
+        run: |
+          function Invoke-Cmd([string]$Path, [string]$InputText) {
+            $in = Join-Path $env:RUNNER_TEMP 'cmd-in.txt'
+            $out = Join-Path $env:RUNNER_TEMP 'cmd-out.txt'
+            Set-Content -LiteralPath $in -Value $InputText -Encoding Ascii
+            # This is how Explorer runs a .cmd on double click: cmd /c ""path"".
+            $p = Start-Process -FilePath cmd.exe -ArgumentList ('/c ""{0}""' -f $Path) -RedirectStandardInput $in -RedirectStandardOutput $out -NoNewWindow -PassThru
+            if (-not $p.WaitForExit(180000)) { & taskkill.exe /T /F /PID $p.Id | Out-Null; throw "Nova.cmd hung: $Path" }
+            $text = Get-Content -LiteralPath $out -Raw
+            Write-Host $text
+            return $text
+          }
+          $dir = Join-Path $env:RUNNER_TEMP "Vadim's Nova & Co (1)"
+          New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          foreach ($item in @('Nova.cmd', 'config.json', 'src', 'assets')) { Copy-Item -Path $item -Destination $dir -Recurse -Force }
+          $menu = Invoke-Cmd (Join-Path $dir 'Nova.cmd') '0'
+          if ($menu -notmatch 'Nova 0\.\d') { throw 'Nova menu did not open from a folder with a tricky name.' }
+          $lonely = Join-Path $env:RUNNER_TEMP 'only-cmd'
+          New-Item -ItemType Directory -Path $lonely -Force | Out-Null
+          Copy-Item -Path 'Nova.cmd' -Destination $lonely
+          $hint = Invoke-Cmd (Join-Path $lonely 'Nova.cmd') ''
+          if ($hint -notmatch 'Nova\.cmd') { throw 'Nova.cmd alone did not ask to unpack the archive.' }
+
+      - name: Режим просмотра
+        shell: powershell
+        run: ./src/Nova.ps1 -Mode Preview
+
+      - name: Замер, применение, замер и отмена через меню-команды
+        shell: powershell
+        run: |
+          ./src/Nova.ps1 -Mode Measure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./src/Nova.ps1 -Mode Apply -Yes -NoRestorePoint
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Start-Sleep -Seconds 20
+          ./src/Nova.ps1 -Mode Measure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./src/Nova.ps1 -Mode Undo -Yes
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

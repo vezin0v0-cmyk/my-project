@@ -1,0 +1,81 @@
+name: Замер FPS (PresentMon)
+
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'tests/Test-Fps.ps1'
+      - '.github/workflows/fps.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fps:
+    name: PresentMon на Windows
+    runs-on: windows-latest
+    env:
+      # Рабочая папка GitHub открыта для всех пользователей машины; на настоящем ПК Nova такую папку не примет.
+      NOVA_ALLOW_SHARED_FOLDER: '1'
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      # Only ASCII in run blocks: GitHub saves them without BOM, Windows PowerShell 5.1 would misread Cyrillic.
+      - name: Animated window for PresentMon to measure
+        shell: powershell
+        run: |
+          $html = Join-Path $env:RUNNER_TEMP 'spin.html'
+          Set-Content -LiteralPath $html -Encoding Ascii -Value '<!doctype html><canvas id=c width=900 height=600></canvas><script>const c=document.getElementById("c").getContext("2d");let a=0;(function f(){a+=0.05;c.fillStyle="#123";c.fillRect(0,0,900,600);c.fillStyle="#fc4";c.save();c.translate(450,300);c.rotate(a);c.fillRect(-150,-150,300,300);c.restore();requestAnimationFrame(f);})();</script>'
+          $edge = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+          Start-Process -FilePath $edge -ArgumentList @('--new-window', '--no-first-run', '--start-maximized', '--use-angle=warp', "--user-data-dir=$env:RUNNER_TEMP\edge", "file:///$($html -replace '\\','/')")
+          Start-Sleep -Seconds 8
+
+      - name: PresentMon download is pinned and verified
+        shell: powershell
+        run: |
+          Import-Module ./src/Nova.psm1 -Force -DisableNameChecking
+          $path = Install-NovaPresentMon
+          if (-not (Test-NovaPresentMon $path)) { throw 'PresentMon SHA256 mismatch.' }
+          Write-Host ('PresentMon OK: {0}' -f $path)
+          # A tampered file must be rejected and replaced.
+          [System.IO.File]::WriteAllText($path, 'tampered')
+          if (Test-NovaPresentMon $path) { throw 'Tampered PresentMon was accepted.' }
+          $path = Install-NovaPresentMon
+          if (-not (Test-NovaPresentMon $path)) { throw 'PresentMon was not restored after tampering.' }
+          Write-Host 'Tampered file rejected and replaced.'
+
+      # GitHub runners have no GPU, so a browser may present no frames at all. Then we only warn:
+      # the math is covered by tests/Test-Fps.ps1, the real check happens on a gaming PC.
+      - name: Capture frames (best effort on a VM without GPU)
+        id: capture
+        shell: powershell
+        run: |
+          Get-CimInstance Win32_VideoController | ForEach-Object { Write-Host ('Display adapter: {0}' -f $_.Name) }
+          Import-Module ./src/Nova.psm1 -Force -DisableNameChecking
+          try {
+            $csv = Invoke-NovaFpsCapture -Seconds 8 -Delay 1
+          } catch {
+            Write-Host ('::warning::No frames on this VM: {0}' -f $_.Exception.Message)
+            "frames=0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding ascii
+            exit 0
+          }
+          Get-Content -LiteralPath $csv -TotalCount 3 | ForEach-Object { Write-Host $_ }
+          $byApp = Read-NovaFpsCsv $csv
+          foreach ($app in $byApp.Keys) { Write-Host ('{0}: {1} frames' -f $app, $byApp[$app].Count) }
+          Write-Host ('Game picked: {0}' -f (Select-NovaFpsGame $byApp))
+          "frames=1" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding ascii
+
+      - name: Full Nova FPS flow (-Mode Fps)
+        if: steps.capture.outputs.frames == '1'
+        shell: powershell
+        run: |
+          ./src/Nova.ps1 -Mode Fps -Seconds 10 -Delay 1 -Yes
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $data = Get-Content -LiteralPath (Join-Path $env:ProgramData 'Nova\fps.json') -Raw | ConvertFrom-Json
+          $run = @($data.runs)[-1]
+          Write-Host ('Saved run: game={0} label={1} avg={2} low1={3} frames={4}' -f $run.game, $run.label, $run.avg, $run.low1, $run.frames)
+          if ($run.frames -lt 100) { throw 'Too few frames captured.' }

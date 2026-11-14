@@ -1,0 +1,56 @@
+// Макет программы (docs/mockup.html): мастер установки и центр управления.
+const { chromium, devices } = require('playwright');
+const path = require('path');
+const OUT = path.join(process.env.NOVA_SHOTS || path.join(require('os').tmpdir(), 'nova-site'), 'mockup');
+require('fs').mkdirSync(OUT, { recursive: true });
+const R = [];
+const ok = (n, c) => R.push((c ? 'PASS ' : 'FAIL ') + n);
+async function run(opts, tag) {
+  const b = await chromium.launch();
+  const ctx = await b.newContext(opts);
+  const p = await ctx.newPage();
+  const errs = [];
+  p.on('pageerror', e => errs.push(e.message));
+  await p.goto('file://' + path.resolve(__dirname, '../../docs/mockup.html'));
+  await p.waitForTimeout(1900);
+  await p.screenshot({ path: `${OUT}/${tag}-1-hello.png` });
+  await p.click('#next'); await p.waitForTimeout(300);
+  await p.click('.preset[data-p="gaming"]'); await p.waitForTimeout(300);
+  await p.screenshot({ path: `${OUT}/${tag}-2-presets.png` });
+  await p.click('#next'); await p.waitForTimeout(300);
+  ok(tag + ' step3 opts', await p.$$eval('#w-opts .opt', e => e.length) === 16);
+  await p.click('#w-cats button[data-c="style"]'); await p.waitForTimeout(200);
+  await p.screenshot({ path: `${OUT}/${tag}-3-options.png` });
+  await p.click('#next'); await p.waitForTimeout(300);
+  await p.screenshot({ path: `${OUT}/${tag}-4-review.png` });
+  await p.click('#next'); await p.waitForTimeout(1600);
+  await p.screenshot({ path: `${OUT}/${tag}-5-install.png` });
+  await p.waitForSelector('.done', { timeout: 20000 }); await p.waitForTimeout(300);
+  await p.screenshot({ path: `${OUT}/${tag}-6-done.png` });
+  ok(tag + ' done stats', (await p.textContent('.done .stats')).includes('настроек применено'));
+  await p.click('#later'); await p.waitForTimeout(500);
+  await p.screenshot({ path: `${OUT}/${tag}-7-center.png` });
+  ok(tag + ' center hero', (await p.textContent('.hero h1')).includes('Nova включена'));
+  await p.click('#nav button[data-n="style"]'); await p.waitForTimeout(200);
+  await p.locator('#c-opts .opt').first().click(); await p.waitForTimeout(300);
+  ok(tag + ' toast on toggle', (await p.textContent('.toast')).includes('Выключено: Обои Nova'));
+  await p.screenshot({ path: `${OUT}/${tag}-8-center-style.png` });
+  await p.click('#nav button[data-n="history"]'); await p.waitForTimeout(200);
+  ok(tag + ' history has 2', await p.$$eval('#h-list li', e => e.length) === 2);
+  await p.click('#nav button[data-n="home"]'); await p.waitForTimeout(200);
+  await p.click('#h-undo'); await p.waitForTimeout(200);
+  await p.click('.modal [data-ok]'); await p.waitForTimeout(400);
+  ok(tag + ' undo all', (await p.textContent('.hero h1')).includes('Windows как была'));
+  const ov = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+  ok(tag + ' no overflow ' + ov, ov <= 0);
+  ok(tag + ' no errors ' + JSON.stringify(errs), errs.length === 0);
+  await b.close();
+}
+(async () => {
+  await run({ viewport: { width: 1366, height: 820 }, deviceScaleFactor: 1 }, 'pc');
+  await run({ ...devices['iPhone 13'] }, 'phone');
+  console.log(R.join('\n'));
+  const failed = R.some(r => !r.startsWith('PASS'));
+  console.log(failed ? 'SOME FAILED' : 'ALL PASS');
+  process.exitCode = failed ? 1 : 0;
+})();

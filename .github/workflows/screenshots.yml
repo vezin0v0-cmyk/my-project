@@ -1,0 +1,49 @@
+name: Скриншоты до и после
+
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'config.json'
+      - 'tests/Take-Screenshots.ps1'
+      - '.github/workflows/screenshots.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    name: Снимки экрана Windows
+    runs-on: windows-latest
+    env:
+      # Рабочая папка GitHub открыта для всех пользователей машины; на настоящем ПК Nova такую папку не примет.
+      NOVA_ALLOW_SHARED_FOLDER: '1'
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Разрешение экрана 1920x1080
+        shell: powershell
+        continue-on-error: true
+        run: Set-DisplayResolution -Width 1920 -Height 1080 -Force
+
+      - name: Снимки до Nova
+        shell: powershell
+        run: ./tests/Take-Screenshots.ps1 -Prefix before
+
+      - name: Применить Nova
+        shell: powershell
+        run: ./src/Nova.ps1 -Mode Apply -Yes -NoRestorePoint
+
+      - name: Снимки после Nova
+        shell: powershell
+        run: ./tests/Take-Screenshots.ps1 -Prefix after
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nova-screenshots
+          path: screenshots/
+          retention-days: 14

@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nova — макет программы</title>
+<meta name="theme-color" content="#050505">
+<style>
+  :root {
+    --bg: #050505;
+    --win: #121110;
+    --win-2: #181715;
+    --side: #0e0d0c;
+    --line: rgba(255,255,255,.08);
+    --line-2: rgba(255,255,255,.14);
+    --text: #f2eee6;
+    --muted: #a49f95;
+    --dim: #6c6862;
+    --gold: #ffc940;
+    --gold-2: #f3b021;
+    --ok: #3ddc84;
+    --warn: #ffb347;
+    --bad: #ff6b6b;
+    --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    --mono: "Cascadia Mono", Consolas, ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans); -webkit-font-smoothing: antialiased; }
+  button, input { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+  svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  /* «Рабочий стол» с обоями Nova */
+  .desk { min-height: 100vh; min-height: 100dvh; padding: 18px 18px 64px; display: flex; flex-direction: column; align-items: center;
+    background: #050505 url("img/nova-wallpaper.jpg") center / cover no-repeat fixed; }
+  .topbar { width: min(1060px, 100%); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .note { color: rgba(255,240,210,.75); font-size: 13px; background: rgba(0,0,0,.55); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  .note b { color: var(--gold); }
+  .switch { display: flex; padding: 4px; gap: 4px; border-radius: 12px; background: rgba(0,0,0,.6); border: 1px solid var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  .switch button { border: 0; background: none; padding: 8px 14px; border-radius: 9px; cursor: pointer; color: var(--muted); font-weight: 600; }
+  .switch button.on { background: linear-gradient(180deg, #ffd862, #f3b021); color: #1b1404; }
+
+  /* Окно программы */
+  .window { width: min(1060px, 100%); height: min(680px, calc(100vh - 120px)); min-height: 560px; display: flex; flex-direction: column; border-radius: 10px; overflow: hidden;
+    background: linear-gradient(180deg, rgba(30,26,20,.92), rgba(16,15,13,.96)); border: 1px solid rgba(255,255,255,.12);
+    box-shadow: 0 40px 120px rgba(0,0,0,.7), 0 0 0 1px rgba(0,0,0,.4); backdrop-filter: blur(30px) saturate(140%); -webkit-backdrop-filter: blur(30px) saturate(140%); }
+  .titlebar { height: 38px; flex: none; display: flex; align-items: center; gap: 10px; padding-left: 14px; font-size: 12.5px; color: #d6d1c7; border-bottom: 1px solid rgba(255,255,255,.05); }
+  .titlebar .logo { width: 16px; height: 16px; }
+  .titlebar .t { flex: 1; }
+  .titlebar .ctl { display: flex; height: 100%; }
+  .titlebar .ctl span { width: 46px; display: grid; place-items: center; color: #b9b4aa; }
+  .titlebar .ctl span:last-child:hover { background: #c42b1c; color: #fff; }
+  .body { flex: 1; min-height: 0; display: flex; }
+
+  /* Мастер установки */
+  .rail { width: 230px; flex: none; padding: 22px 16px; background: rgba(0,0,0,.25); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 18px; }
+  .rail .brand { display: flex; align-items: center; gap: 10px; padding: 0 6px; }
+  .rail .brand b { font: 700 15px/1 var(--sans); letter-spacing: .14em; }
+  .rail .brand small { display: block; color: var(--dim); font-size: 11.5px; letter-spacing: 0; font-weight: 400; margin-top: 3px; }
+  .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .steps li { display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 9px; color: var(--dim); font-weight: 600; font-size: 13.5px; }
+  .steps .n { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; border: 1px solid var(--line-2); flex: none; }
+  .steps li.done { color: var(--muted); }
+  .steps li.done .n { background: rgba(255,201,64,.15); border-color: rgba(255,201,64,.4); color: var(--gold); }
+  .steps li.now { color: var(--text); background: rgba(255,201,64,.1); }
+  .steps li.now .n { background: linear-gradient(180deg, #ffd862, #f3b021); border-color: transparent; color: #1b1404; }
+  .rail .foot { margin-top: auto; color: var(--dim); font-size: 12px; padding: 0 6px; }
+
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .content { flex: 1; min-height: 0; overflow-y: auto; padding: 28px 32px; }
+  .actions { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 20px; border-top: 1px solid var(--line); background: rgba(0,0,0,.2); }
+  .actions .info { color: var(--muted); font-size: 13px; }
+  .actions .info b { color: var(--gold); }
+  .actions .btns { display: flex; gap: 8px; margin-left: auto; }
+
+  h1 { font-size: 26px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -.01em; font-weight: 700; }
+  h1 em { font-style: normal; background: linear-gradient(90deg, #ffe27a, #f5a524); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  h2 { font-size: 18px; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 22px; max-width: 46em; }
+
+  .btn { height: 36px; padding: 0 16px; border-radius: 7px; border: 1px solid var(--line-2); background: rgba(255,255,255,.05); cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .btn:hover { background: rgba(255,255,255,.09); }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .btn.gold { border: 0; background: linear-gradient(180deg, #ffd862, #f3b021); color: #1b1404; box-shadow: 0 6px 18px rgba(243,176,33,.25); }
+  .btn.gold:hover { filter: brightness(1.06); }
+  .btn.green { border: 0; background: linear-gradient(180deg, #6ff3a8, #26c46b); color: #04210f; }
+  .btn.danger { border-color: rgba(255,107,107,.45); color: #ffb3b3; }
+
+  /* Шаг 1 */
+  .hello { display: flex; gap: 28px; align-items: center; margin-bottom: 26px; }
+  .hello .star { width: 92px; height: 92px; flex: none; filter: drop-shadow(0 0 22px rgba(255,190,60,.55)); }
+  .checks { display: grid; gap: 8px; max-width: 560px; }
+  .check { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 10px; background: rgba(255,255,255,.035); border: 1px solid var(--line); opacity: 0; transform: translateY(6px); transition: opacity .35s, transform .35s; }
+  .check.show { opacity: 1; transform: none; }
+  .check .st { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; flex: none; background: rgba(61,220,132,.15); color: var(--ok); }
+  .check .st svg.i { width: 14px; height: 14px; stroke-width: 3; }
+  .check b { font-weight: 600; }
+  .check > span:last-child { color: var(--muted); margin-left: auto; font-size: 13px; text-align: right; }
+  .demo-data { color: var(--dim); font-size: 12px; margin-top: 12px; }
+
+  /* Шаг 2 */
+  .presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .preset { text-align: left; padding: 16px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.03); cursor: pointer; display: flex; flex-direction: column; gap: 8px; position: relative; transition: border-color .2s, background .2s, transform .2s; }
+  .preset:hover { transform: translateY(-2px); border-color: var(--line-2); }
+  .preset.on { border-color: rgba(255,201,64,.7); background: rgba(255,201,64,.08); box-shadow: 0 0 0 3px rgba(255,201,64,.12); }
+  .preset .pi { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: rgba(255,201,64,.1); color: var(--gold); }
+  .preset b { font-size: 15px; }
+  .preset p { margin: 0; color: var(--muted); font-size: 13px; }
+  .preset .cnt { font: 600 11.5px/1 var(--mono); color: var(--dim); }
+  .preset .badge { position: absolute; top: 12px; right: 12px; font: 700 10.5px/1 var(--mono); padding: 4px 6px; border-radius: 5px; background: rgba(61,220,132,.12); color: var(--ok); }
+
+  /* Шаг 3 и разделы Центра */
+  .split { display: flex; gap: 20px; min-height: 100%; }
+  .cats { width: 210px; flex: none; display: flex; flex-direction: column; gap: 2px; }
+  .cats button, .nav button { display: flex; align-items: center; gap: 11px; width: 100%; padding: 9px 11px; border: 0; border-radius: 8px; background: none; cursor: pointer; color: var(--muted); font-weight: 600; text-align: left; position: relative; }
+  .cats button:hover, .nav button:hover { background: rgba(255,255,255,.05); color: var(--text); }
+  .cats button.on, .nav button.on { background: rgba(255,255,255,.07); color: var(--text); }
+  .cats button.on::before, .nav button.on::before { content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px; border-radius: 3px; background: var(--gold); }
+  .cats button.on svg, .nav button.on svg { color: var(--gold); }
+  .cats .c { margin-left: auto; font: 600 11px/1 var(--mono); color: var(--dim); }
+  .opts { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .opt { display: flex; align-items: center; gap: 14px; padding: 13px 14px; border-radius: 10px; background: rgba(255,255,255,.035); border: 1px solid var(--line); cursor: pointer; }
+  .opt:hover { background: rgba(255,255,255,.055); }
+  .opt .txt { flex: 1; min-width: 0; }
+  .opt .txt b { display: block; font-weight: 600; font-size: 14px; }
+  .opt .txt small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .opt .txt code { font: 11.5px var(--mono); color: var(--dim); }
+  .risk { display: inline-block; margin-left: 8px; font: 700 10.5px/1 var(--mono); padding: 3px 6px; border-radius: 5px; background: rgba(255,179,71,.14); color: var(--warn); vertical-align: 2px; }
+  .sw { position: relative; width: 40px; height: 20px; flex: none; }
+  .sw input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+  .sw i { position: absolute; inset: 0; border-radius: 99px; border: 1px solid rgba(255,255,255,.5); transition: background .15s, border-color .15s; pointer-events: none; }
+  .sw i::after { content: ""; position: absolute; top: 3px; left: 4px; width: 12px; height: 12px; border-radius: 50%; background: rgba(255,255,255,.75); transition: transform .15s, background .15s; }
+  .sw input:checked + i { background: var(--gold-2); border-color: var(--gold-2); }
+  .sw input:checked + i::after { transform: translateX(19px); background: #1b1404; }
+  .sw input:focus-visible + i { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .sec-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 12px; }
+  .sec-title h2 { margin: 0; }
+  .sec-title span { color: var(--dim); font-size: 12.5px; }
+
+  /* Шаг 4 */
+  .review { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .rv { border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.03); padding: 14px 16px; }
+  .rv h3 { margin: 0 0 8px; font-size: 13px; color: var(--gold); text-transform: uppercase; letter-spacing: .06em; display: flex; justify-content: space-between; }
+  .rv ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
+  .rv li { font-size: 13px; color: #d9d4ca; display: flex; gap: 8px; }
+  .rv li::before { content: "+"; color: var(--ok); font-family: var(--mono); }
+  .rv .none { color: var(--dim); }
+  .rv .none::before { content: ""; }
+  .opt.inline { max-width: 560px; }
+
+  /* Шаг 5 */
+  .progress { height: 8px; border-radius: 5px; background: rgba(255,255,255,.08); overflow: hidden; margin: 18px 0 8px; }
+  .progress i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ffd862, #f3b021); border-radius: 5px; transition: width .2s; }
+  .now-step { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; }
+  .log { margin-top: 16px; height: 260px; overflow-y: auto; border-radius: 10px; background: rgba(0,0,0,.35); border: 1px solid var(--line); padding: 12px 14px; font: 12.5px/1.7 var(--mono); color: #cfc9be; }
+  .log .ok { color: var(--ok); }
+  .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,201,64,.25); border-top-color: var(--gold); animation: spin .8s linear infinite; display: inline-block; vertical-align: -3px; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Шаг 6 */
+  .done { text-align: center; padding-top: 30px; }
+  .done .big { width: 84px; height: 84px; border-radius: 50%; margin: 0 auto 18px; display: grid; place-items: center; color: var(--ok); background: rgba(61,220,132,.12); border: 2px solid rgba(61,220,132,.6); box-shadow: 0 0 40px rgba(61,220,132,.25); }
+  .done .big svg.i { width: 40px; height: 40px; stroke-width: 2.4; }
+  .stats { display: flex; justify-content: center; gap: 12px; margin: 22px 0; flex-wrap: wrap; }
+  .stat { min-width: 150px; padding: 14px 18px; border-radius: 12px; background: rgba(255,255,255,.04); border: 1px solid var(--line); }
+  .stat b { display: block; font-size: 28px; color: var(--gold); }
+  .stat span { color: var(--muted); font-size: 12.5px; }
+
+  /* Nova Центр */
+  .nav { width: 230px; flex: none; padding: 14px 10px; background: rgba(0,0,0,.25); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+  .nav .brand { display: flex; align-items: center; gap: 10px; padding: 6px 10px 14px; }
+  .nav .brand b { font: 700 14px/1 var(--sans); letter-spacing: .14em; }
+  .nav hr { border: 0; border-top: 1px solid var(--line); margin: 8px 6px; width: auto; }
+  .nav .bottom { margin-top: auto; }
+  .hero { position: relative; overflow: hidden; border-radius: 14px; padding: 24px; display: flex; gap: 24px; align-items: center; margin-bottom: 16px;
+    background: linear-gradient(120deg, rgba(245,165,36,.95), rgba(214,84,24,.9) 60%, rgba(110,32,12,.9)); color: #fff; border: 1px solid rgba(255,220,160,.3); }
+  .hero.off { background: linear-gradient(120deg, #3a3631, #24221f); }
+  .hero h1 { color: #fff; }
+  .hero p { margin: 0 0 16px; color: rgba(255,255,255,.9); }
+  .hero .txt { flex: 1; min-width: 0; }
+  .hero .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn.dark { border: 0; background: rgba(20,10,4,.85); color: #fff; }
+  .btn.light { border: 1px solid rgba(255,255,255,.45); background: rgba(255,255,255,.14); color: #fff; }
+  .ring { width: 120px; height: 120px; position: relative; flex: none; }
+  .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 10; }
+  .ring .tr { stroke: rgba(255,255,255,.25); }
+  .ring .br { stroke: #fff; stroke-linecap: round; transition: stroke-dashoffset .8s; }
+  .ring .v { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+  .ring .v b { display: block; font-size: 26px; }
+  .ring .v span { font-size: 11.5px; opacity: .9; }
+  .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .card { border-radius: 12px; padding: 16px; border: 1px solid var(--line); background: rgba(255,255,255,.035); text-decoration: none; color: inherit; display: flex; flex-direction: column; gap: 8px; min-height: 120px; }
+  .card:hover { border-color: rgba(255,201,64,.45); }
+  .card .ci { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: rgba(255,201,64,.1); color: var(--gold); }
+  .card b { font-size: 14px; }
+  .card small { color: var(--muted); font-size: 12.5px; }
+  .two { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; }
+  .panel { border-radius: 12px; padding: 16px; border: 1px solid var(--line); background: rgba(255,255,255,.03); }
+  .panel h2 { font-size: 15px; margin-bottom: 10px; }
+  .hist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .hist li { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 10px; background: rgba(255,255,255,.035); border: 1px solid var(--line); }
+  .hist .d { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); flex: none; }
+  .hist li.undone .d { background: var(--dim); }
+  .hist li.undone b { color: var(--dim); text-decoration: line-through; }
+  .hist .w { flex: 1; min-width: 0; }
+  .hist b { display: block; font-weight: 600; font-size: 13.5px; }
+  .hist small { color: var(--dim); font-size: 12px; }
+  .search { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-radius: 7px; background: rgba(255,255,255,.05); border: 1px solid var(--line); color: var(--dim); margin-bottom: 18px; max-width: 360px; }
+  .search input { border: 0; background: none; outline: none; flex: 1; min-width: 0; color: var(--text); }
+  .empty { color: var(--dim); padding: 14px 0; }
+
+  .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 14px; padding: 12px 14px 12px 16px; border-radius: 12px;
+    background: rgba(24,22,19,.96); border: 1px solid var(--line-2); box-shadow: 0 20px 50px rgba(0,0,0,.6); animation: up .3s ease; max-width: calc(100% - 24px); }
+  .toast .ti { color: var(--ok); }
+  @keyframes up { from { opacity: 0; transform: translate(-50%, 12px); } }
+  .modal { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: rgba(0,0,0,.55); padding: 16px; }
+  .modal .box { width: min(440px, 100%); border-radius: 12px; background: #1d1b18; border: 1px solid var(--line-2); box-shadow: 0 30px 80px rgba(0,0,0,.7); overflow: hidden; }
+  .modal .in { padding: 22px; }
+  .modal .in p { color: var(--muted); margin: 6px 0 0; }
+  .modal .bar { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 16px; background: rgba(0,0,0,.25); border-top: 1px solid var(--line); }
+
+  @media (max-width: 820px) {
+    .desk { padding: 10px 8px 40px; background-attachment: scroll; }
+    .window { height: auto; min-height: calc(100vh - 110px); }
+    .body { flex-direction: column; }
+    .rail { width: auto; padding: 12px; gap: 10px; border-right: 0; border-bottom: 1px solid var(--line); }
+    .rail .brand, .rail .foot { display: none; }
+    .steps { flex-direction: row; overflow-x: auto; gap: 4px; scrollbar-width: none; }
+    .steps li { flex: none; padding: 6px 8px; font-size: 12.5px; }
+    .steps li:not(.now) span:not(.n) { display: none; }
+    .content { padding: 18px 16px; overflow: visible; }
+    .main { min-height: 0; }
+    .split { flex-direction: column; }
+    .cats { width: auto; flex-direction: row; overflow-x: auto; scrollbar-width: none; }
+    .cats button { flex: none; width: auto; }
+    .cats button.on::before, .nav button.on::before { left: 10px; right: 10px; top: auto; bottom: 0; width: auto; height: 3px; }
+    .nav { width: auto; flex-direction: row; overflow-x: auto; padding: 8px; border-right: 0; border-bottom: 1px solid var(--line); scrollbar-width: none; }
+    .nav button { flex: none; width: auto; }
+    .nav .brand, .nav hr { display: none; }
+    .nav .bottom { margin-top: 0; }
+    .hello { flex-direction: column; align-items: flex-start; gap: 14px; }
+    .hello .star { width: 64px; height: 64px; }
+    .hero { flex-direction: column-reverse; align-items: flex-start; }
+    .cards { grid-template-columns: 1fr 1fr; }
+    .two { grid-template-columns: 1fr; }
+    .actions { position: sticky; bottom: 0; background: rgba(18,17,16,.97); }
+    .actions .info { display: none; }
+    .titlebar .ctl span { width: 38px; }
+  }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="g-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff1b8"/><stop offset=".5" stop-color="#ffc940"/><stop offset="1" stop-color="#d9860f"/></linearGradient>
+    <symbol id="i-nova" viewBox="0 0 24 24"><path d="M12 1.5l2.4 8.1 8.1 2.4-8.1 2.4L12 22.5l-2.4-8.1L1.5 12l8.1-2.4z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></symbol>
+    <symbol id="i-layout" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18M9 9v11"/></symbol>
+    <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+    <symbol id="i-package" viewBox="0 0 24 24"><path d="M3 7.5 12 3l9 4.5-9 4.5z"/><path d="M3 7.5v9L12 21l9-4.5v-9M12 12v9"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.8 1.6-1.6 0-.9-.7-1.3-.7-2.2 0-1 .8-1.6 1.8-1.6H17a4 4 0 0 0 4-4c0-4.7-4-8.6-9-8.6z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10.5" cy="7" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M5 21h14"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 3 2.5 15 0 18M12 3c-2.5 3-2.5 15 0 18"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3 3 10.5l7 2.5 2.5 7z"/><path d="m10 13 11-10"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-9.3-8.8A5.3 5.3 0 0 1 12 6.1a5.3 5.3 0 0 1 9.3 5.1C19 15.6 12 20 12 20z"/></symbol>
+    <symbol id="i-game" viewBox="0 0 24 24"><path d="M6 9h4M8 7v4M15 10h.01M18 8h.01"/><path d="M17.3 5H6.7a4 4 0 0 0-4 3.6L2 15a3 3 0 0 0 5.4 1.8L9 15h6l1.6 1.8A3 3 0 0 0 22 15l-.7-6.4a4 4 0 0 0-4-3.6z"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.9 10.9 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6A17.4 17.4 0 0 0 2 12s3.5 7 10 7a10 10 0 0 0 5.4-1.6"/></symbol>
+    <symbol id="i-feather" viewBox="0 0 24 24"><path d="M20 4a6 6 0 0 0-8.5 0L5 10.5V19h8.5L20 12.5A6 6 0 0 0 20 4z"/><path d="M16 8 2 22M17.5 15H9"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+  </defs>
+</svg>
+
+<div class="desk">
+  <div class="topbar">
+    <div class="note"><b>Макет программы Nova.</b> Можно нажимать — в системе ничего не меняется.</div>
+    <div class="switch" role="tablist">
+      <button type="button" id="sw-wizard" class="on">1. Установка</button>
+      <button type="button" id="sw-center">2. Nova Центр</button>
+    </div>
+  </div>
+
+  <section class="window" aria-label="Окно программы Nova">
+    <div class="titlebar">
+      <svg class="logo" viewBox="0 0 24 24"><use href="#i-nova" fill="url(#g-gold)"/></svg>
+      <span class="t" id="win-title">Nova — установка</span>
+      <span class="ctl"><span>—</span><span>☐</span><span>✕</span></span>
+    </div>
+
+    <!-- ===== Мастер установки ===== -->
+    <div class="body" id="wizard">
+      <aside class="rail">
+        <div class="brand"><svg width="30" height="30" viewBox="0 0 24 24"><use href="#i-nova" fill="url(#g-gold)"/></svg><div><b>NOVA</b><small>версия 0.4</small></div></div>
+        <ol class="steps" id="steps"></ol>
+        <div class="foot">Без переустановки Windows.<br>Всё отменяется одной кнопкой.</div>
+      </aside>
+      <div class="main">
+        <div class="content" id="step-content"></div>
+        <div class="actions">
+          <div class="info" id="step-info"></div>
+          <div class="btns">
+            <button class="btn" type="button" id="back">Назад</button>
+            <button class="btn gold" type="button" id="next">Далее</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Nova Центр ===== -->
+    <div class="body" id="center" hidden>
+      <nav class="nav" id="nav"></nav>
+      <div class="main">
+        <div class="content" id="center-content"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<input type="file" id="file" accept=".json,application/json" hidden>
+
+<script>
+(function () {
+  'use strict';
+  // Данные настроек. Обновляются командой: python tools/sync-site-data.py
+  var DATA = /*DATA-START*/{"tweaks":[{"id":"telemetry-off","category":"privacy","title":"Минимум телеметрии","description":"Ставит минимальный уровень сбора данных и отключает службу телеметрии DiagTrack. На Home и Pro минимум — «обязательные данные», полный ноль бывает только на Enterprise."},{"id":"ads-id-off","category":"privacy","title":"Без рекламного идентификатора","description":"Приложения не получат идентификатор для персональной рекламы."},{"id":"tailored-off","category":"privacy","title":"Без советов по данным диагностики","description":"Microsoft не будет подбирать советы и рекламу на основе диагностических данных."},{"id":"activity-history-off","category":"privacy","title":"Не собирать историю действий","description":"Windows перестаёт записывать, какие программы и файлы ты открывал, и отправлять это в облако."},{"id":"suggestions-off","category":"privacy","title":"Убрать рекламу и «советы» Windows","description":"Выключает рекламу в «Пуске», автоустановку предлагаемых приложений, советы на экране блокировки, рекламу OneDrive в Проводнике и напоминания «давайте завершим настройку»."},{"id":"web-search-off","category":"privacy","title":"Без Bing в поиске «Пуска»","description":"Поиск в «Пуске» ищет только на компьютере и не отправляет запросы в интернет."},{"id":"copilot-off","category":"privacy","title":"Отключить Copilot","description":"Выключает встроенный Copilot и убирает его кнопку. В новых версиях Copilot — отдельное приложение: его удаляет пункт Microsoft.Copilot в списке removeApps."},{"id":"recall-off","category":"privacy","title":"Отключить Recall","description":"Recall постоянно делает снимки экрана для поиска с ИИ. Настройка запрещает эту функцию."},{"id":"feedback-off","category":"privacy","title":"Не просить отзывы","description":"Windows перестаёт показывать окна с просьбой оценить систему."},{"id":"update-sharing-off","category":"privacy","title":"Не раздавать обновления другим ПК","description":"Обновления качаются только с серверов Microsoft, а твой интернет не тратится на раздачу чужим компьютерам."},{"id":"telemetry-tasks-off","category":"privacy","title":"Отключить скрытые задачи сбора данных","description":"Windows по расписанию запускает задачи, которые собирают данные о программах, дисках и использовании. Отключаем их и службу отправки (dmwappushservice)."},{"id":"error-reporting-off","category":"privacy","title":"Не отправлять отчёты об ошибках","description":"Когда программа падает, Windows больше не отправляет отчёт в Microsoft и не держит для этого службу."},{"id":"sync-off","category":"privacy","title":"Не синхронизировать настройки с Microsoft","description":"Тема, пароли браузера Edge, язык и другие настройки не отправляются в облако Microsoft и не переносятся на другие устройства. Буфер обмена тоже не уходит в облако."},{"id":"input-data-off","category":"privacy","title":"Не собирать то, что ты печатаешь и говоришь","description":"Windows перестаёт собирать образцы набранного текста и рукописного ввода «для улучшения» и отправлять голос в онлайн-распознавание."},{"id":"account-nags-off","category":"privacy","title":"Без напоминаний «войди в аккаунт Microsoft»","description":"Убирает значки и подсказки в «Пуске» и Параметрах, которые уговаривают войти в аккаунт Microsoft или купить подписку."},{"id":"location-off","category":"privacy","title":"Запретить доступ к местоположению","description":"Приложения не узнают, где ты находишься. Погода и карты перестанут определять город сами."},{"id":"dark-theme","category":"interface","title":"Тёмная тема","description":"Тёмное оформление для системы и приложений."},{"id":"show-extensions","category":"interface","title":"Показывать расширения файлов","description":"В Проводнике видно, что файл — это «фото.jpg», а не «фото.jpg.exe». Полезно и для безопасности."},{"id":"show-hidden-files","category":"interface","title":"Показывать скрытые файлы","description":"Проводник показывает скрытые файлы и папки."},{"id":"explorer-this-pc","category":"interface","title":"Проводник открывается на «Этот компьютер»","description":"Вместо «Главной» с рекомендациями сразу видны диски."},{"id":"classic-context-menu","category":"interface","title":"Полное контекстное меню сразу","description":"Правый клик сразу показывает все пункты, без «Показать дополнительные параметры»."},{"id":"taskbar-left","category":"interface","title":"Кнопка «Пуск» слева","description":"Значки на панели задач прижаты к левому краю, как в Windows 10."},{"id":"search-icon-only","category":"interface","title":"Поиск на панели задач — только значок","description":"Вместо широкого поля поиска остаётся компактный значок."},{"id":"task-view-hide","category":"interface","title":"Убрать кнопку «Представление задач»","description":"Кнопка пропадает с панели задач. Окна всё равно можно листать через Win+Tab."},{"id":"widgets-off","category":"interface","title":"Без виджетов и новостей","description":"Убирает виджеты (Windows 11) и «Новости и интересы» (Windows 10) с панели задач."},{"id":"end-task-button","category":"interface","title":"«Завершить задачу» на панели задач","description":"Зависшую программу можно закрыть правым кликом по её значку, без Диспетчера задач."},{"id":"sticky-keys-off","category":"interface","title":"Не спрашивать про залипание клавиш","description":"Окно «Включить залипание клавиш?» больше не выскакивает, если пять раз нажать Shift (например, в игре)."},{"id":"context-menu-cleanup","category":"interface","title":"Убрать лишнее из правой кнопки","description":"Убирает редко нужные пункты: «Поделиться», «Предоставить доступ», «Добавить в библиотеку», «Восстановить прежнюю версию» и «Спросить Copilot»."},{"id":"notifications-off","category":"interface","title":"Без всплывающих уведомлений","description":"Уведомления программ в углу экрана больше не появляются. Удобно в играх, но можно пропустить что-то важное."},{"id":"transparency-off","category":"interface","title":"Без прозрачности окон","description":"Панель задач и меню становятся непрозрачными. Чуть меньше нагрузки на слабую видеокарту."},{"id":"nova-wallpaper","category":"style","title":"Обои Nova","description":"Тёмные обои с золотыми линиями и логотипом Nova. Ставятся сразу, без перезагрузки. Старые обои вернутся при отмене."},{"id":"nova-accent","category":"style","title":"Золотой цвет акцента","description":"Выделения, переключатели и кнопки в Windows становятся золотыми, как у Nova."},{"id":"nova-about","category":"style","title":"Nova в «О системе»","description":"В «Параметры → Система → О системе» появятся название и версия Nova, а в «Поддержке» — ссылка на проект. Если там были данные производителя ПК, они вернутся при отмене."},{"id":"game-mode-on","category":"performance","title":"Игровой режим","description":"Во время игры Windows отдаёт ей приоритет и не ставит обновления."},{"id":"game-dvr-off","category":"performance","title":"Без фоновой записи игр","description":"Отключает Game DVR, который постоянно пишет игру в фоне и отнимает FPS. Если записываешь клипы через Win+G — выключи эту настройку."},{"id":"faster-menus","category":"performance","title":"Меню открываются быстрее","description":"Задержка перед открытием подменю — 100 мс вместо 400."},{"id":"no-startup-delay","category":"performance","title":"Автозагрузка без задержки","description":"Программы из автозагрузки стартуют сразу после входа, без искусственной паузы."},{"id":"mouse-acceleration-off","category":"performance","title":"Без ускорения мыши","description":"Курсор двигается ровно на столько, на сколько двигаешь мышь. Любят в шутерах. Начнёт работать после выхода из системы и входа."},{"id":"high-performance-power","category":"performance","title":"Схема питания «Высокая производительность»","description":"Процессор не сбрасывает частоту. На ноутбуке батарея сядет быстрее."},{"id":"hibernation-off","category":"performance","title":"Отключить гибернацию","description":"Освобождает на диске C: столько места, сколько у тебя оперативной памяти (файл hiberfil.sys). Вместе с ней отключается «быстрый запуск»."},{"id":"background-apps-off","category":"performance","title":"Запретить приложениям из Store работать в фоне","description":"Экономит память и батарею. Некоторые приложения из Store могут перестать присылать уведомления."},{"id":"gpu-scheduling-on","category":"performance","title":"Планирование GPU (меньше задержка)","description":"Видеокарта сама управляет своей памятью — это может снизить задержку в играх. Работает на современных видеокартах, начнёт действовать после перезагрузки."},{"id":"windowed-games-optimization","category":"performance","title":"Оптимизация игр в окне","description":"Игры в окне и без рамки работают почти как в полноэкранном режиме: меньше задержка и плавнее картинка."},{"id":"power-throttling-off","category":"performance","title":"Без энергосбережения процессора","description":"Windows перестаёт замедлять фоновые программы ради экономии энергии. На ноутбуке батарея сядет быстрее."},{"id":"memory-integrity-off","category":"performance","title":"Выключить «Целостность памяти»","description":"Microsoft сама пишет, что эта защита может снижать FPS в играх. Но это защита от вредоносных драйверов: выключай, только если понимаешь риск. Некоторые античиты требуют её включённой. Действует после перезагрузки."},{"id":"background-services-trim","category":"system","title":"Отключить ненужные фоновые службы","description":"Службы, которые обычному ПК не нужны: загрузка офлайн-карт, демо-режим для магазинов, факс, отслеживание ссылок в сети и сетевой доступ к медиатеке."},{"id":"sysmain-off","category":"system","title":"Отключить SysMain (Superfetch)","description":"SysMain заранее загружает программы в память. На SSD пользы почти нет, а в фоне он нагружает диск и процессор. На старом жёстком диске программы могут открываться медленнее."},{"id":"search-indexing-off","category":"system","title":"Отключить индексацию поиска","description":"Windows перестаёт постоянно сканировать файлы для быстрого поиска — меньше фоновой нагрузки. Поиск в «Пуске» и Проводнике по содержимому файлов станет медленнее."},{"id":"printing-off","category":"system","title":"Отключить печать","description":"Если у тебя нет принтера — служба печати не нужна. Включится обратно при отмене."},{"id":"bluetooth-off","category":"system","title":"Отключить Bluetooth","description":"Если не пользуешься беспроводными наушниками, мышью или геймпадом по Bluetooth. С ними включать нельзя — перестанут подключаться."},{"id":"xbox-services-off","category":"system","title":"Отключить службы Xbox","description":"Если не играешь через Xbox и Game Pass. Игры из Steam и Epic Games это не затронет."},{"id":"security-updates-only","category":"system","title":"Только обновления безопасности","description":"Windows продолжит ставить исправления безопасности, но не будет сама переходить на новую большую версию (например, с 24H2 на следующую) и ломать твои настройки. Работает на Pro и выше. Важно: у каждой версии Windows есть срок поддержки — когда он заканчивается, исправления перестают приходить. Тогда выключи этот пункт и обновись."},{"id":"edge-quiet","category":"system","title":"«Тихий» Microsoft Edge","description":"Edge больше не висит в фоне и не запускается вместе с Windows, не показывает рекламу, советы и «помощника покупок», не отправляет данные о просмотре. Удалять Edge не будем: на нём работают другие программы. В настройках Edge появится надпись «Браузер управляется организацией» — так Edge показывает любые такие правила, это нормально."},{"id":"onedrive-remove","category":"system","title":"Удалить OneDrive (если он не настроен)","description":"Если ты не входил в OneDrive, он просто висит в фоне и предлагает сохранять файлы в облако. Nova удалит его. Если ты в OneDrive вошёл — Nova его не тронет, чтобы не потерять файлы. Вернуть можно из Microsoft Store."}],"config":{"_info":"Это настройки твоей сборки. true — включено, false — выключено. Что делает каждый пункт, написано в src/tweaks.json. После правок запусти Nova.cmd и выбери «Посмотреть, что изменится».","createRestorePoint":true,"tweaks":{"telemetry-off":true,"ads-id-off":true,"tailored-off":true,"activity-history-off":true,"suggestions-off":true,"web-search-off":true,"copilot-off":true,"recall-off":true,"feedback-off":true,"update-sharing-off":true,"telemetry-tasks-off":true,"error-reporting-off":true,"sync-off":true,"input-data-off":true,"account-nags-off":true,"location-off":false,"dark-theme":true,"show-extensions":true,"show-hidden-files":false,"explorer-this-pc":true,"classic-context-menu":true,"taskbar-left":false,"search-icon-only":true,"task-view-hide":true,"widgets-off":true,"end-task-button":true,"sticky-keys-off":true,"context-menu-cleanup":true,"notifications-off":false,"transparency-off":false,"nova-wallpaper":true,"nova-accent":true,"nova-about":true,"game-mode-on":true,"game-dvr-off":true,"faster-menus":true,"no-startup-delay":true,"mouse-acceleration-off":false,"high-performance-power":false,"hibernation-off":false,"background-apps-off":false,"gpu-scheduling-on":true,"windowed-games-optimization":true,"power-throttling-off":false,"memory-integrity-off":false,"background-services-trim":true,"sysmain-off":false,"search-indexing-off":false,"printing-off":false,"bluetooth-off":false,"xbox-services-off":false,"security-updates-only":false,"edge-quiet":true,"onedrive-remove":true},"removeApps":{"Microsoft.BingNews":true,"Microsoft.BingWeather":true,"Microsoft.BingSearch":true,"Microsoft.GetHelp":true,"Microsoft.Getstarted":true,"Microsoft.MicrosoftSolitaireCollection":true,"Microsoft.MicrosoftOfficeHub":true,"Microsoft.People":true,"Microsoft.PowerAutomateDesktop":true,"Microsoft.Todos":true,"Microsoft.WindowsFeedbackHub":true,"Microsoft.WindowsMaps":true,"Microsoft.549981C3F5F10":true,"Microsoft.Copilot":true,"Microsoft.Windows.DevHome":true,"Microsoft.MixedReality.Portal":true,"Microsoft.Microsoft3DViewer":true,"Microsoft.SkypeApp":true,"Clipchamp.Clipchamp":true,"MSTeams":true,"MicrosoftTeams":true,"Microsoft.OutlookForWindows":false,"Microsoft.YourPhone":true,"Microsoft.MicrosoftStickyNotes":true,"Microsoft.ZuneMusic":false,"Microsoft.GamingApp":false,"Microsoft.XboxGamingOverlay":false,"MicrosoftCorporationII.MicrosoftFamily":true,"Microsoft.Office.OneNote":true,"Microsoft.Wallet":true,"Microsoft.WindowsSoundRecorder":true,"MicrosoftWindows.CrossDevice":true,"microsoft.windowscommunicationsapps":true,"Microsoft.ZuneVideo":true,"Microsoft.BingFinance":true,"Microsoft.BingSports":true,"Microsoft.Messaging":true,"Microsoft.Print3D":true,"Microsoft.OneConnect":true,"Microsoft.MSPaint":true},"installApps":{"7zip.7zip":false,"VideoLAN.VLC":false,"Mozilla.Firefox":false,"Brave.Brave":false,"Google.Chrome":false,"Valve.Steam":false,"Discord.Discord":false,"Telegram.TelegramDesktop":false,"Notepad++.Notepad++":false,"voidtools.Everything":false,"Microsoft.PowerToys":false,"OBSProject.OBSStudio":false}}}/*DATA-END*/;
+
+  var CATS = [
+    { id: 'privacy', name: 'Приватность', icon: 'shield', sec: 'tweaks' },
+    { id: 'interface', name: 'Интерфейс', icon: 'layout', sec: 'tweaks' },
+    { id: 'style', name: 'Оформление', icon: 'palette', sec: 'tweaks' },
+    { id: 'performance', name: 'Скорость и игры', icon: 'zap', sec: 'tweaks' },
+    { id: 'system', name: 'Система и фон', icon: 'gear', sec: 'tweaks' },
+    { id: 'removeApps', name: 'Приложения', icon: 'trash', sec: 'removeApps' },
+    { id: 'installApps', name: 'Программы', icon: 'package', sec: 'installApps' }
+  ];
+  var RISKY = {
+    'hibernation-off': 'отключает быстрый запуск', 'background-apps-off': 'могут пропасть уведомления', 'high-performance-power': 'ноутбук сядет быстрее',
+    'show-hidden-files': 'видны системные файлы', 'memory-integrity-off': 'меньше защиты', 'power-throttling-off': 'ноутбук сядет быстрее',
+    'sysmain-off': 'на HDD медленнее', 'search-indexing-off': 'поиск медленнее', 'bluetooth-off': 'не будет Bluetooth', 'xbox-services-off': 'не будет Game Pass',
+    'notifications-off': 'без уведомлений', 'printing-off': 'не будет печати', 'location-off': 'погода не узнает город'
+  };
+  var APP_NAMES = {
+    'Microsoft.BingNews': 'Новости', 'Microsoft.BingWeather': 'Погода', 'Microsoft.BingSearch': 'Поиск Bing',
+    'Microsoft.GetHelp': 'Техподдержка', 'Microsoft.Getstarted': 'Советы', 'Microsoft.MicrosoftSolitaireCollection': 'Пасьянсы',
+    'Microsoft.MicrosoftOfficeHub': 'Microsoft 365 (Office)', 'Microsoft.People': 'Люди', 'Microsoft.PowerAutomateDesktop': 'Power Automate',
+    'Microsoft.Todos': 'Microsoft To Do', 'Microsoft.WindowsFeedbackHub': 'Центр отзывов', 'Microsoft.WindowsMaps': 'Карты',
+    'Microsoft.549981C3F5F10': 'Cortana', 'Microsoft.Copilot': 'Copilot', 'Microsoft.Windows.DevHome': 'Dev Home',
+    'Microsoft.MixedReality.Portal': 'Портал смешанной реальности', 'Microsoft.Microsoft3DViewer': 'Просмотр 3D', 'Microsoft.SkypeApp': 'Skype',
+    'Clipchamp.Clipchamp': 'Clipchamp', 'MSTeams': 'Teams (новый)', 'MicrosoftTeams': 'Teams (старый)', 'Microsoft.OutlookForWindows': 'Outlook (новый)',
+    'Microsoft.YourPhone': 'Связь с телефоном', 'Microsoft.MicrosoftStickyNotes': 'Записки', 'Microsoft.ZuneMusic': 'Медиаплеер',
+    'Microsoft.GamingApp': 'Xbox', 'Microsoft.XboxGamingOverlay': 'Xbox Game Bar',
+    'MicrosoftCorporationII.MicrosoftFamily': 'Семья (Microsoft Family)', 'Microsoft.Office.OneNote': 'OneNote (старый)', 'Microsoft.Wallet': 'Кошелёк',
+    'Microsoft.WindowsSoundRecorder': 'Диктофон', 'MicrosoftWindows.CrossDevice': 'Связь с устройствами',
+    'microsoft.windowscommunicationsapps': 'Почта и Календарь', 'Microsoft.ZuneVideo': 'Кино и ТВ', 'Microsoft.BingFinance': 'Финансы', 'Microsoft.BingSports': 'Спорт',
+    'Microsoft.Messaging': 'Сообщения', 'Microsoft.Print3D': 'Print 3D', 'Microsoft.OneConnect': 'Мобильные тарифы', 'Microsoft.MSPaint': 'Paint 3D',
+    '7zip.7zip': '7-Zip', 'VideoLAN.VLC': 'VLC', 'Mozilla.Firefox': 'Firefox', 'Brave.Brave': 'Brave', 'Google.Chrome': 'Chrome',
+    'Valve.Steam': 'Steam', 'Discord.Discord': 'Discord', 'Telegram.TelegramDesktop': 'Telegram Desktop', 'Notepad++.Notepad++': 'Notepad++',
+    'voidtools.Everything': 'Everything', 'Microsoft.PowerToys': 'PowerToys', 'OBSProject.OBSStudio': 'OBS Studio'
+  };
+  var LINKS = { site: 'https://claude.ai/artifact/HtbZ946LHxu3EJQExNcCcH', code: 'https://github.com/vezin0v0-cmyk/my-project' };
+
+  function $(s, r) { return (r || document).querySelector(s); }
+  function use(id) { return '<svg class="i"><use href="#i-' + id + '"/></svg>'; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  function plural(n, one, few, many) { var a = n % 10, b = n % 100; if (a === 1 && b !== 11) return one; if (a >= 2 && a <= 4 && (b < 12 || b > 14)) return few; return many; }
+  function title(sec, key) {
+    if (sec === 'tweaks') { var t = DATA.tweaks.filter(function (x) { return x.id === key; })[0]; return t ? t.title : key; }
+    return APP_NAMES[key] || key;
+  }
+
+  // ---------- Наборы ----------
+  function base() { var c = DATA.config; return { createRestorePoint: c.createRestorePoint !== false, tweaks: clone(c.tweaks), removeApps: clone(c.removeApps), installApps: clone(c.installApps) }; }
+  var PRESETS = [
+    { id: 'recommended', name: 'Рекомендуемая', icon: 'nova', text: 'Всё полезное и безопасное: без рекламы, слежки и мусора, тёмная тема и оформление Nova.', badge: 'лучший выбор', make: base },
+    { id: 'gaming', name: 'Для игр', icon: 'game', text: 'Рекомендуемая плюс мышь без ускорения, максимальная производительность, без энергосбережения процессора и уведомлений в игре.', make: function () { var s = base(); ['mouse-acceleration-off', 'high-performance-power', 'power-throttling-off', 'notifications-off'].forEach(function (k) { s.tweaks[k] = true; }); s.installApps['Valve.Steam'] = true; s.installApps['Discord.Discord'] = true; return s; } },
+    { id: 'weak', name: 'Для слабого ПК', icon: 'zap', text: 'Меньше фоновой нагрузки: без индексации поиска, SysMain, прозрачности и фоновых приложений.', make: function () { var s = base(); ['search-indexing-off', 'sysmain-off', 'transparency-off', 'background-apps-off'].forEach(function (k) { s.tweaks[k] = true; }); return s; } },
+    { id: 'privacy', name: 'Максимальная приватность', icon: 'eye-off', text: 'Отключает всё, что следит, и запрещает приложениям работать в фоне.', make: function () { var s = base(); s.tweaks['background-apps-off'] = true; s.removeApps['Microsoft.YourPhone'] = true; s.removeApps['Microsoft.OutlookForWindows'] = true; return s; } },
+    { id: 'minimal', name: 'Минимальная', icon: 'feather', text: 'Только убрать рекламу и мусор. Внешний вид и скорость не трогаем.', make: function () {
+        var s = base(); Object.keys(s.tweaks).forEach(function (k) { s.tweaks[k] = false; });
+        ['suggestions-off', 'web-search-off', 'copilot-off', 'widgets-off', 'feedback-off', 'ads-id-off'].forEach(function (k) { if (k in s.tweaks) s.tweaks[k] = true; });
+        return s; } },
+    { id: 'custom', name: 'Своя', icon: 'sliders', text: 'Начни с рекомендуемой и выбери всё сам на следующем шаге.', make: base }
+  ];
+
+  var state = { mode: 'wizard', step: 0, preset: 'recommended', sel: base(), cat: 'privacy', page: 'home', applied: null, history: [], installing: false, checksShown: false };
+
+  function counts(sel) {
+    var c = { tweaks: 0, removeApps: 0, installApps: 0, byCat: {} };
+    CATS.forEach(function (cat) { c.byCat[cat.id] = { on: 0, total: 0 }; });
+    DATA.tweaks.forEach(function (t) { var b = c.byCat[t.category]; if (!b) return; b.total++; if (sel.tweaks[t.id]) { b.on++; c.tweaks++; } });
+    ['removeApps', 'installApps'].forEach(function (sec) { Object.keys(sel[sec]).forEach(function (k) { c.byCat[sec].total++; if (sel[sec][k]) { c.byCat[sec].on++; c[sec]++; } }); });
+    return c;
+  }
+
+  // ---------- Уведомления и окна ----------
+  var toastTimer;
+  function toast(text, undo) {
+    var old = $('.toast'); if (old) old.remove();
+    clearTimeout(toastTimer);
+    var t = document.createElement('div');
+    t.className = 'toast';
+    t.innerHTML = '<span class="ti">' + use('check') + '</span><span></span>';
+    t.children[1].textContent = text;
+    if (undo) {
+      var b = document.createElement('button'); b.className = 'btn'; b.type = 'button'; b.innerHTML = use('undo') + 'Отменить';
+      b.addEventListener('click', function () { undo(); t.remove(); });
+      t.appendChild(b);
+    }
+    document.body.appendChild(t);
+    toastTimer = setTimeout(function () { t.remove(); }, 4500);
+  }
+  function confirmBox(head, text, okText, onOk, danger) {
+    var m = document.createElement('div');
+    m.className = 'modal';
+    m.innerHTML = '<div class="box" role="dialog" aria-modal="true"><div class="in"><h2></h2><p></p></div><div class="bar"><button class="btn" type="button" data-x>Отмена</button><button class="btn" type="button" data-ok></button></div></div>';
+    m.querySelector('h2').textContent = head;
+    m.querySelector('p').textContent = text;
+    var ok = m.querySelector('[data-ok]'); ok.textContent = okText; ok.className = 'btn ' + (danger ? 'danger' : 'gold');
+    m.addEventListener('click', function (e) { if (e.target === m || e.target.closest('[data-x]')) m.remove(); });
+    ok.addEventListener('click', function () { m.remove(); onOk(); });
+    document.body.appendChild(m);
+  }
+
+  // ---------- Мастер ----------
+  var STEPS = ['Приветствие', 'Выбор сборки', 'Настройки', 'Проверка', 'Установка', 'Готово'];
+  function renderSteps() {
+    $('#steps').innerHTML = STEPS.map(function (s, i) {
+      var cls = i < state.step ? 'done' : (i === state.step ? 'now' : '');
+      return '<li class="' + cls + '"><span class="n">' + (i < state.step ? '✓' : i + 1) + '</span><span>' + s + '</span></li>';
+    }).join('');
+  }
+
+  function renderWizard() {
+    renderSteps();
+    var box = $('#step-content'), back = $('#back'), next = $('#next'), info = $('#step-info');
+    var c = counts(state.sel);
+    back.hidden = state.step === 0 || state.step >= 4;
+    next.hidden = false; next.disabled = false; next.className = 'btn gold';
+    info.innerHTML = state.step >= 1 && state.step <= 3 ? 'Будет изменено: <b>' + c.tweaks + '</b> ' + plural(c.tweaks, 'настройка', 'настройки', 'настроек') + ', удалить приложений: <b>' + c.removeApps + '</b>' : '';
+    box.scrollTop = 0;
+
+    if (state.step === 0) {
+      next.textContent = 'Начать';
+      box.innerHTML = '<div class="hello"><svg class="star" viewBox="0 0 24 24"><use href="#i-nova" fill="url(#g-gold)"/></svg><div><h1>Добро пожаловать в <em>Nova</em></h1><p class="lead" style="margin:0">Сделаем Windows твоей: без рекламы, слежки и мусора — и с отменой в одну кнопку.</p></div></div>' +
+        '<h2>Проверяю компьютер</h2><p class="lead" style="margin-bottom:12px">Это займёт пару секунд.</p><div class="checks" id="checks">' +
+        [['Windows 11 Pro 24H2', 'подходит'], ['Права администратора', 'есть'], ['Точка восстановления', 'доступна'], ['Свободно на диске C:', '82 ГБ'], ['Интернет', 'есть — для установки программ']].map(function (r) {
+          return '<div class="check"><span class="st">' + use('check') + '</span><b>' + r[0] + '</b><span>' + r[1] + '</span></div>';
+        }).join('') + '</div><p class="demo-data">В макете данные о компьютере — для примера.</p>';
+      var items = box.querySelectorAll('.check');
+      items.forEach(function (el, i) { setTimeout(function () { el.classList.add('show'); }, state.checksShown ? 0 : 250 + i * 280); });
+      state.checksShown = true;
+    }
+
+    if (state.step === 1) {
+      next.textContent = 'Далее';
+      box.innerHTML = '<h1>Выбери <em>сборку</em></h1><p class="lead">Готовый набор настроек. На следующем шаге его можно поменять.</p><div class="presets">' +
+        PRESETS.map(function (p) {
+          var cc = counts(p.make());
+          return '<button type="button" class="preset' + (p.id === state.preset ? ' on' : '') + '" data-p="' + p.id + '">' + (p.badge ? '<span class="badge">' + p.badge + '</span>' : '') +
+            '<span class="pi">' + use(p.icon) + '</span><b>' + p.name + '</b><p>' + p.text + '</p><span class="cnt">' + cc.tweaks + ' ' + plural(cc.tweaks, 'настройка', 'настройки', 'настроек') + ' · ' + cc.removeApps + ' прил.</span></button>';
+        }).join('') + '</div>';
+      box.querySelectorAll('.preset').forEach(function (b) {
+        b.addEventListener('click', function () {
+          state.preset = b.getAttribute('data-p');
+          state.sel = PRESETS.filter(function (p) { return p.id === state.preset; })[0].make();
+          renderWizard();
+        });
+      });
+    }
+
+    if (state.step === 2) {
+      next.textContent = 'Далее';
+      box.innerHTML = '<h1>Настрой <em>под себя</em></h1><p class="lead">Включай и выключай. Рискованные пункты помечены.</p><div class="split"><div class="cats" id="w-cats"></div><div class="opts" id="w-opts"></div></div>';
+      renderCats($('#w-cats'), state.sel, function () { renderWizard(); });
+      renderOpts($('#w-opts'), state.sel, state.cat, function () { renderWizard(); });
+    }
+
+    if (state.step === 3) {
+      next.textContent = 'Применить';
+      var groups = CATS.map(function (cat) {
+        var on = [];
+        if (cat.sec === 'tweaks') DATA.tweaks.forEach(function (t) { if (t.category === cat.id && state.sel.tweaks[t.id]) on.push(t.title); });
+        else Object.keys(state.sel[cat.sec]).forEach(function (k) { if (state.sel[cat.sec][k]) on.push(title(cat.sec, k)); });
+        var name = cat.id === 'removeApps' ? 'Удалить' : cat.id === 'installApps' ? 'Установить' : cat.name;
+        return '<div class="rv"><h3><span>' + name + '</span><span>' + on.length + '</span></h3><ul>' +
+          (on.length ? on.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') : '<li class="none">ничего</li>') + '</ul></div>';
+      }).join('');
+      box.innerHTML = '<h1>Проверь, что <em>изменится</em></h1><p class="lead">Nova сначала показывает план, а потом меняет. Займёт 1–2 минуты.</p><div class="review">' + groups + '</div>' +
+        '<label class="opt inline"><span class="sw"><input type="checkbox" id="rp"' + (state.sel.createRestorePoint ? ' checked' : '') + '><i></i></span><span class="txt"><b>Создать точку восстановления</b><small>Запасной вариант на всякий случай. Отменить можно и без неё — кнопкой в Nova Центре.</small></span></label>';
+      $('#rp').addEventListener('change', function (e) { state.sel.createRestorePoint = e.target.checked; });
+    }
+
+    if (state.step === 4) {
+      back.hidden = true; next.disabled = true; next.textContent = 'Далее';
+      box.innerHTML = '<h1>Применяю <em>Nova</em></h1><p class="lead">Не выключай компьютер. Окно можно свернуть.</p>' +
+        '<div class="progress"><i id="bar"></i></div><div class="now-step"><span id="cur"><span class="spin"></span>Начинаю…</span><span id="pct">0%</span></div><div class="log" id="log"></div>';
+      runInstall();
+    }
+
+    if (state.step === 5) {
+      back.hidden = true;
+      next.textContent = 'Открыть Nova Центр';
+      var a = state.applied ? counts(state.applied) : c;
+      box.innerHTML = '<div class="done"><div class="big">' + use('check') + '</div><h1>Готово! Это теперь <em>твоя Windows</em></h1><p class="lead" style="margin:0 auto">Чтобы всё точно применилось, перезагрузи компьютер.</p>' +
+        '<div class="stats"><div class="stat"><b>' + a.tweaks + '</b><span>настроек применено</span></div><div class="stat"><b>' + a.removeApps + '</b><span>приложений удалено</span></div><div class="stat"><b>1</b><span>кнопка, чтобы всё вернуть</span></div></div>' +
+        '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn gold" type="button" id="reboot">Перезагрузить сейчас</button><button class="btn" type="button" id="later">Позже</button></div></div>';
+      $('#reboot').addEventListener('click', function () { toast('В программе здесь будет перезагрузка. В макете просто открываю Nova Центр.'); openCenter(); });
+      $('#later').addEventListener('click', openCenter);
+    }
+  }
+
+  function runInstall() {
+    if (state.installing) return;
+    state.installing = true;
+    var sel = clone(state.sel), lines = [];
+    if (sel.createRestorePoint) lines.push('Создаю точку восстановления Windows');
+    DATA.tweaks.forEach(function (t) { if (sel.tweaks[t.id]) lines.push('Применяю: ' + t.title); });
+    Object.keys(sel.removeApps).forEach(function (k) { if (sel.removeApps[k]) lines.push('Удаляю: ' + title('removeApps', k)); });
+    Object.keys(sel.installApps).forEach(function (k) { if (sel.installApps[k]) lines.push('Устанавливаю: ' + title('installApps', k)); });
+    lines.push('Перезапускаю Проводник');
+    var i = 0, log = $('#log');
+    (function next() {
+      if (state.step !== 4) { state.installing = false; return; }
+      if (i >= lines.length) {
+        $('#cur').innerHTML = use('check') + ' Готово';
+        state.installing = false;
+        state.applied = sel;
+        state.history.unshift({ text: 'Установка Nova: ' + counts(sel).tweaks + ' настроек, ' + counts(sel).removeApps + ' прил.', time: nowText(), undo: null, done: false, kind: 'install' });
+        $('#next').disabled = false;
+        setTimeout(function () { if (state.step === 4) { state.step = 5; renderWizard(); } }, 600);
+        return;
+      }
+      var row = document.createElement('div');
+      row.innerHTML = '<span class="ok">✓</span> ' + esc(lines[i]);
+      log.appendChild(row);
+      log.scrollTop = log.scrollHeight;
+      $('#cur').innerHTML = '<span class="spin"></span>' + esc(lines[i]) + '…';
+      i++;
+      var p = Math.round(i / lines.length * 100);
+      $('#bar').style.width = p + '%';
+      $('#pct').textContent = p + '%';
+      setTimeout(next, i === 1 ? 700 : 110);
+    })();
+  }
+
+  function nowText() { var d = new Date(); return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) + ', ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }); }
+
+  $('#back').addEventListener('click', function () { if (state.step > 0) { state.step--; renderWizard(); } });
+  $('#next').addEventListener('click', function () {
+    if (state.step === 5) { openCenter(); return; }
+    if (state.step === 1 && state.preset !== 'custom') { state.step = 2; renderWizard(); return; }
+    state.step++;
+    renderWizard();
+  });
+
+  // ---------- Общие списки настроек ----------
+  function renderCats(box, sel, onPick) {
+    var c = counts(sel);
+    box.innerHTML = CATS.map(function (cat) {
+      return '<button type="button" data-c="' + cat.id + '" class="' + (cat.id === state.cat ? 'on' : '') + '">' + use(cat.icon) + '<span>' + cat.name + '</span><span class="c">' + c.byCat[cat.id].on + '/' + c.byCat[cat.id].total + '</span></button>';
+    }).join('');
+    box.querySelectorAll('button').forEach(function (b) { b.addEventListener('click', function () { state.cat = b.getAttribute('data-c'); onPick(); }); });
+  }
+
+  function itemsFor(catId) {
+    var cat = CATS.filter(function (x) { return x.id === catId; })[0];
+    if (cat.sec === 'tweaks') return DATA.tweaks.filter(function (t) { return t.category === catId; }).map(function (t) { return { sec: 'tweaks', key: t.id, title: t.title, desc: t.description }; });
+    return Object.keys(DATA.config[cat.sec] || {}).map(function (k) { return { sec: cat.sec, key: k, title: APP_NAMES[k] || k, code: k }; });
+  }
+
+  function renderOpts(box, sel, catId, onChange, filter) {
+    var items = itemsFor(catId);
+    if (filter) {
+      var f = filter.toLowerCase();
+      items = [];
+      CATS.forEach(function (cat) { itemsFor(cat.id).forEach(function (it) { if ((it.title + ' ' + (it.desc || '')).toLowerCase().indexOf(f) > -1) items.push(it); }); });
+    }
+    var head = filter ? 'Поиск: «' + esc(filter) + '»' : CATS.filter(function (x) { return x.id === catId; })[0].name;
+    box.innerHTML = '<div class="sec-title"><h2>' + head + '</h2><span>' + items.length + ' ' + plural(items.length, 'пункт', 'пункта', 'пунктов') + '</span></div>' +
+      (items.length ? '' : '<div class="empty">Ничего не нашлось.</div>');
+    items.forEach(function (it) {
+      var l = document.createElement('label');
+      l.className = 'opt';
+      var verb = it.sec === 'removeApps' ? 'Удалить: ' : it.sec === 'installApps' ? 'Установить: ' : '';
+      l.innerHTML = '<span class="txt"><b></b><small></small></span><span class="sw"><input type="checkbox"><i></i></span>';
+      l.querySelector('b').textContent = verb + it.title;
+      if (RISKY[it.key]) { var r = document.createElement('span'); r.className = 'risk'; r.textContent = '⚠ ' + RISKY[it.key]; l.querySelector('b').appendChild(r); }
+      var small = l.querySelector('small');
+      if (it.desc) small.textContent = it.desc; else { var code = document.createElement('code'); code.textContent = it.code; small.appendChild(code); }
+      var input = l.querySelector('input');
+      input.checked = !!sel[it.sec][it.key];
+      input.addEventListener('change', function () { sel[it.sec][it.key] = input.checked; onChange(it, input.checked); });
+      box.appendChild(l);
+    });
+  }
+
+  // ---------- Nova Центр ----------
+  var NAV = [
+    { id: 'home', name: 'Главная', icon: 'home' },
+    { sep: true },
+    { id: 'privacy', name: 'Приватность', icon: 'shield' },
+    { id: 'interface', name: 'Интерфейс', icon: 'layout' },
+    { id: 'style', name: 'Оформление', icon: 'palette' },
+    { id: 'performance', name: 'Скорость и игры', icon: 'zap' },
+    { id: 'system', name: 'Система и фон', icon: 'gear' },
+    { id: 'removeApps', name: 'Приложения', icon: 'trash' },
+    { id: 'installApps', name: 'Программы', icon: 'package' },
+    { sep: true },
+    { id: 'history', name: 'История', icon: 'clock' },
+    { id: 'settings', name: 'Настройки', icon: 'gear', bottom: true }
+  ];
+
+  function openCenter() {
+    if (!state.applied) state.applied = clone(state.sel);
+    state.mode = 'center';
+    state.page = 'home';
+    syncMode();
+  }
+
+  function renderNav() {
+    var nav = $('#nav');
+    nav.innerHTML = '<div class="brand"><svg width="22" height="22" viewBox="0 0 24 24"><use href="#i-nova" fill="url(#g-gold)"/></svg><b>NOVA</b></div>' +
+      NAV.map(function (n) {
+        if (n.sep) return '<hr>';
+        return '<button type="button" data-n="' + n.id + '" class="' + (n.id === state.page ? 'on' : '') + (n.bottom ? ' bottom' : '') + '">' + use(n.icon) + '<span>' + n.name + '</span></button>';
+      }).join('');
+    nav.querySelectorAll('button').forEach(function (b) { b.addEventListener('click', function () { state.page = b.getAttribute('data-n'); renderCenter(); }); });
+  }
+
+  function renderCenter() {
+    renderNav();
+    var box = $('#center-content'), sel = state.applied, c = counts(sel), total = DATA.tweaks.length;
+    box.scrollTop = 0;
+    if (state.page === 'home') {
+      var pct = Math.round(c.tweaks / total * 100), circ = 2 * Math.PI * 50;
+      var on = c.tweaks > 0;
+      box.innerHTML = '<div class="hero' + (on ? '' : ' off') + '"><div class="txt"><h1>' + (on ? 'Nova включена' : 'Windows как была') + '</h1><p>' +
+        (on ? 'Работает ' + c.tweaks + ' из ' + total + ' настроек, удалено приложений: ' + c.removeApps + '.' : 'Все изменения Nova отменены. Можно включить снова.') + '</p><div class="row">' +
+        (on ? '<button class="btn dark" type="button" id="h-undo">' + use('undo') + 'Вернуть Windows как было</button>' : '<button class="btn dark" type="button" id="h-redo">' + use('nova') + 'Включить Nova снова</button>') +
+        '<button class="btn light" type="button" id="h-load">' + use('upload') + 'Загрузить сборку</button></div></div>' +
+        '<div class="ring"><svg viewBox="0 0 120 120"><circle class="tr" cx="60" cy="60" r="50"/><circle class="br" cx="60" cy="60" r="50" style="stroke-dasharray:' + circ.toFixed(1) + ';stroke-dashoffset:' + (circ * (1 - pct / 100)).toFixed(1) + '"/></svg><div class="v"><div><b>' + c.tweaks + '/' + total + '</b><span>настроек</span></div></div></div></div>' +
+        '<div class="cards">' +
+        card(LINKS.site, 'globe', 'Сайт Nova', 'Инструкции, вопросы и кабинет') +
+        card(LINKS.code, 'code', 'Исходный код', 'Открытый — проверь сам') +
+        card('', 'send', 'Telegram-канал', 'Новости и обновления — скоро') +
+        card('', 'heart', 'Поддержать', 'Nova бесплатна — донат по желанию') +
+        '</div><div class="two"><div class="panel"><h2>Последние изменения</h2><ul class="hist" id="h-list"></ul></div>' +
+        '<div class="panel"><h2>Быстрые действия</h2><div style="display:flex;flex-direction:column;gap:8px">' +
+        '<button class="btn" type="button" data-go="privacy">' + use('shield') + 'Приватность</button><button class="btn" type="button" data-go="style">' + use('palette') + 'Оформление</button><button class="btn" type="button" data-go="history">' + use('clock') + 'Вся история</button></div></div></div>';
+      renderHistory($('#h-list'), 4);
+      var u = $('#h-undo'), r = $('#h-redo');
+      if (u) u.addEventListener('click', undoAll);
+      if (r) r.addEventListener('click', function () { state.applied = clone(state.sel); addHistory('Nova включена снова', null); renderCenter(); toast('Nova снова включена'); });
+      $('#h-load').addEventListener('click', function () { $('#file').click(); });
+      box.querySelectorAll('[data-go]').forEach(function (b) { b.addEventListener('click', function () { state.page = b.getAttribute('data-go'); renderCenter(); }); });
+      return;
+    }
+    if (state.page === 'history') {
+      box.innerHTML = '<h1>История</h1><p class="lead">Каждое изменение можно отменить отдельно — или всё сразу на главной.</p><ul class="hist" id="h-list"></ul>';
+      renderHistory($('#h-list'));
+      return;
+    }
+    if (state.page === 'settings') {
+      box.innerHTML = '<h1>Настройки</h1><p class="lead">Nova 0.4.0 · у тебя последняя версия.</p>' +
+        '<label class="opt inline"><span class="txt"><b>Проверять обновления</b><small>Раз в день Nova смотрит, не вышла ли новая версия.</small></span><span class="sw"><input type="checkbox" checked><i></i></span></label><div style="height:8px"></div>' +
+        '<label class="opt inline"><span class="txt"><b>Точка восстановления перед изменениями</b><small>Запасной вариант Windows на всякий случай.</small></span><span class="sw"><input type="checkbox" checked><i></i></span></label><div style="height:8px"></div>' +
+        '<label class="opt inline"><span class="txt"><b>Ярлык Nova Центр на рабочем столе</b><small>Быстрый доступ к настройкам.</small></span><span class="sw"><input type="checkbox" checked><i></i></span></label>';
+      return;
+    }
+    // Разделы с переключателями — изменения применяются сразу.
+    box.innerHTML = '<div class="search">' + use('search') + '<input type="search" id="q" placeholder="Найти настройку" aria-label="Найти настройку"></div><div class="opts" id="c-opts"></div>';
+    var draw = function (filter) {
+      renderOpts($('#c-opts'), sel, state.page, function (it, val) {
+        var name = (it.sec === 'removeApps' ? (val ? 'Удалено: ' : 'Возвращено: ') : it.sec === 'installApps' ? (val ? 'Установлено: ' : 'Удалено: ') : (val ? 'Включено: ' : 'Выключено: ')) + it.title;
+        var entry = addHistory(name, function () { sel[it.sec][it.key] = !val; });
+        toast(name, function () { sel[it.sec][it.key] = !val; entry.done = true; draw($('#q').value.trim()); });
+      }, filter);
+    };
+    draw('');
+    $('#q').addEventListener('input', function (e) { draw(e.target.value.trim()); });
+  }
+
+  function card(href, icon, head, text) {
+    var tag = href ? 'a' : 'div';
+    return '<' + tag + ' class="card"' + (href ? ' href="' + href + '" target="_blank" rel="noopener"' : '') + '><span class="ci">' + use(icon) + '</span><b>' + head + '</b><small>' + text + '</small></' + tag + '>';
+  }
+
+  function addHistory(text, undo) {
+    var e = { text: text, time: nowText(), undo: undo, done: false };
+    state.history.unshift(e);
+    return e;
+  }
+
+  function renderHistory(ul, limit) {
+    var list = state.history.slice(0, limit || 50);
+    if (!list.length) { ul.innerHTML = '<li class="empty">Пока пусто.</li>'; return; }
+    ul.innerHTML = '';
+    list.forEach(function (e) {
+      var li = document.createElement('li');
+      if (e.done) li.className = 'undone';
+      li.innerHTML = '<span class="d"></span><div class="w"><b></b><small></small></div>';
+      li.querySelector('b').textContent = e.text;
+      li.querySelector('small').textContent = e.done ? e.time + ' · отменено' : e.time;
+      if (!e.done && (e.undo || e.kind === 'install')) {
+        var b = document.createElement('button'); b.className = 'btn'; b.type = 'button'; b.innerHTML = use('undo') + 'Отменить';
+        b.addEventListener('click', function () {
+          if (e.kind === 'install') { undoAll(); return; }
+          e.undo(); e.done = true; renderCenter(); toast('Отменено: ' + e.text);
+        });
+        li.appendChild(b);
+      }
+      ul.appendChild(li);
+    });
+  }
+
+  function undoAll() {
+    confirmBox('Вернуть Windows как было?', 'Nova отменит все свои изменения: настройки, обои, цвет. Удалённые приложения можно будет поставить заново из Microsoft Store.', 'Вернуть', function () {
+      var off = clone(state.applied);
+      ['tweaks', 'removeApps', 'installApps'].forEach(function (sec) { Object.keys(off[sec]).forEach(function (k) { off[sec][k] = false; }); });
+      state.applied = off;
+      state.history.forEach(function (e) { e.done = true; });
+      addHistory('Windows возвращена как была', null);
+      renderCenter();
+      toast('Готово: Windows как была. Перезагрузи компьютер.');
+    }, true);
+  }
+
+  // Загрузка config.json, собранного в кабинете на сайте.
+  $('#file').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var cfg = JSON.parse(reader.result);
+        if (!cfg || typeof cfg.tweaks !== 'object') throw new Error('нет раздела tweaks');
+        var s = base();
+        ['tweaks', 'removeApps', 'installApps'].forEach(function (sec) { Object.keys(s[sec]).forEach(function (k) { if (cfg[sec] && typeof cfg[sec][k] === 'boolean') s[sec][k] = cfg[sec][k]; }); });
+        state.applied = s; state.sel = clone(s);
+        addHistory('Загружена сборка из файла ' + f.name, null);
+        renderCenter();
+        toast('Сборка загружена: ' + counts(s).tweaks + ' настроек');
+      } catch (err) {
+        toast('Не получилось прочитать файл: это не config.json Nova');
+      }
+      e.target.value = '';
+    };
+    reader.readAsText(f);
+  });
+
+  // ---------- Переключение «Установка» / «Центр» ----------
+  function syncMode() {
+    var wiz = state.mode === 'wizard';
+    $('#wizard').hidden = !wiz; $('#center').hidden = wiz;
+    $('#sw-wizard').classList.toggle('on', wiz); $('#sw-center').classList.toggle('on', !wiz);
+    $('#win-title').textContent = wiz ? 'Nova — установка' : 'Nova Центр';
+    if (wiz) renderWizard(); else renderCenter();
+  }
+  $('#sw-wizard').addEventListener('click', function () { state.mode = 'wizard'; if (state.step >= 4) state.step = 0; syncMode(); });
+  $('#sw-center').addEventListener('click', function () { openCenter(); });
+
+  syncMode();
+})();
+</script>
+</body>
+</html>

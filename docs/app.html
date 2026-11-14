@@ -1,0 +1,2240 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<!-- Защита от «невидимой рамки» (кликджекинга): на настоящем сайте страницу нельзя открыть внутри чужой. -->
+<style id="nova-frame-guard">html { display: none !important; }</style>
+<script>
+  (function () {
+    var guard = document.getElementById('nova-frame-guard');
+    var ours = /\.github\.io$/.test(location.hostname);
+    if (self === top || !ours) { guard.parentNode.removeChild(guard); return; }
+    try { top.location = self.location; } catch (e) { /* остаётся скрытой */ }
+  })();
+</script>
+<!-- Странице можно ходить только к себе и к серверу аккаунтов: чужие скрипты и отправка данных на другие сайты запрещены. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://udnjvgvdiyfafsiqdkox.supabase.co; connect-src 'self' https://udnjvgvdiyfafsiqdkox.supabase.co; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<title>Nova — кабинет</title>
+<meta name="theme-color" content="#050505">
+<style>
+  :root {
+    --bg: #050505;
+    --text: #f3efe6;
+    --muted: #a7a399;
+    --dim: #6f6c66;
+    --gold: #ffc940;
+    --gold-2: #f3b021;
+    --ok: #3ddc84;
+    --bad: #ff6b6b;
+    --line: rgba(255, 255, 255, 0.09);
+    --glass: rgba(16, 15, 13, 0.5);
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font: 15px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+  button, input { font: inherit; color: inherit; }
+  a { color: inherit; }
+  [hidden] { display: none !important; }
+  svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  /* ---------- Фон: золотой шёлк ---------- */
+  #bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; transition: opacity .6s; }
+  .vignette { position: fixed; inset: 0; z-index: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 45%, transparent 25%, rgba(0,0,0,.75) 100%); }
+  .warm { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0; transition: opacity .6s;
+    background: radial-gradient(circle at 15% 10%, rgba(255,150,40,.22), transparent 45%), radial-gradient(circle at 95% 85%, rgba(255,90,30,.16), transparent 50%), rgba(5,5,5,.35); }
+  body.in-dash #bg { opacity: .5; }
+  body.in-dash .warm { opacity: 1; }
+
+  /* ---------- Стекло ---------- */
+  .glass {
+    background: linear-gradient(160deg, rgba(255,255,255,.075), rgba(255,255,255,.015) 60%), var(--glass);
+    backdrop-filter: blur(24px) saturate(150%);
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+    border: 1px solid var(--line);
+    box-shadow: 0 30px 80px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.07);
+  }
+  .gold-text { background: linear-gradient(90deg, #ffe27a, #f5a524); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .ok-text { background: linear-gradient(90deg, #8af5b8, #2fcf75); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  /* ---------- Кнопки ---------- */
+  .btn-gold, .btn-glass, .btn-green {
+    display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+    border-radius: 12px; cursor: pointer; text-decoration: none; white-space: nowrap;
+    transition: transform .15s, filter .2s, box-shadow .2s, background .3s, border-color .2s;
+  }
+  .btn-gold {
+    height: 48px; padding: 0 20px; border: 0; color: #1b1404; font-weight: 700; font-size: 15.5px;
+    background: linear-gradient(180deg, #ffd862, #f3b021);
+    box-shadow: 0 10px 30px rgba(243,176,33,.28), inset 0 1px 0 rgba(255,255,255,.5);
+  }
+  .btn-gold:hover { filter: brightness(1.06); box-shadow: 0 14px 36px rgba(243,176,33,.38), inset 0 1px 0 rgba(255,255,255,.5); }
+  .btn-gold:active, .btn-glass:active, .btn-green:active { transform: translateY(1px); }
+  .btn-green { height: 48px; padding: 0 20px; border: 0; color: #032010; font-weight: 700; font-size: 15.5px; background: linear-gradient(180deg, #6ff3a8, #26c46b); box-shadow: 0 10px 30px rgba(38,196,107,.3), inset 0 1px 0 rgba(255,255,255,.45); }
+  .btn-glass { height: 44px; padding: 0 16px; border: 1px solid rgba(255,255,255,.11); background: rgba(255,255,255,.045); font-weight: 600; font-size: 14px; color: var(--text); }
+  .btn-glass:hover { border-color: rgba(255,255,255,.22); background: rgba(255,255,255,.07); }
+  .wide { width: 100%; }
+  .sm { height: 40px; font-size: 14px; padding: 0 14px; }
+  .loading { pointer-events: none; }
+  .spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(0,0,0,.25); border-top-color: currentColor; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  /* ---------- Вход ---------- */
+  .auth { position: relative; z-index: 1; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 76px 16px 34px; }
+  .brand { position: absolute; top: 22px; left: 24px; display: flex; align-items: center; gap: 10px; text-decoration: none; font: 700 14px/1 var(--mono); letter-spacing: .2em; }
+  .brand .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 14px var(--gold); }
+  .stage { position: relative; width: min(440px, 100%); }
+  .card { position: relative; padding: 30px 28px 24px; border-radius: 24px; transform-origin: 50% 40%;
+    transition: transform .55s cubic-bezier(.7,0,.25,1), border-radius .55s, box-shadow .6s, border-color .6s; }
+  .card::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .6s;
+    background: radial-gradient(ellipse at 50% 25%, rgba(61,220,132,.2), transparent 62%); }
+  .card.success { border-color: rgba(61,220,132,.35); box-shadow: 0 30px 80px rgba(0,0,0,.5), 0 0 90px rgba(61,220,132,.14), inset 0 1px 0 rgba(255,255,255,.07); }
+  .card.success::before { opacity: 1; }
+  .card .view { transition: opacity .2s; }
+  .card.morph-out { transform: scale(.22) rotate(-10deg); border-radius: 70px; }
+  .card.morph-out .view, .card.morph-out .chip { opacity: 0; }
+  .corner { position: absolute; width: 22px; height: 22px; border: 0 solid rgba(255,201,64,.6); pointer-events: none; transition: opacity .3s; }
+  .corner.tl { top: -7px; left: -7px; border-width: 2px 0 0 2px; border-top-left-radius: 12px; }
+  .corner.tr { top: -7px; right: -7px; border-width: 2px 2px 0 0; border-top-right-radius: 12px; }
+  .corner.bl { bottom: -7px; left: -7px; border-width: 0 0 2px 2px; border-bottom-left-radius: 12px; }
+  .corner.br { bottom: -7px; right: -7px; border-width: 0 2px 2px 0; border-bottom-right-radius: 12px; }
+  .card.morph-out .corner { opacity: 0; }
+  .card.success .corner { border-color: rgba(61,220,132,.6); }
+  .emblem { position: absolute; left: 50%; top: 40%; width: 74px; height: 74px; margin: -37px 0 0 -37px; z-index: 3; display: grid; place-items: center; pointer-events: none;
+    opacity: 0; transform: scale(.5) rotate(-40deg); transition: opacity .3s, transform .55s cubic-bezier(.2,.9,.2,1); }
+  .emblem.show { opacity: 1; transform: none; }
+  .emblem svg { width: 46px; height: 46px; filter: drop-shadow(0 0 16px rgba(255,201,64,.6)); }
+  .chip { display: inline-flex; align-items: center; gap: 7px; font: 600 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--gold);
+    padding: 6px 9px; border-radius: 6px; background: rgba(255,201,64,.1); border: 1px solid rgba(255,201,64,.25); margin-bottom: 16px; transition: opacity .2s; }
+  h1 { font-size: 28px; line-height: 1.15; letter-spacing: -.02em; margin: 0 0 6px; font-weight: 760; }
+  .sub { color: var(--muted); margin: 0 0 22px; font-size: 14.5px; }
+  .field { margin-bottom: 14px; }
+  .field > label { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+  .input { position: relative; display: flex; align-items: center; }
+  .input .lead { position: absolute; left: 13px; color: var(--dim); pointer-events: none; transition: color .2s; }
+  .input input { width: 100%; height: 48px; padding: 0 44px 0 42px; border-radius: 12px; border: 1px solid rgba(255,255,255,.09); background: rgba(0,0,0,.4);
+    font-size: 16px; outline: none; transition: border-color .2s, box-shadow .2s; }
+  .input input::placeholder { color: #5f5c56; }
+  .input input:focus { border-color: rgba(255,201,64,.75); box-shadow: 0 0 0 4px rgba(255,201,64,.12); }
+  .input:focus-within .lead { color: var(--gold); }
+  .field.invalid input { border-color: rgba(255,107,107,.75); }
+  .err { display: block; color: var(--bad); font-size: 12.5px; margin-top: 5px; min-height: 0; }
+  .err:empty { display: none; }
+  .eye { position: absolute; right: 5px; width: 38px; height: 38px; display: grid; place-items: center; border: 0; background: none; color: var(--dim); cursor: pointer; border-radius: 9px; }
+  .eye:hover { color: var(--text); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .meter { display: flex; gap: 4px; margin-top: 7px; }
+  .meter i { flex: 1; height: 3px; border-radius: 2px; background: rgba(255,255,255,.1); transition: background .25s; }
+  .meter-label { font-size: 12px; color: var(--dim); margin-top: 4px; }
+  .row-between { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 4px 0 18px; flex-wrap: wrap; }
+  .check { display: inline-flex; align-items: center; gap: 9px; font-size: 13.5px; color: var(--muted); cursor: pointer; user-select: none; -webkit-user-select: none; }
+  .check input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .check i { width: 19px; height: 19px; flex: none; border-radius: 6px; border: 1px solid rgba(255,255,255,.22); background: rgba(0,0,0,.35); display: grid; place-items: center; transition: background .15s, border-color .15s; }
+  .check input:checked + i { background: linear-gradient(180deg, #ffd862, #f3b021); border-color: transparent; }
+  .check input:checked + i::after { content: ""; width: 9px; height: 5px; border: 2px solid #1b1404; border-top: 0; border-right: 0; transform: rotate(-45deg) translate(1px, -1px); }
+  .check input:focus-visible + i { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .check.invalid i { border-color: var(--bad); }
+  .link { color: var(--gold); text-decoration: none; font-weight: 600; font-size: 13.5px; background: none; border: 0; padding: 0; cursor: pointer; }
+  .link:hover { text-decoration: underline; }
+  .or { display: flex; align-items: center; gap: 12px; color: var(--dim); font-size: 12.5px; margin: 18px 0 14px; }
+  .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .alt { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .g-mark { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font: 800 12px/1 var(--sans); background: #fff; color: #1b1b1b; }
+  .switch { text-align: center; color: var(--muted); font-size: 14px; margin: 18px 0 0; }
+  .foot { position: relative; z-index: 1; color: var(--dim); font: 12px/1.5 var(--mono); text-align: center; margin: 22px 0 0; }
+
+  /* ---------- Код из письма ---------- */
+  .center { text-align: center; }
+  .badge-ic { width: 50px; height: 50px; border-radius: 15px; display: grid; place-items: center; margin: 0 auto 16px; color: var(--gold);
+    background: rgba(255,201,64,.1); border: 1px solid rgba(255,201,64,.35); transition: color .4s, background .4s, border-color .4s; }
+  .badge-ic svg.i { width: 22px; height: 22px; }
+  .card.success .badge-ic { color: var(--ok); background: rgba(61,220,132,.1); border-color: rgba(61,220,132,.4); }
+  .otp { position: relative; display: flex; justify-content: center; align-items: center; gap: 9px; height: 70px; margin: 6px 0 8px; transition: height .55s cubic-bezier(.6,0,.2,1); }
+  .otp.tall { height: 176px; }
+  .otp input { width: 50px; min-width: 0; flex: 0 1 auto; height: 62px; padding: 0; border-radius: 14px; text-align: center; font: 700 24px/1 var(--mono); background: rgba(0,0,0,.42);
+    border: 1px solid rgba(255,255,255,.12); outline: none; caret-color: var(--gold);
+    transition: transform .7s cubic-bezier(.6,0,.2,1), opacity .45s, border-color .2s, box-shadow .2s, background .3s; }
+  .otp input:focus { border-color: var(--gold); box-shadow: 0 0 0 4px rgba(255,201,64,.14); }
+  .otp input.filled { border-color: rgba(255,201,64,.55); background: rgba(255,201,64,.06); }
+  .otp.error input { border-color: rgba(255,107,107,.8); animation: shake .42s; }
+  .otp.spin { animation: orbit 1.15s linear infinite; }
+  @keyframes orbit { to { transform: rotate(360deg); } }
+  @keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+  .done { position: absolute; left: 50%; top: 50%; width: 76px; height: 76px; margin: -38px 0 0 -38px; border-radius: 50%; display: grid; place-items: center; color: var(--ok);
+    background: rgba(61,220,132,.12); border: 2px solid rgba(61,220,132,.7); box-shadow: 0 0 40px rgba(61,220,132,.35);
+    opacity: 0; transform: scale(.4); transition: opacity .4s, transform .55s cubic-bezier(.2,1.4,.4,1); pointer-events: none; }
+  .done.show { opacity: 1; transform: none; }
+  .done svg.i { width: 34px; height: 34px; stroke-width: 2.4; }
+  .otp-err { color: var(--bad); font-size: 13px; min-height: 20px; margin: 0 0 6px; }
+  .resend { color: var(--muted); font-size: 13.5px; margin: 0 0 18px; transition: opacity .3s; }
+  .resend button { font-variant-numeric: tabular-nums; }
+  .resend button:disabled { color: var(--muted); cursor: default; text-decoration: none; }
+  .verifying .resend, .verifying .otp-err { opacity: 0; }
+
+  /* ---------- Уведомления ---------- */
+  .toasts { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 50; width: min(420px, calc(100% - 24px)); display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+  .toast { pointer-events: auto; border-radius: 16px; padding: 13px 14px; display: flex; gap: 12px; align-items: flex-start; font-size: 14px;
+    animation: toast-in .45s cubic-bezier(.2,1,.3,1); }
+  .toast.out { animation: toast-out .3s ease forwards; }
+  .toast .t-ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex: none; background: rgba(255,201,64,.12); color: var(--gold); }
+  .toast.ok .t-ic { background: rgba(61,220,132,.12); color: var(--ok); }
+  .toast b { display: block; font-size: 14px; }
+  .toast p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  .toast .code { font: 700 24px/1.2 var(--mono); letter-spacing: .3em; color: var(--gold); margin: 4px 0 2px; }
+  .toast .t-actions { margin-top: 8px; }
+  .toast .demo { display: block; color: var(--dim); font-size: 11.5px; margin-top: 4px; }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(-16px) scale(.97); } }
+  @keyframes toast-out { to { opacity: 0; transform: translateY(-12px); } }
+
+  /* ---------- Кабинет ---------- */
+  .dash { position: relative; z-index: 1; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 18px; padding: 18px; min-height: 100vh; animation: fade-in .5s ease; }
+  @keyframes fade-in { from { opacity: 0; transform: translateY(8px); } }
+  .side { position: sticky; top: 18px; height: calc(100vh - 36px); border-radius: 22px; padding: 20px 14px; display: flex; flex-direction: column; gap: 22px; }
+  .side .brand { position: static; padding: 4px 8px; }
+  .nav { display: flex; flex-direction: column; gap: 4px; }
+  .nav button, .nav a { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 12px; border: 0; border-radius: 12px; background: none; color: var(--muted);
+    font-weight: 600; font-size: 14px; cursor: pointer; text-decoration: none; text-align: left; transition: background .2s, color .2s; }
+  .nav button:hover, .nav a:hover { color: var(--text); background: rgba(255,255,255,.04); }
+  .nav button.active { color: var(--text); background: rgba(255,201,64,.12); }
+  .nav button.active svg { color: var(--gold); }
+  .side .user { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 14px; background: rgba(0,0,0,.25); border: 1px solid var(--line); }
+  .ava { width: 38px; height: 38px; border-radius: 12px; flex: none; display: grid; place-items: center; font-weight: 800; font-size: 14px; color: #1b1404; background: linear-gradient(135deg, #ffe07a, #f39a1f); }
+  .user .who { min-width: 0; flex: 1; }
+  .user .who b, .user .who span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .user .who b { font-size: 13.5px; }
+  .user .who span { font-size: 12px; color: var(--dim); }
+  .icon-btn { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--muted); cursor: pointer; }
+  .icon-btn:hover { color: var(--text); }
+
+  .dmain { min-width: 0; display: flex; flex-direction: column; gap: 18px; padding-bottom: 24px; }
+  .mtop { display: none; }
+  .dtop { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; flex-wrap: wrap; padding: 8px 4px 0; }
+  .dtop h1 { font-size: clamp(24px, 3vw, 32px); margin: 0; }
+  .dtop .date { color: var(--muted); margin: 2px 0 0; }
+  .dtop .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .demo-chip { display: inline-flex; align-items: center; gap: 7px; font: 600 11px/1 var(--mono); letter-spacing: .05em; color: var(--muted); padding: 7px 10px; border-radius: 8px; border: 1px dashed rgba(255,255,255,.18); }
+
+  .top-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 18px; }
+  .hero { position: relative; overflow: hidden; border-radius: 24px; padding: 24px; display: flex; gap: 22px; align-items: center; color: #fff;
+    background: linear-gradient(135deg, rgba(245,165,36,.92), rgba(214,84,24,.88) 55%, rgba(110,32,12,.88));
+    border: 1px solid rgba(255,220,160,.3); box-shadow: 0 30px 80px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.3); }
+  .hero::after { content: ""; position: absolute; right: -80px; top: -120px; width: 320px; height: 320px; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.25), transparent 65%); pointer-events: none; }
+  .hero .txt { flex: 1; min-width: 0; position: relative; z-index: 1; }
+  .hero .tag { display: inline-block; font: 700 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 6px 9px; border-radius: 6px; background: rgba(0,0,0,.2); margin-bottom: 12px; }
+  .hero h2 { font-size: clamp(22px, 2.6vw, 30px); line-height: 1.15; margin: 0 0 8px; letter-spacing: -.02em; text-shadow: 0 1px 12px rgba(0,0,0,.15); }
+  .hero p { margin: 0 0 18px; color: rgba(255,255,255,.92); font-size: 14.5px; max-width: 36em; }
+  .hero .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn-dark { height: 42px; padding: 0 16px; border-radius: 12px; border: 0; background: rgba(20,10,4,.82); color: #fff; font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; text-decoration: none; }
+  .btn-light { height: 42px; padding: 0 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,.45); background: rgba(255,255,255,.14); color: #fff; font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; text-decoration: none; }
+  .ring { position: relative; width: 136px; height: 136px; flex: none; z-index: 1; }
+  .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 11; }
+  .ring .track { stroke: rgba(255,255,255,.22); }
+  .ring .bar { stroke: #fff; stroke-linecap: round; transition: stroke-dashoffset 1.1s cubic-bezier(.3,0,.2,1); }
+  .ring .val { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+  .ring .val b { display: block; font: 800 30px/1 var(--sans); }
+  .ring .val span { display: block; font-size: 11.5px; opacity: .85; margin-top: 3px; }
+
+  .today { border-radius: 24px; padding: 20px; display: flex; flex-direction: column; }
+  .today .day { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+  .today .day b { font: 800 44px/1 var(--sans); }
+  .today .day span { color: var(--muted); font-size: 14px; }
+  .today h3 { margin: 6px 0 10px; font-size: 14px; color: var(--muted); font-weight: 600; }
+  .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .steps button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 11px; border: 1px solid var(--line); background: rgba(0,0,0,.2); cursor: pointer; text-align: left; font-size: 13.5px; }
+  .steps .box { width: 20px; height: 20px; border-radius: 6px; flex: none; border: 1px solid rgba(255,255,255,.25); display: grid; place-items: center; color: #1b1404; }
+  .steps .box svg.i { width: 13px; height: 13px; stroke-width: 3; opacity: 0; }
+  .steps .done-step .box { background: linear-gradient(180deg, #ffd862, #f3b021); border-color: transparent; }
+  .steps .done-step .box svg.i { opacity: 1; }
+  .steps .done-step span { color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(255,255,255,.3); }
+
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+  .stat { border-radius: 20px; padding: 16px; text-align: left; cursor: pointer; transition: transform .2s, border-color .2s; }
+  .stat:hover { transform: translateY(-3px); border-color: rgba(255,201,64,.3); }
+  .stat .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .stat .ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: rgba(255,201,64,.1); color: var(--gold); }
+  .stat .pct { font: 600 11.5px/1 var(--mono); color: var(--ok); padding: 5px 7px; border-radius: 6px; background: rgba(61,220,132,.1); }
+  .stat .num { font: 800 30px/1 var(--sans); letter-spacing: -.02em; }
+  .stat .num small { font-size: 15px; color: var(--dim); font-weight: 600; }
+  .stat .lbl { color: var(--muted); font-size: 13px; margin: 4px 0 12px; }
+  .stat .bar { height: 5px; border-radius: 3px; background: rgba(255,255,255,.08); overflow: hidden; }
+  .stat .bar i { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, #ffd862, #f39a1f); transition: width 1s cubic-bezier(.3,0,.2,1); }
+
+  .low-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+  .panel { border-radius: 24px; padding: 20px; }
+  .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .panel-head h2 { margin: 0; font-size: 20px; letter-spacing: -.01em; }
+  .panel-head p { margin: 2px 0 0; color: var(--muted); font-size: 13.5px; }
+  .changed { font: 600 12px/1 var(--mono); color: var(--gold); padding: 6px 9px; border-radius: 7px; background: rgba(255,201,64,.1); }
+  .tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 10px; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { flex: none; display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border-radius: 11px; border: 1px solid var(--line); background: rgba(0,0,0,.2); color: var(--muted); font-weight: 600; font-size: 13.5px; cursor: pointer; }
+  .tabs button.active { color: var(--text); border-color: rgba(255,201,64,.45); background: rgba(255,201,64,.1); }
+  .tabs button.active svg { color: var(--gold); }
+  .tabs .cnt { font: 600 11px/1 var(--mono); color: var(--dim); }
+  .opts { display: flex; flex-direction: column; }
+  .opt { display: flex; align-items: flex-start; gap: 14px; padding: 13px 4px; border-bottom: 1px solid rgba(255,255,255,.06); cursor: pointer; }
+  .opt:last-child { border-bottom: 0; }
+  .opt .txt b { display: block; font-size: 14.5px; font-weight: 650; }
+  .opt .txt small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .opt .txt code { font: 11.5px var(--mono); color: var(--dim); }
+  .sw { position: relative; width: 44px; height: 26px; flex: none; margin-top: 1px; }
+  .sw input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+  .sw i { position: absolute; inset: 0; border-radius: 99px; background: rgba(255,255,255,.13); transition: background .2s; pointer-events: none; }
+  .sw i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #d8d4cc; transition: transform .2s, background .2s; box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+  .sw input:checked + i { background: linear-gradient(180deg, #ffd862, #f3b021); }
+  .sw input:checked + i::after { transform: translateX(18px); background: #1b1404; }
+  .sw input:focus-visible + i { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .builder-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .builder-foot .acts { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  .acts-list { list-style: none; margin: 0; padding: 0; }
+  .acts-list li { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.06); font-size: 13.5px; }
+  .acts-list li:last-child { border-bottom: 0; }
+  .acts-list .d { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); margin-top: 7px; flex: none; box-shadow: 0 0 10px rgba(255,201,64,.6); }
+  .acts-list time { display: block; color: var(--dim); font-size: 12px; }
+  .empty { color: var(--dim); font-size: 13.5px; }
+  .support { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .support p { color: var(--muted); font-size: 13.5px; margin: 0 0 12px; }
+
+  .tabbar { display: none; }
+
+  /* ---------- Окно с config.json ---------- */
+  .modal { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; background: rgba(0,0,0,.6); animation: fade-in .25s ease; }
+  .modal .box { width: min(640px, 100%); max-height: 86vh; display: flex; flex-direction: column; border-radius: 22px; padding: 18px; }
+  .modal textarea { flex: 1; min-height: 300px; width: 100%; resize: none; border-radius: 12px; border: 1px solid var(--line); background: rgba(0,0,0,.45); color: var(--text); font: 12.5px/1.5 var(--mono); padding: 12px; margin: 12px 0; }
+  .modal .row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+
+  /* ---------- Профиль ---------- */
+  .ava { overflow: hidden; position: relative; }
+  .ava img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ava.has-img { box-shadow: 0 0 0 2px var(--ring, #ffc940); }
+  .me { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; border-radius: 12px; }
+  .me:hover .who b { color: var(--gold); }
+  .ava-btn { padding: 0; border: 0; background: none; cursor: pointer; border-radius: 14px; }
+  .hello { display: flex; align-items: center; gap: 14px; min-width: 0; }
+  .hello .ava { width: 56px; height: 56px; border-radius: 18px; font-size: 20px; }
+  .dtop .bio { color: var(--text); opacity: .82; margin: 6px 0 0; font-size: 14px; max-width: 520px; overflow-wrap: anywhere; }
+  .profile.box { width: min(520px, 100%); max-height: 92vh; overflow: auto; }
+  .profile .panel-head { align-items: flex-start; }
+  .p-top { display: flex; align-items: center; gap: 18px; margin: 4px 0 18px; }
+  .p-top .ava { width: 104px; height: 104px; border-radius: 30px; font-size: 36px; }
+  .p-top .ava.has-img { box-shadow: 0 0 0 3px var(--ring, #ffc940), 0 12px 30px rgba(0,0,0,.45); }
+  .p-btns { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+  .p-btns small { color: var(--dim); font-size: 12px; }
+  .p-btns .row-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .field > label .count { float: right; font-weight: 500; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .profile textarea { width: 100%; min-height: 76px; resize: vertical; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,.09); background: rgba(0,0,0,.4);
+    font: 15px/1.45 var(--sans); color: var(--text); outline: none; transition: border-color .2s, box-shadow .2s; }
+  .profile textarea:focus { border-color: rgba(255,201,64,.75); box-shadow: 0 0 0 4px rgba(255,201,64,.12); }
+  .swatches { display: flex; gap: 10px; flex-wrap: wrap; }
+  .swatches button { width: 38px; height: 38px; border-radius: 12px; border: 2px solid transparent; cursor: pointer; position: relative; padding: 0; }
+  .swatches button[aria-checked="true"] { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.18); }
+  .swatches button[aria-checked="true"]::after { content: ""; position: absolute; inset: 0; margin: auto; width: 14px; height: 8px; border: solid #1b1404; border-width: 0 0 3px 3px; transform: translateY(-2px) rotate(-45deg); }
+  .p-meta { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 12px; background: rgba(0,0,0,.25); border: 1px solid var(--line); color: var(--muted); font-size: 13.5px; margin: 4px 0 16px; }
+  .p-meta b { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
+  .p-meta .ok { color: var(--ok); font-weight: 600; }
+  .crop { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .p-sec { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: rgba(0,0,0,.25); margin: -6px 0 16px; }
+  .p-sec-t { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13.5px; }
+  .p-sec-t svg.i { width: 15px; height: 15px; color: var(--gold); }
+  .p-sec .row-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn-glass.bad { color: var(--bad); }
+  .btn-glass.bad:hover { border-color: rgba(255,107,107,.45); background: rgba(255,107,107,.08); }
+  .btn-bad { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; border: 0; cursor: pointer; font-weight: 700; color: #2a0505; background: linear-gradient(180deg, #ff8f8f, #e64a4a); box-shadow: 0 10px 26px rgba(230,74,74,.28), inset 0 1px 0 rgba(255,255,255,.4); }
+  .btn-bad:disabled { opacity: .7; cursor: default; }
+  .p-pane h3 { margin: 0 0 6px; font-size: 19px; }
+  .p-pane h3.bad-t { color: var(--bad); }
+  .p-pane > p { margin: 0 0 14px; color: var(--muted); font-size: 14px; line-height: 1.55; }
+  .p-pane .hint { margin: -6px 0 14px; font-size: 13px; }
+  .crop canvas { width: 280px; height: 280px; max-width: 100%; border-radius: 20px; background: #000; touch-action: none; cursor: grab; }
+  .crop canvas:active { cursor: grabbing; }
+  .crop .zoom { display: flex; align-items: center; gap: 10px; width: min(280px, 100%); color: var(--dim); font-size: 13px; }
+  .crop input[type=range] { flex: 1; accent-color: #ffc940; }
+  .crop p { margin: 0; color: var(--muted); font-size: 13px; text-align: center; }
+  @media (max-width: 560px) {
+    .modal { padding: 10px; align-items: end; }
+    .profile.box { max-height: 94vh; padding: 16px; }
+    .p-top .ava { width: 88px; height: 88px; border-radius: 26px; font-size: 30px; }
+    .hello .ava { width: 48px; height: 48px; border-radius: 15px; font-size: 17px; }
+  }
+
+  @media (max-width: 1100px) {
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 900px) {
+    .dash { grid-template-columns: minmax(0, 1fr); padding: 12px 12px 96px; }
+    .side { display: none; }
+    .mtop { display: flex; align-items: center; justify-content: space-between; padding: 4px 2px; }
+    .mtop .brand { position: static; }
+    .mtop .r { display: flex; gap: 8px; align-items: center; }
+    .top-grid, .low-grid { grid-template-columns: minmax(0, 1fr); }
+    .tabbar { display: flex; position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 20; height: 64px; border-radius: 20px; padding: 6px; justify-content: space-around; }
+    .tabbar button, .tabbar a { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 0; background: none; color: var(--muted); font-size: 11px; font-weight: 600; border-radius: 14px; cursor: pointer; text-decoration: none; }
+    .tabbar .active { color: var(--gold); background: rgba(255,201,64,.1); }
+  }
+  @media (max-width: 560px) {
+    .card { padding: 26px 20px 22px; }
+    h1 { font-size: 25px; }
+    .two { grid-template-columns: 1fr; gap: 0; }
+    .hero { flex-direction: column-reverse; align-items: flex-start; padding: 20px; }
+    .ring { width: 116px; height: 116px; }
+    .stats { gap: 12px; }
+    .stat { padding: 14px; }
+    .stat .num { font-size: 26px; }
+    .otp { gap: 7px; }
+    .otp input { width: 44px; height: 56px; font-size: 22px; border-radius: 12px; }
+    .dtop .actions { width: 100%; }
+    .dtop .actions > * { flex: 1; }
+    .brand { left: 18px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+<canvas id="bg" aria-hidden="true"></canvas>
+<div class="vignette"></div>
+<div class="warm"></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="gold-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe27a"/><stop offset="1" stop-color="#f39a1f"/></linearGradient>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m3.5 7 8.5 6 8.5-6"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.9 10.9 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6A17.4 17.4 0 0 0 2 12s3.5 7 10 7a10 10 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.3-9.3M17 6l3 3M14 9l2 2"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></symbol>
+    <symbol id="i-shield-check" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.8"/><rect x="14" y="3" width="7" height="7" rx="1.8"/><rect x="3" y="14" width="7" height="7" rx="1.8"/><rect x="14" y="14" width="7" height="7" rx="1.8"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3 3 10.5l7 2.5 2.5 7z"/><path d="m10 13 11-10"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-9.3-8.8A5.3 5.3 0 0 1 12 6.1a5.3 5.3 0 0 1 9.3 5.1C19 15.6 12 20 12 20z"/></symbol>
+    <symbol id="i-layout" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18M9 9v11"/></symbol>
+    <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+    <symbol id="i-package" viewBox="0 0 24 24"><path d="M3 7.5 12 3l9 4.5-9 4.5z"/><path d="M3 7.5v9L12 21l9-4.5v-9M12 12v9"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-nova" viewBox="0 0 24 24"><path d="M12 1.5l2.4 8.1 8.1 2.4-8.1 2.4L12 22.5l-2.4-8.1L1.5 12l8.1-2.4z"/></symbol>
+  </defs>
+</svg>
+
+<!-- ================= ВХОД / РЕГИСТРАЦИЯ / КОД ================= -->
+<main class="auth" id="auth" hidden>
+  <a class="brand" href="index.html"><span class="dot"></span>NOVA</a>
+  <div class="stage">
+    <div class="emblem" id="emblem"><svg viewBox="0 0 24 24"><use href="#i-nova" fill="url(#gold-g)"/></svg></div>
+    <section class="card glass" id="card">
+      <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+      <div class="chip"><svg class="i" style="width:13px;height:13px"><use href="#i-nova"/></svg><span id="mode-chip">Демо · аккаунты скоро</span></div>
+
+      <!-- Вход -->
+      <div class="view" id="view-login" hidden>
+        <h1>С <span class="gold-text">возвращением</span></h1>
+        <p class="sub">Войди, чтобы собрать свою Windows в конструкторе.</p>
+        <form id="form-login" novalidate>
+          <div class="field">
+            <label for="l-email">Почта</label>
+            <div class="input"><svg class="i lead"><use href="#i-mail"/></svg><input id="l-email" name="email" type="email" autocomplete="email" placeholder="name@mail.ru" inputmode="email"></div>
+            <small class="err" aria-live="polite"></small>
+          </div>
+          <div class="field">
+            <label for="l-pass">Пароль</label>
+            <div class="input"><svg class="i lead"><use href="#i-lock"/></svg><input id="l-pass" name="password" type="password" autocomplete="current-password" placeholder="Минимум 8 символов">
+              <button class="eye" type="button" aria-label="Показать пароль"><svg class="i"><use href="#i-eye"/></svg></button></div>
+            <small class="err" aria-live="polite"></small>
+          </div>
+          <div class="row-between">
+            <label class="check"><input type="checkbox" name="remember"><i></i>Запомнить меня</label>
+            <a class="link" href="#forgot">Забыли пароль?</a>
+          </div>
+          <button class="btn-gold wide" type="submit"><span>Войти</span><svg class="i"><use href="#i-arrow"/></svg></button>
+          <div class="or">или</div>
+          <div class="alt">
+            <button class="btn-glass" type="button" data-oauth="Google"><span class="g-mark">G</span>Google</button>
+            <button class="btn-glass" type="button" data-oauth="Telegram"><svg class="i"><use href="#i-send"/></svg>Telegram</button>
+          </div>
+          <p class="switch">Нет аккаунта? <a class="link" href="#register">Создать</a></p>
+        </form>
+      </div>
+
+      <!-- Регистрация -->
+      <div class="view" id="view-register" hidden>
+        <h1>Создать <span class="gold-text">аккаунт</span></h1>
+        <p class="sub">Сохраняй свои сборки и возвращайся к ним с любого устройства.</p>
+        <form id="form-register" novalidate>
+          <div class="field">
+            <label for="r-name">Имя</label>
+            <div class="input"><svg class="i lead"><use href="#i-user"/></svg><input id="r-name" name="fullname" type="text" autocomplete="name" placeholder="Как к тебе обращаться"></div>
+            <small class="err" aria-live="polite"></small>
+          </div>
+          <div class="field">
+            <label for="r-email">Почта</label>
+            <div class="input"><svg class="i lead"><use href="#i-mail"/></svg><input id="r-email" name="email" type="email" autocomplete="email" placeholder="name@mail.ru" inputmode="email"></div>
+            <small class="err" aria-live="polite"></small>
+          </div>
+          <div class="two">
+            <div class="field">
+              <label for="r-pass">Пароль</label>
+              <div class="input"><svg class="i lead"><use href="#i-lock"/></svg><input id="r-pass" name="password" type="password" autocomplete="new-password" placeholder="8+ символов, буквы и цифры">
+                <button class="eye" type="button" aria-label="Показать пароль"><svg class="i"><use href="#i-eye"/></svg></button></div>
+              <div class="meter" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+              <div class="meter-label" id="meter-label"></div>
+              <small class="err" aria-live="polite"></small>
+            </div>
+            <div class="field">
+              <label for="r-pass2">Повтори пароль</label>
+              <div class="input"><svg class="i lead"><use href="#i-lock"/></svg><input id="r-pass2" name="password2" type="password" autocomplete="new-password" placeholder="Ещё раз">
+                <button class="eye" type="button" aria-label="Показать пароль"><svg class="i"><use href="#i-eye"/></svg></button></div>
+              <small class="err" aria-live="polite"></small>
+            </div>
+          </div>
+          <div class="row-between">
+            <label class="check" id="terms-label"><input type="checkbox" name="terms"><i></i><span>Согласен с <a class="link" href="privacy.html" target="_blank" rel="noopener">условиями и политикой конфиденциальности</a></span></label>
+          </div>
+          <button class="btn-gold wide" type="submit"><span>Создать аккаунт</span><svg class="i"><use href="#i-arrow"/></svg></button>
+          <div class="or">или</div>
+          <div class="alt">
+            <button class="btn-glass" type="button" data-oauth="Google"><span class="g-mark">G</span>Google</button>
+            <button class="btn-glass" type="button" data-oauth="Telegram"><svg class="i"><use href="#i-send"/></svg>Telegram</button>
+          </div>
+          <p class="switch">Уже есть аккаунт? <a class="link" href="#login">Войти</a></p>
+        </form>
+      </div>
+
+      <!-- Код из письма -->
+      <div class="view center" id="view-verify" hidden>
+        <div class="badge-ic" id="v-badge"><svg class="i"><use href="#i-key"/></svg></div>
+        <h1 id="v-title">Подтверди <span class="gold-text">почту</span></h1>
+        <p class="sub" id="v-sub">Мы отправили 6-значный код на <b id="v-email"></b></p>
+        <div class="otp" id="otp">
+          <input inputmode="numeric" autocomplete="one-time-code" aria-label="Цифра 1" pattern="[0-9]*">
+          <input inputmode="numeric" aria-label="Цифра 2" pattern="[0-9]*">
+          <input inputmode="numeric" aria-label="Цифра 3" pattern="[0-9]*">
+          <input inputmode="numeric" aria-label="Цифра 4" pattern="[0-9]*">
+          <input inputmode="numeric" aria-label="Цифра 5" pattern="[0-9]*">
+          <input inputmode="numeric" aria-label="Цифра 6" pattern="[0-9]*">
+          <div class="done" id="done"><svg class="i"><use href="#i-check"/></svg></div>
+        </div>
+        <p class="otp-err" id="otp-err" aria-live="polite"></p>
+        <p class="resend">Не пришёл код? <button class="link" type="button" id="resend" disabled>Отправить снова</button></p>
+        <button class="btn-gold wide" type="button" id="verify-btn"><span>Подтвердить</span><svg class="i"><use href="#i-arrow"/></svg></button>
+        <p class="switch"><a class="link" href="#register" id="v-back">← Изменить почту</a></p>
+      </div>
+
+      <!-- Забыли пароль -->
+      <div class="view" id="view-forgot" hidden>
+        <h1>Новый <span class="gold-text">пароль</span></h1>
+        <p class="sub">Пришлём код на почту. С ним задашь новый пароль, а все чужие входы в аккаунт закроются.</p>
+        <form id="form-forgot" novalidate>
+          <div class="field">
+            <label for="f-email">Почта аккаунта</label>
+            <div class="input"><svg class="i lead"><use href="#i-mail"/></svg><input id="f-email" name="email" type="email" autocomplete="email" placeholder="name@mail.ru" inputmode="email"></div>
+            <small class="err" aria-live="polite"></small>
+          </div>
+          <button class="btn-gold wide" type="submit"><span>Получить код</span><svg class="i"><use href="#i-arrow"/></svg></button>
+          <p class="switch">Вспомнил пароль? <a class="link" href="#login">Войти</a></p>
+        </form>
+      </div>
+
+      <!-- Новый пароль после кода -->
+      <div class="view" id="view-newpass" hidden>
+        <h1>Придумай <span class="gold-text">новый пароль</span></h1>
+        <p class="sub">Для <b id="np-email"></b>. Латинские буквы и цифры, от 8 символов.</p>
+        <form id="form-newpass" novalidate>
+          <div class="field">
+            <label for="np-pass">Новый пароль</label>
+            <div class="input"><svg class="i lead"><use href="#i-lock"/></svg><input id="np-pass" name="password" type="password" autocomplete="new-password" placeholder="8+ символов, буквы и цифры">
+              <button class="eye" type="button" aria-label="Показать пароль"><svg class="i"><use href="#i-eye"/></svg></button></div>
+            <small class="err" aria-live="polite"></small>
+          </div>
+          <div class="field">
+            <label for="np-pass2">Повтори пароль</label>
+            <div class="input"><svg class="i lead"><use href="#i-lock"/></svg><input id="np-pass2" name="password2" type="password" autocomplete="new-password" placeholder="Ещё раз">
+              <button class="eye" type="button" aria-label="Показать пароль"><svg class="i"><use href="#i-eye"/></svg></button></div>
+            <small class="err" aria-live="polite"></small>
+          </div>
+          <button class="btn-gold wide" type="submit"><span>Сохранить пароль</span><svg class="i"><use href="#i-check"/></svg></button>
+        </form>
+      </div>
+    </section>
+  </div>
+  <p class="foot" id="mode-foot">Демо-версия: пароли и почта никуда не отправляются.</p>
+</main>
+
+<!-- ================= КАБИНЕТ ================= -->
+<div class="dash" id="dash" hidden>
+  <aside class="side glass">
+    <a class="brand" href="index.html"><span class="dot"></span>NOVA</a>
+    <nav class="nav">
+      <button type="button" data-go="overview" class="active"><svg class="i"><use href="#i-grid"/></svg>Обзор</button>
+      <button type="button" data-go="builder"><svg class="i"><use href="#i-sliders"/></svg>Конструктор</button>
+      <button type="button" data-go="activity"><svg class="i"><use href="#i-clock"/></svg>Активность</button>
+      <button type="button" data-profile><svg class="i"><use href="#i-user"/></svg>Профиль</button>
+      <a href="index.html"><svg class="i"><use href="#i-home"/></svg>Сайт Nova</a>
+    </nav>
+    <div class="user">
+      <button class="me" type="button" data-profile aria-label="Мой профиль">
+        <div class="ava u-ava"></div>
+        <div class="who"><b class="u-name"></b><span class="u-mail"></span></div>
+      </button>
+      <button class="icon-btn" type="button" data-logout aria-label="Выйти"><svg class="i"><use href="#i-logout"/></svg></button>
+    </div>
+  </aside>
+
+  <main class="dmain">
+    <div class="mtop">
+      <a class="brand" href="index.html"><span class="dot"></span>NOVA</a>
+      <div class="r"><button class="ava-btn" type="button" data-profile aria-label="Мой профиль"><div class="ava u-ava"></div></button><button class="icon-btn" type="button" data-logout aria-label="Выйти"><svg class="i"><use href="#i-logout"/></svg></button></div>
+    </div>
+
+    <header class="dtop" id="overview">
+      <div class="hello">
+        <button class="ava-btn" type="button" data-profile aria-label="Мой профиль"><div class="ava u-ava"></div></button>
+        <div>
+          <h1 id="greet"></h1>
+          <p class="date" id="today"></p>
+          <p class="bio" id="u-bio" hidden></p>
+        </div>
+      </div>
+      <div class="actions">
+        <span class="demo-chip" id="dash-chip">демо · данные только в этом браузере</span>
+      </div>
+    </header>
+
+    <div class="top-grid">
+      <article class="hero">
+        <div class="txt">
+          <span class="tag">Твоя сборка Nova</span>
+          <h2 id="hero-title"></h2>
+          <p id="hero-text"></p>
+          <div class="btns">
+            <button class="btn-dark" type="button" data-go="builder"><svg class="i"><use href="#i-sliders"/></svg>Настроить</button>
+            <button class="btn-light" type="button" data-download><svg class="i"><use href="#i-download"/></svg>config.json</button>
+          </div>
+        </div>
+        <div class="ring" aria-label="Сколько настроек включено">
+          <svg viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="50"/><circle class="bar" id="ring-bar" cx="60" cy="60" r="50"/></svg>
+          <div class="val"><div><b id="ring-val">0%</b><span>собрано</span></div></div>
+        </div>
+      </article>
+
+      <article class="today glass">
+        <div class="day"><b id="day-num"></b><span id="day-name"></span></div>
+        <h3>Что осталось сделать</h3>
+        <ul class="steps" id="steps"></ul>
+        <a class="btn-glass sm wide" id="get-nova" href="#" target="_blank" rel="noopener" style="margin-top:12px"><svg class="i"><use href="#i-download"/></svg>Скачать Nova</a>
+      </article>
+    </div>
+
+    <section class="stats" id="stats"></section>
+
+    <div class="low-grid">
+      <section class="panel glass" id="builder">
+        <div class="panel-head">
+          <div><h2>Конструктор сборки</h2><p>Включи то, что нужно тебе, и скачай свой config.json.</p></div>
+          <span class="changed" id="changed"></span>
+        </div>
+        <div class="tabs" id="tabs" role="tablist"></div>
+        <div class="opts" id="opts"></div>
+        <div class="builder-foot">
+          <label class="check"><input type="checkbox" id="restore-point"><i></i>Точка восстановления перед изменениями</label>
+          <div class="acts">
+            <button class="btn-glass sm" type="button" id="reset"><svg class="i"><use href="#i-back"/></svg>По умолчанию</button>
+            <button class="btn-glass sm" type="button" data-show-config><svg class="i"><use href="#i-code"/></svg>Показать</button>
+            <button class="btn-gold sm" type="button" data-download><svg class="i"><use href="#i-download"/></svg>Скачать config.json</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel glass" id="activity">
+        <div class="panel-head"><div><h2>Активность</h2><p>Что ты делал в кабинете.</p></div></div>
+        <ul class="acts-list" id="acts"></ul>
+        <div class="support">
+          <p>Nova бесплатна. Если она тебе помогла — можно поддержать проект.</p>
+          <a class="btn-glass sm wide" href="index.html#support"><svg class="i"><use href="#i-heart"/></svg>Поддержать</a>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <nav class="tabbar glass">
+    <button type="button" data-go="overview" class="active"><svg class="i"><use href="#i-grid"/></svg>Обзор</button>
+    <button type="button" data-go="builder"><svg class="i"><use href="#i-sliders"/></svg>Конструктор</button>
+    <button type="button" data-go="activity"><svg class="i"><use href="#i-clock"/></svg>Активность</button>
+    <button type="button" data-profile><svg class="i"><use href="#i-user"/></svg>Профиль</button>
+  </nav>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // Данные настроек. Обновляются командой: python tools/sync-site-data.py
+  var DATA = /*DATA-START*/{"tweaks":[{"id":"telemetry-off","category":"privacy","title":"Минимум телеметрии","description":"Ставит минимальный уровень сбора данных и отключает службу телеметрии DiagTrack. На Home и Pro минимум — «обязательные данные», полный ноль бывает только на Enterprise."},{"id":"ads-id-off","category":"privacy","title":"Без рекламного идентификатора","description":"Приложения не получат идентификатор для персональной рекламы."},{"id":"tailored-off","category":"privacy","title":"Без советов по данным диагностики","description":"Microsoft не будет подбирать советы и рекламу на основе диагностических данных."},{"id":"activity-history-off","category":"privacy","title":"Не собирать историю действий","description":"Windows перестаёт записывать, какие программы и файлы ты открывал, и отправлять это в облако."},{"id":"suggestions-off","category":"privacy","title":"Убрать рекламу и «советы» Windows","description":"Выключает рекламу в «Пуске», автоустановку предлагаемых приложений, советы на экране блокировки, рекламу OneDrive в Проводнике и напоминания «давайте завершим настройку»."},{"id":"web-search-off","category":"privacy","title":"Без Bing в поиске «Пуска»","description":"Поиск в «Пуске» ищет только на компьютере и не отправляет запросы в интернет."},{"id":"copilot-off","category":"privacy","title":"Отключить Copilot","description":"Выключает встроенный Copilot и убирает его кнопку. В новых версиях Copilot — отдельное приложение: его удаляет пункт Microsoft.Copilot в списке removeApps."},{"id":"recall-off","category":"privacy","title":"Отключить Recall","description":"Recall постоянно делает снимки экрана для поиска с ИИ. Настройка запрещает эту функцию."},{"id":"feedback-off","category":"privacy","title":"Не просить отзывы","description":"Windows перестаёт показывать окна с просьбой оценить систему."},{"id":"update-sharing-off","category":"privacy","title":"Не раздавать обновления другим ПК","description":"Обновления качаются только с серверов Microsoft, а твой интернет не тратится на раздачу чужим компьютерам."},{"id":"telemetry-tasks-off","category":"privacy","title":"Отключить скрытые задачи сбора данных","description":"Windows по расписанию запускает задачи, которые собирают данные о программах, дисках и использовании. Отключаем их и службу отправки (dmwappushservice)."},{"id":"error-reporting-off","category":"privacy","title":"Не отправлять отчёты об ошибках","description":"Когда программа падает, Windows больше не отправляет отчёт в Microsoft и не держит для этого службу."},{"id":"sync-off","category":"privacy","title":"Не синхронизировать настройки с Microsoft","description":"Тема, пароли браузера Edge, язык и другие настройки не отправляются в облако Microsoft и не переносятся на другие устройства. Буфер обмена тоже не уходит в облако."},{"id":"input-data-off","category":"privacy","title":"Не собирать то, что ты печатаешь и говоришь","description":"Windows перестаёт собирать образцы набранного текста и рукописного ввода «для улучшения» и отправлять голос в онлайн-распознавание."},{"id":"account-nags-off","category":"privacy","title":"Без напоминаний «войди в аккаунт Microsoft»","description":"Убирает значки и подсказки в «Пуске» и Параметрах, которые уговаривают войти в аккаунт Microsoft или купить подписку."},{"id":"location-off","category":"privacy","title":"Запретить доступ к местоположению","description":"Приложения не узнают, где ты находишься. Погода и карты перестанут определять город сами."},{"id":"dark-theme","category":"interface","title":"Тёмная тема","description":"Тёмное оформление для системы и приложений."},{"id":"show-extensions","category":"interface","title":"Показывать расширения файлов","description":"В Проводнике видно, что файл — это «фото.jpg», а не «фото.jpg.exe». Полезно и для безопасности."},{"id":"show-hidden-files","category":"interface","title":"Показывать скрытые файлы","description":"Проводник показывает скрытые файлы и папки."},{"id":"explorer-this-pc","category":"interface","title":"Проводник открывается на «Этот компьютер»","description":"Вместо «Главной» с рекомендациями сразу видны диски."},{"id":"classic-context-menu","category":"interface","title":"Полное контекстное меню сразу","description":"Правый клик сразу показывает все пункты, без «Показать дополнительные параметры»."},{"id":"taskbar-left","category":"interface","title":"Кнопка «Пуск» слева","description":"Значки на панели задач прижаты к левому краю, как в Windows 10."},{"id":"search-icon-only","category":"interface","title":"Поиск на панели задач — только значок","description":"Вместо широкого поля поиска остаётся компактный значок."},{"id":"task-view-hide","category":"interface","title":"Убрать кнопку «Представление задач»","description":"Кнопка пропадает с панели задач. Окна всё равно можно листать через Win+Tab."},{"id":"widgets-off","category":"interface","title":"Без виджетов и новостей","description":"Убирает виджеты (Windows 11) и «Новости и интересы» (Windows 10) с панели задач."},{"id":"end-task-button","category":"interface","title":"«Завершить задачу» на панели задач","description":"Зависшую программу можно закрыть правым кликом по её значку, без Диспетчера задач."},{"id":"sticky-keys-off","category":"interface","title":"Не спрашивать про залипание клавиш","description":"Окно «Включить залипание клавиш?» больше не выскакивает, если пять раз нажать Shift (например, в игре)."},{"id":"context-menu-cleanup","category":"interface","title":"Убрать лишнее из правой кнопки","description":"Убирает редко нужные пункты: «Поделиться», «Предоставить доступ», «Добавить в библиотеку», «Восстановить прежнюю версию» и «Спросить Copilot»."},{"id":"notifications-off","category":"interface","title":"Без всплывающих уведомлений","description":"Уведомления программ в углу экрана больше не появляются. Удобно в играх, но можно пропустить что-то важное."},{"id":"transparency-off","category":"interface","title":"Без прозрачности окон","description":"Панель задач и меню становятся непрозрачными. Чуть меньше нагрузки на слабую видеокарту."},{"id":"nova-wallpaper","category":"style","title":"Обои Nova","description":"Тёмные обои с золотыми линиями и логотипом Nova. Ставятся сразу, без перезагрузки. Старые обои вернутся при отмене."},{"id":"nova-accent","category":"style","title":"Золотой цвет акцента","description":"Выделения, переключатели и кнопки в Windows становятся золотыми, как у Nova."},{"id":"nova-about","category":"style","title":"Nova в «О системе»","description":"В «Параметры → Система → О системе» появятся название и версия Nova, а в «Поддержке» — ссылка на проект. Если там были данные производителя ПК, они вернутся при отмене."},{"id":"game-mode-on","category":"performance","title":"Игровой режим","description":"Во время игры Windows отдаёт ей приоритет и не ставит обновления."},{"id":"game-dvr-off","category":"performance","title":"Без фоновой записи игр","description":"Отключает Game DVR, который постоянно пишет игру в фоне и отнимает FPS. Если записываешь клипы через Win+G — выключи эту настройку."},{"id":"faster-menus","category":"performance","title":"Меню открываются быстрее","description":"Задержка перед открытием подменю — 100 мс вместо 400."},{"id":"no-startup-delay","category":"performance","title":"Автозагрузка без задержки","description":"Программы из автозагрузки стартуют сразу после входа, без искусственной паузы."},{"id":"mouse-acceleration-off","category":"performance","title":"Без ускорения мыши","description":"Курсор двигается ровно на столько, на сколько двигаешь мышь. Любят в шутерах. Начнёт работать после выхода из системы и входа."},{"id":"high-performance-power","category":"performance","title":"Схема питания «Высокая производительность»","description":"Процессор не сбрасывает частоту. На ноутбуке батарея сядет быстрее."},{"id":"hibernation-off","category":"performance","title":"Отключить гибернацию","description":"Освобождает на диске C: столько места, сколько у тебя оперативной памяти (файл hiberfil.sys). Вместе с ней отключается «быстрый запуск»."},{"id":"background-apps-off","category":"performance","title":"Запретить приложениям из Store работать в фоне","description":"Экономит память и батарею. Некоторые приложения из Store могут перестать присылать уведомления."},{"id":"gpu-scheduling-on","category":"performance","title":"Планирование GPU (меньше задержка)","description":"Видеокарта сама управляет своей памятью — это может снизить задержку в играх. Работает на современных видеокартах, начнёт действовать после перезагрузки."},{"id":"windowed-games-optimization","category":"performance","title":"Оптимизация игр в окне","description":"Игры в окне и без рамки работают почти как в полноэкранном режиме: меньше задержка и плавнее картинка."},{"id":"power-throttling-off","category":"performance","title":"Без энергосбережения процессора","description":"Windows перестаёт замедлять фоновые программы ради экономии энергии. На ноутбуке батарея сядет быстрее."},{"id":"memory-integrity-off","category":"performance","title":"Выключить «Целостность памяти»","description":"Microsoft сама пишет, что эта защита может снижать FPS в играх. Но это защита от вредоносных драйверов: выключай, только если понимаешь риск. Некоторые античиты требуют её включённой. Действует после перезагрузки."},{"id":"background-services-trim","category":"system","title":"Отключить ненужные фоновые службы","description":"Службы, которые обычному ПК не нужны: загрузка офлайн-карт, демо-режим для магазинов, факс, отслеживание ссылок в сети и сетевой доступ к медиатеке."},{"id":"sysmain-off","category":"system","title":"Отключить SysMain (Superfetch)","description":"SysMain заранее загружает программы в память. На SSD пользы почти нет, а в фоне он нагружает диск и процессор. На старом жёстком диске программы могут открываться медленнее."},{"id":"search-indexing-off","category":"system","title":"Отключить индексацию поиска","description":"Windows перестаёт постоянно сканировать файлы для быстрого поиска — меньше фоновой нагрузки. Поиск в «Пуске» и Проводнике по содержимому файлов станет медленнее."},{"id":"printing-off","category":"system","title":"Отключить печать","description":"Если у тебя нет принтера — служба печати не нужна. Включится обратно при отмене."},{"id":"bluetooth-off","category":"system","title":"Отключить Bluetooth","description":"Если не пользуешься беспроводными наушниками, мышью или геймпадом по Bluetooth. С ними включать нельзя — перестанут подключаться."},{"id":"xbox-services-off","category":"system","title":"Отключить службы Xbox","description":"Если не играешь через Xbox и Game Pass. Игры из Steam и Epic Games это не затронет."},{"id":"security-updates-only","category":"system","title":"Только обновления безопасности","description":"Windows продолжит ставить исправления безопасности, но не будет сама переходить на новую большую версию (например, с 24H2 на следующую) и ломать твои настройки. Работает на Pro и выше. Важно: у каждой версии Windows есть срок поддержки — когда он заканчивается, исправления перестают приходить. Тогда выключи этот пункт и обновись."},{"id":"edge-quiet","category":"system","title":"«Тихий» Microsoft Edge","description":"Edge больше не висит в фоне и не запускается вместе с Windows, не показывает рекламу, советы и «помощника покупок», не отправляет данные о просмотре. Удалять Edge не будем: на нём работают другие программы. В настройках Edge появится надпись «Браузер управляется организацией» — так Edge показывает любые такие правила, это нормально."},{"id":"onedrive-remove","category":"system","title":"Удалить OneDrive (если он не настроен)","description":"Если ты не входил в OneDrive, он просто висит в фоне и предлагает сохранять файлы в облако. Nova удалит его. Если ты в OneDrive вошёл — Nova его не тронет, чтобы не потерять файлы. Вернуть можно из Microsoft Store."}],"config":{"_info":"Это настройки твоей сборки. true — включено, false — выключено. Что делает каждый пункт, написано в src/tweaks.json. После правок запусти Nova.cmd и выбери «Посмотреть, что изменится».","createRestorePoint":true,"tweaks":{"telemetry-off":true,"ads-id-off":true,"tailored-off":true,"activity-history-off":true,"suggestions-off":true,"web-search-off":true,"copilot-off":true,"recall-off":true,"feedback-off":true,"update-sharing-off":true,"telemetry-tasks-off":true,"error-reporting-off":true,"sync-off":true,"input-data-off":true,"account-nags-off":true,"location-off":false,"dark-theme":true,"show-extensions":true,"show-hidden-files":false,"explorer-this-pc":true,"classic-context-menu":true,"taskbar-left":false,"search-icon-only":true,"task-view-hide":true,"widgets-off":true,"end-task-button":true,"sticky-keys-off":true,"context-menu-cleanup":true,"notifications-off":false,"transparency-off":false,"nova-wallpaper":true,"nova-accent":true,"nova-about":true,"game-mode-on":true,"game-dvr-off":true,"faster-menus":true,"no-startup-delay":true,"mouse-acceleration-off":false,"high-performance-power":false,"hibernation-off":false,"background-apps-off":false,"gpu-scheduling-on":true,"windowed-games-optimization":true,"power-throttling-off":false,"memory-integrity-off":false,"background-services-trim":true,"sysmain-off":false,"search-indexing-off":false,"printing-off":false,"bluetooth-off":false,"xbox-services-off":false,"security-updates-only":false,"edge-quiet":true,"onedrive-remove":true},"removeApps":{"Microsoft.BingNews":true,"Microsoft.BingWeather":true,"Microsoft.BingSearch":true,"Microsoft.GetHelp":true,"Microsoft.Getstarted":true,"Microsoft.MicrosoftSolitaireCollection":true,"Microsoft.MicrosoftOfficeHub":true,"Microsoft.People":true,"Microsoft.PowerAutomateDesktop":true,"Microsoft.Todos":true,"Microsoft.WindowsFeedbackHub":true,"Microsoft.WindowsMaps":true,"Microsoft.549981C3F5F10":true,"Microsoft.Copilot":true,"Microsoft.Windows.DevHome":true,"Microsoft.MixedReality.Portal":true,"Microsoft.Microsoft3DViewer":true,"Microsoft.SkypeApp":true,"Clipchamp.Clipchamp":true,"MSTeams":true,"MicrosoftTeams":true,"Microsoft.OutlookForWindows":false,"Microsoft.YourPhone":true,"Microsoft.MicrosoftStickyNotes":true,"Microsoft.ZuneMusic":false,"Microsoft.GamingApp":false,"Microsoft.XboxGamingOverlay":false,"MicrosoftCorporationII.MicrosoftFamily":true,"Microsoft.Office.OneNote":true,"Microsoft.Wallet":true,"Microsoft.WindowsSoundRecorder":true,"MicrosoftWindows.CrossDevice":true,"microsoft.windowscommunicationsapps":true,"Microsoft.ZuneVideo":true,"Microsoft.BingFinance":true,"Microsoft.BingSports":true,"Microsoft.Messaging":true,"Microsoft.Print3D":true,"Microsoft.OneConnect":true,"Microsoft.MSPaint":true},"installApps":{"7zip.7zip":false,"VideoLAN.VLC":false,"Mozilla.Firefox":false,"Brave.Brave":false,"Google.Chrome":false,"Valve.Steam":false,"Discord.Discord":false,"Telegram.TelegramDesktop":false,"Notepad++.Notepad++":false,"voidtools.Everything":false,"Microsoft.PowerToys":false,"OBSProject.OBSStudio":false}}}/*DATA-END*/;
+
+  var SITE = {
+    download: 'https://github.com/vezin0v0-cmyk/my-project/archive/refs/heads/claude/hello-973j4n.zip'
+  };
+
+  // Настоящие аккаунты: код подтверждения приходит на почту.
+  // Ключи берутся в Supabase: Project Settings → API (как получить — docs/AUTH-SETUP.md).
+  // Оба значения публичные, их можно хранить на сайте. Пока они пустые, кабинет работает в демо-режиме.
+  var AUTH = {
+    supabaseUrl: 'https://udnjvgvdiyfafsiqdkox.supabase.co',
+    supabaseKey: 'sb_publishable_BWWk8DEVBIDGeY-mtFdEoQ_R_kzCIyK'
+  };
+  var REAL = !!(AUTH.supabaseUrl && AUTH.supabaseKey);
+
+  var CATS = [
+    { id: 'privacy', name: 'Приватность', icon: 'shield', sec: 'tweaks' },
+    { id: 'interface', name: 'Интерфейс', icon: 'layout', sec: 'tweaks' },
+    { id: 'style', name: 'Оформление', icon: 'nova', sec: 'tweaks' },
+    { id: 'performance', name: 'Скорость и игры', icon: 'zap', sec: 'tweaks' },
+    { id: 'system', name: 'Система и фон', icon: 'sliders', sec: 'tweaks' },
+    { id: 'removeApps', name: 'Удалить приложения', icon: 'trash', sec: 'removeApps' },
+    { id: 'installApps', name: 'Поставить программы', icon: 'package', sec: 'installApps' }
+  ];
+
+  var APP_NAMES = {
+    'Microsoft.BingNews': 'Новости', 'Microsoft.BingWeather': 'Погода', 'Microsoft.BingSearch': 'Поиск Bing',
+    'Microsoft.GetHelp': 'Техподдержка', 'Microsoft.Getstarted': 'Советы', 'Microsoft.MicrosoftSolitaireCollection': 'Пасьянсы',
+    'Microsoft.MicrosoftOfficeHub': 'Microsoft 365 (Office)', 'Microsoft.People': 'Люди', 'Microsoft.PowerAutomateDesktop': 'Power Automate',
+    'Microsoft.Todos': 'Microsoft To Do', 'Microsoft.WindowsFeedbackHub': 'Центр отзывов', 'Microsoft.WindowsMaps': 'Карты',
+    'Microsoft.549981C3F5F10': 'Cortana', 'Microsoft.Copilot': 'Copilot', 'Microsoft.Windows.DevHome': 'Dev Home',
+    'Microsoft.MixedReality.Portal': 'Портал смешанной реальности', 'Microsoft.Microsoft3DViewer': 'Просмотр 3D', 'Microsoft.SkypeApp': 'Skype',
+    'Clipchamp.Clipchamp': 'Clipchamp', 'MSTeams': 'Teams (новый)', 'MicrosoftTeams': 'Teams (старый)', 'Microsoft.OutlookForWindows': 'Outlook (новый)',
+    'Microsoft.YourPhone': 'Связь с телефоном', 'Microsoft.MicrosoftStickyNotes': 'Записки', 'Microsoft.ZuneMusic': 'Медиаплеер',
+    'Microsoft.GamingApp': 'Xbox', 'Microsoft.XboxGamingOverlay': 'Xbox Game Bar',
+    'MicrosoftCorporationII.MicrosoftFamily': 'Семья (Microsoft Family)', 'Microsoft.Office.OneNote': 'OneNote (старый)', 'Microsoft.Wallet': 'Кошелёк',
+    'Microsoft.WindowsSoundRecorder': 'Диктофон', 'MicrosoftWindows.CrossDevice': 'Связь с устройствами',
+    'microsoft.windowscommunicationsapps': 'Почта и Календарь', 'Microsoft.ZuneVideo': 'Кино и ТВ', 'Microsoft.BingFinance': 'Финансы', 'Microsoft.BingSports': 'Спорт',
+    'Microsoft.Messaging': 'Сообщения', 'Microsoft.Print3D': 'Print 3D', 'Microsoft.OneConnect': 'Мобильные тарифы', 'Microsoft.MSPaint': 'Paint 3D',
+    '7zip.7zip': '7-Zip', 'VideoLAN.VLC': 'VLC', 'Mozilla.Firefox': 'Firefox', 'Brave.Brave': 'Brave', 'Google.Chrome': 'Chrome',
+    'Valve.Steam': 'Steam', 'Discord.Discord': 'Discord', 'Telegram.TelegramDesktop': 'Telegram Desktop', 'Notepad++.Notepad++': 'Notepad++',
+    'voidtools.Everything': 'Everything — быстрый поиск файлов', 'Microsoft.PowerToys': 'PowerToys', 'OBSProject.OBSStudio': 'OBS Studio'
+  };
+
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function $(s, r) { return (r || document).querySelector(s); }
+  function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+  function use(id) { return '<svg class="i"><use href="#i-' + id + '"/></svg>'; }
+  function plural(n, one, few, many) {
+    var m10 = n % 10, m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return one;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+    return many;
+  }
+
+  // ---------- Хранилище (может быть недоступно — тогда всё живёт до перезагрузки) ----------
+  function storage(kind) { try { return kind === 'local' ? window.localStorage : window.sessionStorage; } catch (e) { return null; } }
+  function readJSON(kind, key) { var s = storage(kind); if (!s) return null; try { var v = s.getItem(key); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+  function writeJSON(kind, key, value) { var s = storage(kind); if (!s) return; try { if (value == null) s.removeItem(key); else s.setItem(key, JSON.stringify(value)); } catch (e) { /* нет места или запрещено */ } }
+
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  function defaults() {
+    var c = DATA.config;
+    return { createRestorePoint: c.createRestorePoint !== false, tweaks: clone(c.tweaks || {}), removeApps: clone(c.removeApps || {}), installApps: clone(c.installApps || {}) };
+  }
+  function loadBuilder() {
+    var b = defaults(), saved = readJSON('local', 'nova.builder');
+    if (saved) {
+      ['tweaks', 'removeApps', 'installApps'].forEach(function (sec) {
+        Object.keys(b[sec]).forEach(function (k) { if (saved[sec] && typeof saved[sec][k] === 'boolean') b[sec][k] = saved[sec][k]; });
+      });
+      if (typeof saved.createRestorePoint === 'boolean') b.createRestorePoint = saved.createRestorePoint;
+    }
+    return b;
+  }
+
+  var state = {
+    user: readJSON('local', 'nova.user') || readJSON('session', 'nova.user'),
+    pending: readJSON('session', 'nova.pending'),
+    recovery: !!readJSON('session', 'nova.recovery'),
+    builder: loadBuilder(),
+    activity: readJSON('local', 'nova.activity') || [],
+    steps: readJSON('local', 'nova.steps') || {},
+    view: null, code: null, timer: null, left: 0, tab: 'privacy', counted: false
+  };
+
+  var auth = $('#auth'), dash = $('#dash'), card = $('#card'), emblem = $('#emblem');
+
+  // ---------- Уведомления ----------
+  function toast(opts) {
+    var el = document.createElement('div');
+    el.className = 'toast glass' + (opts.kind === 'ok' ? ' ok' : '');
+    var ic = document.createElement('div'); ic.className = 't-ic'; ic.innerHTML = use(opts.icon || 'nova');
+    var body = document.createElement('div');
+    var b = document.createElement('b'); b.textContent = opts.title; body.appendChild(b);
+    if (opts.code) { var c = document.createElement('div'); c.className = 'code'; c.textContent = opts.code; body.appendChild(c); }
+    if (opts.text) { var p = document.createElement('p'); p.textContent = opts.text; body.appendChild(p); }
+    if (opts.action) {
+      var wrap = document.createElement('div'); wrap.className = 't-actions';
+      var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'btn-gold sm'; btn.textContent = opts.action.label;
+      btn.addEventListener('click', function () { opts.action.run(); close(); });
+      wrap.appendChild(btn); body.appendChild(wrap);
+    }
+    if (opts.demo) { var d = document.createElement('span'); d.className = 'demo'; d.textContent = opts.demo; body.appendChild(d); }
+    el.appendChild(ic); el.appendChild(body);
+    $('#toasts').appendChild(el);
+    var timer = setTimeout(close, opts.ms || 4200);
+    function close() { clearTimeout(timer); if (!el.parentNode) return; el.classList.add('out'); setTimeout(function () { el.remove(); }, 300); }
+    return close;
+  }
+
+  // ---------- Журнал действий ----------
+  function log(text) {
+    state.activity.unshift({ t: Date.now(), text: text });
+    state.activity = state.activity.slice(0, 12);
+    writeJSON('local', 'nova.activity', state.activity);
+    if (state.view === 'dashboard') renderActivity();
+  }
+
+  // ---------- Переходы между экранами ----------
+  var AUTH_VIEWS = ['login', 'register', 'verify', 'forgot', 'newpass'];
+  var morphing = false;
+
+  function route() {
+    var name = location.hash.replace('#', '');
+    if (name === 'verify' && !state.pending) name = 'register';
+    if (name === 'dashboard' && !state.user) name = 'login';
+    // Новый пароль задают только сразу после кода из письма «Забыли пароль?».
+    if (name === 'newpass' && !(state.user && state.recovery)) name = state.user ? 'dashboard' : 'login';
+    if (AUTH_VIEWS.indexOf(name) === -1 && name !== 'dashboard') name = state.user ? 'dashboard' : 'login';
+    show(name);
+  }
+  function go(name) {
+    if (location.hash === '#' + name) route(); else location.hash = name;
+  }
+
+  function show(name) {
+    var prev = state.view;
+    if (prev === name) return;
+    state.view = name;
+    if (name !== 'verify') closeMail();
+    if (name === 'dashboard') {
+      stopTimer();
+      auth.hidden = true; dash.hidden = false;
+      document.body.classList.add('in-dash');
+      document.title = 'Nova — кабинет';
+      renderDash();
+      window.scrollTo(0, 0);
+      return;
+    }
+    document.body.classList.remove('in-dash');
+    var fromAuth = prev && AUTH_VIEWS.indexOf(prev) > -1;
+    dash.hidden = true; auth.hidden = false;
+    if (fromAuth && !reduce) morph(name); else setView(name);
+  }
+
+  function setView(name) {
+    $$('.view', card).forEach(function (v) { v.hidden = v.id !== 'view-' + name; });
+    card.classList.remove('success');
+    document.title = { login: 'Nova — вход', register: 'Nova — регистрация', verify: 'Nova — подтверждение почты', forgot: 'Nova — восстановление пароля', newpass: 'Nova — новый пароль' }[name];
+    if (name === 'verify') enterVerify(); else stopTimer();
+    if (name === 'forgot' && !forgotForm.email.value) forgotForm.email.value = loginForm.email.value.trim() || (state.user && state.user.email) || '';
+    if (name === 'newpass') $('#np-email').textContent = state.user ? state.user.email : '';
+  }
+
+  function morph(name) {
+    if (morphing) { setView(name); return; }
+    morphing = true;
+    card.classList.add('morph-out');
+    emblem.classList.add('show');
+    setTimeout(function () {
+      setView(name);
+      emblem.classList.remove('show');
+      card.classList.remove('morph-out');
+      setTimeout(function () { morphing = false; }, 560);
+    }, 560);
+  }
+
+  // ---------- Формы ----------
+  var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  function setErr(input, msg) {
+    var f = input.closest('.field');
+    f.classList.toggle('invalid', !!msg);
+    f.querySelector('.err').textContent = msg || '';
+  }
+  // Крутилка на кнопке. Возвращает функцию, которая убирает её.
+  function spin(btn, text) {
+    var html = btn.innerHTML;
+    btn.classList.add('loading');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span><span>' + text + '</span>';
+    return function () { btn.classList.remove('loading'); btn.disabled = false; btn.innerHTML = html; };
+  }
+  function busy(btn, text, done) {
+    var stop = spin(btn, text);
+    setTimeout(function () { stop(); done(); }, reduce ? 150 : 950);
+  }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, reduce ? 0 : ms); }); }
+  function nameFromEmail(email) {
+    var n = email.split('@')[0].replace(/[._\-0-9]+/g, ' ').trim();
+    if (!n) return 'Друг';
+    return n.charAt(0).toUpperCase() + n.slice(1);
+  }
+  function signIn(user, remember) {
+    if (!REAL) {
+      var saved = (readJSON('local', 'nova.profiles') || {})[String(user.email).toLowerCase()];
+      if (saved) user = Object.assign({}, user, saved);
+      if (!user.created) user.created = new Date().toISOString();
+    }
+    state.user = user;
+    writeJSON(remember ? 'local' : 'session', 'nova.user', user);
+    writeJSON(remember ? 'session' : 'local', 'nova.user', null);
+  }
+  function signOutLocal() {
+    state.user = null;
+    writeJSON('local', 'nova.user', null); writeJSON('session', 'nova.user', null);
+  }
+
+  // ---------- Сервер аккаунтов (Supabase) ----------
+  // Сессия лежит в localStorage, если отмечено «Запомнить меня», иначе — до закрытия вкладки.
+  var authStore = {
+    getItem: function (k) { try { return localStorage.getItem(k) || sessionStorage.getItem(k); } catch (e) { return null; } },
+    setItem: function (k, v) {
+      try {
+        var keep = localStorage.getItem('nova.remember') !== '0';
+        (keep ? localStorage : sessionStorage).setItem(k, v);
+        (keep ? sessionStorage : localStorage).removeItem(k);
+      } catch (e) { /* хранилище недоступно */ }
+    },
+    removeItem: function (k) { try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch (e) { /* ничего */ } }
+  };
+  function setRemember(on) { try { localStorage.setItem('nova.remember', on ? '1' : '0'); } catch (e) { /* ничего */ } }
+  function remembered() { try { return localStorage.getItem('nova.remember') !== '0'; } catch (e) { return false; } }
+
+  var clientPromise = null;
+  function sb() {
+    if (clientPromise) return clientPromise;
+    clientPromise = new Promise(function (resolve, reject) {
+      function make() {
+        resolve(window.supabase.createClient(AUTH.supabaseUrl, AUTH.supabaseKey, {
+          auth: { storage: authStore, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+        }));
+      }
+      if (window.supabase && window.supabase.createClient) { make(); return; }
+      var s = document.createElement('script');
+      s.src = 'vendor/supabase-2.119.0.js';
+      s.onload = function () { if (window.supabase && window.supabase.createClient) make(); else reject(new Error('Failed to load auth library')); };
+      s.onerror = function () { reject(new Error('Failed to load auth library')); };
+      document.head.appendChild(s);
+    });
+    clientPromise.catch(function () { clientPromise = null; });
+    return clientPromise;
+  }
+  // Supabase возвращает { data, error }. Превращаем ошибку в исключение, чтобы ловить в одном месте.
+  function call(fn) {
+    return sb().then(function (c) { return fn(c.auth); }).then(function (res) {
+      if (res && res.error) throw res.error;
+      return res ? res.data : null;
+    });
+  }
+  function userFrom(u) {
+    var meta = (u && u.user_metadata) || {};
+    var email = (u && u.email) || '';
+    return {
+      id: u && u.id, name: meta.name || nameFromEmail(email), email: email,
+      avatar: meta.avatar_url || '', bio: meta.bio || '', color: meta.color || 'gold',
+      created: (u && u.created_at) || ''
+    };
+  }
+  // Понятный текст вместо английской ошибки сервера.
+  function authError(err) {
+    var code = String((err && err.code) || '');
+    var msg = String((err && err.message) || '');
+    var status = err && err.status;
+    var secs = /after (\d+) second/i.exec(msg);
+    if (code === 'user_already_exists' || code === 'email_exists' || /already (been )?registered/i.test(msg)) return { field: 'email', text: 'Эта почта уже зарегистрирована. Войди в аккаунт.' };
+    if (code === 'invalid_credentials' || /invalid login credentials/i.test(msg)) return { field: 'password', text: 'Неверная почта или пароль' };
+    if (code === 'email_not_confirmed' || /email not confirmed/i.test(msg)) return { unconfirmed: true, text: 'Почта ещё не подтверждена' };
+    if (code === 'otp_expired' || /token has expired|otp.*(expired|invalid)|invalid.*(token|otp)/i.test(msg)) return { text: 'Код не подошёл или устарел. Проверь последнее письмо или запроси новый код.' };
+    if (code === 'same_password' || /different from the old password/i.test(msg)) return { field: 'password', text: 'Новый пароль должен отличаться от старого' };
+    if (code === 'reauthentication_needed' || /requires reauthentication/i.test(msg)) return { text: 'Для смены пароля войди в кабинет заново.' };
+    if (code === 'weak_password' || /password should/i.test(msg)) return { field: 'password', text: 'Пароль слишком простой: нужны латинские буквы и цифры, от 8 символов' };
+    if (code === 'email_address_invalid' || /email address .*invalid/i.test(msg)) return { field: 'email', text: 'Такая почта не подходит. Проверь адрес.' };
+    if (code === 'signup_disabled' || /signups not allowed/i.test(msg)) return { text: 'Регистрация сейчас закрыта. Загляни позже.' };
+    if (secs) return { text: 'Новое письмо можно отправить через ' + secs[1] + ' сек.' };
+    if (code === 'over_email_send_rate_limit' || /email rate limit/i.test(msg)) return { text: 'Письма временно не отправляются: слишком много за последний час. Попробуй позже.' };
+    if (status === 429 || /rate limit|too many/i.test(msg)) return { text: 'Слишком много попыток. Подожди минуту и попробуй снова.' };
+    if ((err && err.name === 'AuthRetryableFetchError') || /fetch|network|load/i.test(msg)) return { text: 'Нет связи с сервером. Проверь интернет и попробуй ещё раз.' };
+    return { text: 'Что-то пошло не так. Попробуй ещё раз через минуту.' };
+  }
+  function errToast(info) { toast({ title: 'Не получилось', text: info.text, icon: 'lock' }); }
+
+  function bindEye(btn) {
+    btn.addEventListener('click', function () {
+      var input = btn.parentNode.querySelector('input');
+      var showIt = input.type === 'password';
+      input.type = showIt ? 'text' : 'password';
+      btn.innerHTML = use(showIt ? 'eye-off' : 'eye');
+      btn.setAttribute('aria-label', showIt ? 'Скрыть пароль' : 'Показать пароль');
+    });
+  }
+  $$('.eye').forEach(bindEye);
+
+  $$('[data-oauth]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      toast({ title: 'Вход через ' + btn.getAttribute('data-oauth'), text: REAL ? 'Скоро появится. Пока можно войти по почте.' : 'Появится, когда подключим настоящие аккаунты. Пока можно войти по почте.', icon: 'lock' });
+    });
+  });
+
+  var loginForm = $('#form-login');
+  loginForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var email = loginForm.email.value.trim(), pass = loginForm.password.value, ok = true;
+    if (!EMAIL_RE.test(email)) { setErr(loginForm.email, 'Введи почту, например name@mail.ru'); ok = false; } else setErr(loginForm.email, '');
+    if (pass.length < 8) { setErr(loginForm.password, 'Пароль — минимум 8 символов'); ok = false; } else setErr(loginForm.password, '');
+    if (!ok) return;
+    var btn = loginForm.querySelector('[type=submit]');
+    if (REAL) { realLogin(btn, email, pass, loginForm.remember.checked); return; }
+    busy(btn, 'Входим…', function () {
+      var known = readJSON('local', 'nova.known') || {};
+      signIn({ name: known[email.toLowerCase()] || nameFromEmail(email), email: email }, loginForm.remember.checked);
+      loginForm.reset();
+      log('Вход в кабинет');
+      go('dashboard');
+    });
+  });
+
+  function realLogin(btn, email, pass, remember) {
+    var stop = spin(btn, 'Входим…');
+    setRemember(remember);
+    call(function (a) { return a.signInWithPassword({ email: email, password: pass }); })
+      .then(function (data) {
+        stop();
+        signIn(userFrom(data.user), remember);
+        loginForm.reset();
+        log('Вход в кабинет');
+        go('dashboard');
+      })
+      .catch(function (err) {
+        var info = authError(err);
+        if (!info.unconfirmed) {
+          stop();
+          if (info.field) setErr(info.field === 'email' ? loginForm.email : loginForm.password, info.text);
+          else errToast(info);
+          return;
+        }
+        // Аккаунт есть, но почту не подтвердили: отправляем новый код и открываем ввод кода.
+        var known = readJSON('local', 'nova.known') || {};
+        call(function (a) { return a.resend({ type: 'signup', email: email }); })
+          .catch(function (e2) { var i2 = authError(e2); if (!/сек\./.test(i2.text)) errToast(i2); })
+          .then(function () {
+            stop();
+            loginForm.reset();
+            setPending({ name: known[email.toLowerCase()] || nameFromEmail(email), email: email });
+            toast({ title: 'Почта ещё не подтверждена', text: 'Мы отправили код ещё раз — введи его, и вход завершится.', icon: 'mail' });
+            go('verify');
+          });
+      });
+  }
+  function setPending(p) {
+    state.pending = p;
+    writeJSON('session', 'nova.pending', p);
+  }
+
+  var regForm = $('#form-register');
+  function strength(p) {
+    var s = 0;
+    if (p.length >= 8) s++;
+    if (p.length >= 12) s++;
+    if (/[A-ZА-ЯЁ]/.test(p) && /[a-zа-яё]/.test(p)) s++;
+    if (/\d/.test(p) && /[^A-Za-zА-Яа-яЁё0-9]/.test(p)) s++;
+    return p ? Math.max(1, s) : 0;
+  }
+  regForm.password.addEventListener('input', function () {
+    var s = strength(regForm.password.value);
+    var colors = ['', '#ff6b6b', '#ffb347', '#ffd862', '#3ddc84'];
+    $$('.meter i', regForm).forEach(function (bar, i) { bar.style.background = i < s ? colors[s] : ''; });
+    $('#meter-label').textContent = ['', 'Слабый пароль', 'Так себе', 'Хороший', 'Надёжный'][s];
+  });
+  regForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var f = regForm, ok = true;
+    var name = f.fullname.value.trim(), email = f.email.value.trim();
+    if (name.length < 2) { setErr(f.fullname, 'Напиши имя — хотя бы 2 буквы'); ok = false; } else setErr(f.fullname, '');
+    if (!EMAIL_RE.test(email)) { setErr(f.email, 'Введи почту, например name@mail.ru'); ok = false; } else setErr(f.email, '');
+    var perr = passwordProblem(f.password.value);
+    setErr(f.password, perr);
+    if (perr) ok = false;
+    if (f.password2.value !== f.password.value || !f.password2.value) { setErr(f.password2, 'Пароли не совпадают'); ok = false; } else setErr(f.password2, '');
+    $('#terms-label').classList.toggle('invalid', !f.terms.checked);
+    if (!f.terms.checked) ok = false;
+    if (!ok) return;
+    var btn = f.querySelector('[type=submit]');
+    function finish() {
+      var known = readJSON('local', 'nova.known') || {};
+      known[email.toLowerCase()] = name;
+      writeJSON('local', 'nova.known', known);
+      f.reset();
+      regForm.password.dispatchEvent(new Event('input'));
+    }
+    if (!REAL) {
+      busy(btn, 'Создаём…', function () {
+        setPending({ name: name, email: email });
+        finish();
+        go('verify');
+      });
+      return;
+    }
+    var stop = spin(btn, 'Создаём…');
+    setRemember(true);
+    call(function (a) { return a.signUp({ email: email, password: f.password.value, options: { data: { name: name } } }); })
+      .then(function (data) {
+        stop();
+        var u = data && data.user;
+        // Если почта уже подтверждена кем-то, Supabase не говорит об этом прямо, а возвращает пустой список identities.
+        if (u && Array.isArray(u.identities) && u.identities.length === 0) {
+          setErr(f.email, 'Эта почта уже зарегистрирована. Войди в аккаунт.');
+          return;
+        }
+        finish();
+        if (data.session) {
+          // В Supabase выключено подтверждение почты — аккаунт готов сразу.
+          signIn(userFrom(u), true);
+          log('Аккаунт создан');
+          go('dashboard');
+          return;
+        }
+        setPending({ name: name, email: email });
+        go('verify');
+      })
+      .catch(function (err) {
+        stop();
+        var info = authError(err);
+        if (info.field === 'email') setErr(f.email, info.text);
+        else if (info.field === 'password') setErr(f.password, info.text);
+        else errToast(info);
+      });
+  });
+  regForm.terms.addEventListener('change', function () { $('#terms-label').classList.remove('invalid'); });
+
+  function passwordProblem(pv) {
+    if (pv.length < 8) return 'Минимум 8 символов';
+    if (!/[A-Za-z]/.test(pv) || !/[0-9]/.test(pv)) return 'Нужны латинские буквы и хотя бы одна цифра';
+    return '';
+  }
+  // Новый пароль, а потом выход на всех других устройствах: там мог оказаться чужой.
+  function changePassword(pv) {
+    return call(function (a) { return a.updateUser({ password: pv }); }).then(function (data) {
+      if (data && data.user) signIn(userFrom(data.user), remembered());
+      return call(function (a) { return a.signOut({ scope: 'others' }); }).catch(function () { /* пароль уже сменён */ });
+    });
+  }
+  function passwordChangedToast() {
+    toast({ title: 'Пароль изменён', text: REAL ? 'Все другие входы в аккаунт закрыты. На почту придёт письмо об этом.' : 'Демо: пароль нигде не сохраняется.', icon: 'shield-check', kind: 'ok' });
+  }
+
+  // ---------- Забыли пароль ----------
+  function setRecovery(on) { state.recovery = !!on; writeJSON('session', 'nova.recovery', on ? 1 : null); }
+  function sendRecovery(email) { return call(function (a) { return a.resetPasswordForEmail(email); }); }
+  var forgotForm = $('#form-forgot');
+  forgotForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var email = forgotForm.email.value.trim();
+    if (!EMAIL_RE.test(email)) { setErr(forgotForm.email, 'Введи почту, например name@mail.ru'); return; }
+    setErr(forgotForm.email, '');
+    var btn = forgotForm.querySelector('[type=submit]');
+    function next() {
+      forgotForm.reset();
+      setPending({ name: nameFromEmail(email), email: email, kind: 'recovery' });
+      go('verify');
+    }
+    if (!REAL) { busy(btn, 'Отправляем…', next); return; }
+    var stop = spin(btn, 'Отправляем…');
+    sendRecovery(email).then(function () { stop(); next(); }, function (err) {
+      stop();
+      var info = authError(err);
+      if (info.field === 'email') setErr(forgotForm.email, info.text); else errToast(info);
+    });
+  });
+
+  var npForm = $('#form-newpass');
+  npForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var pv = npForm.password.value, ok = true;
+    var perr = passwordProblem(pv);
+    setErr(npForm.password, perr);
+    if (perr) ok = false;
+    if (npForm.password2.value !== pv || !pv) { setErr(npForm.password2, 'Пароли не совпадают'); ok = false; } else setErr(npForm.password2, '');
+    if (!ok) return;
+    var btn = npForm.querySelector('[type=submit]');
+    function finish() {
+      npForm.reset();
+      setRecovery(false);
+      log('Пароль изменён');
+      passwordChangedToast();
+      go('dashboard');
+    }
+    if (!REAL) { busy(btn, 'Сохраняю…', finish); return; }
+    var stop = spin(btn, 'Сохраняю…');
+    changePassword(pv).then(function () { stop(); finish(); }, function (err) {
+      stop();
+      var info = authError(err);
+      if (info.field === 'password') setErr(npForm.password, info.text); else errToast(info);
+    });
+  });
+
+  // ---------- Код подтверждения ----------
+  var otp = $('#otp'), digits = $$('#otp input'), done = $('#done'), verifyBtn = $('#verify-btn'), otpErr = $('#otp-err'), resend = $('#resend');
+  var verifying = false, orbitCenter = 0, N = digits.length;
+  var verifyBtnHtml = verifyBtn.innerHTML;
+
+  function isRecovery() { return !!(state.pending && state.pending.kind === 'recovery'); }
+  function enterVerify() {
+    verifying = false;
+    $('#v-email').textContent = state.pending ? state.pending.email : '';
+    $('#v-title').innerHTML = isRecovery() ? 'Код для <span class="gold-text">нового пароля</span>' : 'Подтверди <span class="gold-text">почту</span>';
+    $('#v-back').setAttribute('href', isRecovery() ? '#forgot' : '#register');
+    $('#v-sub').firstChild.textContent = 'Мы отправили ' + N + '-значный код на ';
+    $('#v-badge').innerHTML = use('key');
+    $('#view-verify').classList.remove('verifying');
+    otp.className = 'otp';
+    digits.forEach(function (d) { d.value = ''; d.classList.remove('filled'); d.style.transform = ''; d.style.opacity = ''; d.disabled = false; });
+    done.classList.remove('show');
+    otpErr.textContent = '';
+    verifyBtn.className = 'btn-gold wide';
+    verifyBtn.innerHTML = verifyBtnHtml;
+    verifyBtn.onclick = verify;
+    $('#v-back').parentNode.hidden = false;
+    $('.resend').hidden = false;
+    sendCode();
+    startTimer();
+  }
+
+  function sendCode() {
+    closeMail();
+    if (REAL) {
+      // Письмо уже отправил сервер. Здесь только подсказка.
+      // Есть ли такой аккаунт, сервер не говорит — чтобы по сайту нельзя было проверять чужие почты.
+      state.mailClose = toast({
+        title: 'Письмо отправлено', icon: 'mail', ms: 9000,
+        text: isRecovery()
+          ? 'Если аккаунт с почтой ' + state.pending.email + ' есть, код придёт в течение минуты. Не видно — проверь папку «Спам».'
+          : 'Код придёт на ' + state.pending.email + ' в течение минуты. Не видно — проверь папку «Спам».'
+      });
+      return;
+    }
+    var min = Math.pow(10, N - 1);
+    state.code = String(Math.floor(min + Math.random() * 9 * min));
+    var code = state.code;
+    setTimeout(function () {
+      if (state.view !== 'verify' || state.code !== code) return;
+      closeMail();
+      state.mailClose = toast({
+        title: 'Письмо от Nova', icon: 'mail', code: code.replace(/(\d{3})(?=\d)/g, '$1 '),
+        text: isRecovery() ? 'Код для нового пароля' : 'Твой код подтверждения', ms: 12000,
+        demo: 'Демо: настоящее письмо придёт, когда подключим сервер',
+        action: { label: 'Вставить код', run: function () { fillFrom(code, 0); } }
+      });
+    }, reduce ? 0 : 1300);
+  }
+
+  function closeMail() { if (state.mailClose) { state.mailClose(); state.mailClose = null; } }
+  function pad2(n) { return n < 10 ? '0' + n : String(n); }
+  function startTimer() {
+    stopTimer();
+    // Supabase разрешает новое письмо раз в 60 секунд.
+    state.left = REAL ? 59 : 39;
+    tick();
+    state.timer = setInterval(tick, 1000);
+  }
+  function tick() {
+    if (state.left <= 0) { stopTimer(); resend.disabled = false; resend.textContent = 'Отправить снова'; return; }
+    resend.disabled = true;
+    resend.textContent = 'Отправить снова через ' + pad2(Math.floor(state.left / 60)) + ':' + pad2(state.left % 60);
+    state.left--;
+  }
+  function stopTimer() { if (state.timer) { clearInterval(state.timer); state.timer = null; } }
+  resend.addEventListener('click', function () {
+    if (!REAL) {
+      sendCode(); startTimer();
+      toast({ title: 'Код отправлен ещё раз', text: 'Проверь почту через пару секунд.', icon: 'send' });
+      return;
+    }
+    resend.disabled = true;
+    var again = isRecovery()
+      ? sendRecovery(state.pending.email)
+      : call(function (a) { return a.resend({ type: 'signup', email: state.pending.email }); });
+    again
+      .then(function () {
+        startTimer();
+        toast({ title: 'Код отправлен ещё раз', text: 'Введи код из последнего письма — прошлый больше не подойдёт.', icon: 'send' });
+      })
+      .catch(function (err) { resend.disabled = false; errToast(authError(err)); });
+  });
+
+  function codeValue() { return digits.map(function (d) { return d.value; }).join(''); }
+  function fillFrom(str, start) {
+    var ds = String(str).replace(/\D/g, '').split('');
+    for (var k = 0; k < ds.length && start + k < N; k++) { digits[start + k].value = ds[k]; digits[start + k].classList.add('filled'); }
+    var next = Math.min(start + ds.length, N - 1);
+    if (codeValue().length === N) verify(); else digits[next].focus();
+  }
+  digits.forEach(function (inp, i) {
+    inp.addEventListener('input', function () {
+      var v = inp.value.replace(/\D/g, '');
+      otp.classList.remove('error'); otpErr.textContent = '';
+      if (v.length > 1) { inp.value = ''; fillFrom(v, i); return; }
+      inp.value = v;
+      inp.classList.toggle('filled', !!v);
+      if (v && i < N - 1) digits[i + 1].focus();
+      if (codeValue().length === N) verify();
+    });
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Backspace' && !inp.value && i > 0) {
+        e.preventDefault(); digits[i - 1].value = ''; digits[i - 1].classList.remove('filled'); digits[i - 1].focus();
+      } else if (e.key === 'ArrowLeft' && i > 0) { digits[i - 1].focus(); }
+      else if (e.key === 'ArrowRight' && i < N - 1) { digits[i + 1].focus(); }
+      else if (e.key === 'Enter') { verify(); }
+    });
+    inp.addEventListener('paste', function (e) {
+      var t = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '');
+      if (t) { e.preventDefault(); fillFrom(t, 0); }
+    });
+    inp.addEventListener('focus', function () { inp.select(); });
+  });
+
+  function verify() {
+    if (verifying) return;
+    var v = codeValue();
+    if (v.length < N) {
+      otpErr.textContent = 'Введи все ' + N + ' цифр';
+      otp.classList.remove('error'); void otp.offsetWidth; otp.classList.add('error');
+      return;
+    }
+    verifying = true;
+    closeMail();
+    if (document.activeElement) document.activeElement.blur();
+    digits.forEach(function (d) { d.disabled = true; });
+    $('#view-verify').classList.add('verifying');
+    verifyBtn.classList.add('loading');
+    verifyBtn.innerHTML = '<span class="spinner"></span><span>Проверяю код…</span>';
+    startOrbit();
+    // Анимация идёт не меньше minMs, даже если сервер ответил быстрее.
+    var t0 = Date.now(), minMs = reduce ? 300 : (REAL ? 1600 : 2100);
+    function later(fn) { setTimeout(fn, Math.max(0, minMs - (Date.now() - t0))); }
+    var check = REAL
+      ? call(function (a) { return a.verifyOtp({ email: state.pending.email, token: v, type: isRecovery() ? 'recovery' : 'email' }); })
+      : (v === state.code ? Promise.resolve(null) : Promise.reject(null));
+    check.then(function (data) {
+      later(function () { success(data && data.user ? userFrom(data.user) : null); });
+    }, function (err) {
+      later(function () { fail(err ? authError(err).text : null); });
+    });
+  }
+
+  // Цифры собираются в кольцо и крутятся, пока идёт проверка.
+  function startOrbit() {
+    otp.classList.add('tall');
+    var width = otp.clientWidth;
+    orbitCenter = width / 2;
+    var r = width < 300 ? 50 : 56;
+    digits.forEach(function (d, i) {
+      var a = -Math.PI / 2 + i * 2 * Math.PI / N;
+      var cxInput = d.offsetLeft + d.offsetWidth / 2;
+      var tx = orbitCenter + r * Math.cos(a) - cxInput;
+      var ty = r * Math.sin(a);
+      d.style.transform = 'translate(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px) scale(.84)';
+    });
+    setTimeout(function () { if (verifying) otp.classList.add('spin'); }, reduce ? 0 : 700);
+  }
+
+  function stopOrbit() {
+    otp.classList.remove('spin');
+    digits.forEach(function (d) { d.style.transform = ''; });
+  }
+
+  function fail(text) {
+    stopOrbit();
+    setTimeout(function () {
+      otp.classList.remove('tall');
+      $('#view-verify').classList.remove('verifying');
+      digits.forEach(function (d) { d.disabled = false; d.value = ''; d.classList.remove('filled'); });
+      otp.classList.remove('error'); void otp.offsetWidth; otp.classList.add('error');
+      otpErr.textContent = text || 'Код не подошёл. Проверь письмо и попробуй ещё раз.';
+      verifyBtn.classList.remove('loading');
+      verifyBtn.innerHTML = verifyBtnHtml;
+      verifying = false;
+      digits[0].focus();
+    }, reduce ? 0 : 650);
+  }
+
+  function success(realUser) {
+    var recovery = isRecovery();
+    var user = realUser || { name: state.pending.name, email: state.pending.email };
+    otp.classList.remove('spin');
+    digits.forEach(function (d) {
+      var cxInput = d.offsetLeft + d.offsetWidth / 2;
+      d.style.transform = 'translate(' + (orbitCenter - cxInput).toFixed(1) + 'px,0) scale(.2)';
+      d.style.opacity = '0';
+    });
+    setTimeout(function () {
+      card.classList.add('success');
+      done.classList.add('show');
+      $('#v-badge').innerHTML = use('shield-check');
+      if (recovery) {
+        $('#v-title').innerHTML = 'Код <span class="ok-text">подошёл</span>';
+        $('#v-sub').firstChild.textContent = 'Осталось придумать новый пароль для ';
+        $('#v-email').textContent = user.email;
+      } else {
+        $('#v-title').innerHTML = 'Почта <span class="ok-text">подтверждена</span>';
+        $('#v-sub').firstChild.textContent = 'Аккаунт защищён. Добро пожаловать, ';
+        $('#v-email').textContent = user.name;
+      }
+      $('.resend').hidden = true;
+      $('#v-back').parentNode.hidden = true;
+      verifyBtn.className = 'btn-green wide';
+      verifyBtn.innerHTML = use('shield-check') + '<span>' + (recovery ? 'Это точно ты' : 'Подтверждено и защищено') + '</span>';
+      stopTimer();
+      setPending(null);
+      signIn(user, !REAL || remembered());
+      if (recovery) {
+        setRecovery(true);
+        log('Вход по коду из письма');
+      } else {
+        log('Аккаунт создан');
+        log('Почта подтверждена');
+      }
+      setTimeout(function () {
+        if (recovery) { verifying = false; go('newpass'); return; }
+        verifyBtn.className = 'btn-gold wide';
+        verifyBtn.innerHTML = '<span>Перейти в кабинет</span>' + use('arrow');
+        verifyBtn.onclick = function () { go('dashboard'); };
+        verifying = false;
+      }, reduce ? 0 : 1500);
+    }, reduce ? 0 : 500);
+  }
+
+  // ---------- Кабинет ----------
+  function greeting() {
+    var h = new Date().getHours();
+    if (h < 5) return 'Доброй ночи';
+    if (h < 12) return 'Доброе утро';
+    if (h < 18) return 'Добрый день';
+    return 'Добрый вечер';
+  }
+  function initials(name) {
+    var parts = String(name || '?').trim().split(/\s+/);
+    return ((parts[0] || '?').charAt(0) + (parts[1] ? parts[1].charAt(0) : '')).toUpperCase();
+  }
+
+  // ---------- Профиль ----------
+  var COLORS = {
+    gold: { name: 'Золото', a: '#ffe07a', b: '#f39a1f' },
+    fire: { name: 'Огонь', a: '#ffb37a', b: '#ef4e26' },
+    mint: { name: 'Мята', a: '#a6f5cc', b: '#1fae6c' },
+    sky: { name: 'Небо', a: '#a8dcff', b: '#2f76ec' },
+    violet: { name: 'Фиолет', a: '#dcbcff', b: '#7a3cf0' },
+    rose: { name: 'Роза', a: '#ffbdd6', b: '#e3407c' }
+  };
+  // Картинку показываем только из своего хранилища (или из демо), чтобы в профиль нельзя было подсунуть чужую ссылку.
+  function safeAvatar(url) {
+    url = String(url || '');
+    if (/^data:image\/(jpeg|png|webp);base64,[a-z0-9+\/=]+$/i.test(url)) return url;
+    if (REAL && url.indexOf(AUTH.supabaseUrl + '/storage/v1/object/public/avatars/') === 0) return url;
+    return '';
+  }
+  function paintAva(el, u, override) {
+    var c = COLORS[u.color] || COLORS.gold;
+    var src = override !== undefined ? override : safeAvatar(u.avatar);
+    el.style.background = 'linear-gradient(135deg, ' + c.a + ', ' + c.b + ')';
+    el.style.setProperty('--ring', c.b);
+    el.classList.toggle('has-img', !!src);
+    el.textContent = '';
+    if (src) {
+      var img = document.createElement('img');
+      img.alt = '';
+      img.src = src;
+      img.onerror = function () { el.classList.remove('has-img'); el.textContent = initials(u.name); };
+      el.appendChild(img);
+    } else {
+      el.textContent = initials(u.name);
+    }
+  }
+  function sinceText(iso) {
+    var d = iso ? new Date(iso) : null;
+    if (!d || isNaN(d)) return '';
+    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).replace(/\s*г\.?$/, '');
+  }
+
+  // Фото: обрезка до квадрата. Тянешь пальцем, ползунок или щипок — масштаб.
+  var OUT_SIZE = 384;
+  function cropper(img, mount) {
+    var S = 280, dpr = Math.min(window.devicePixelRatio || 1, 3);
+    var cv = document.createElement('canvas');
+    cv.width = Math.round(S * dpr); cv.height = Math.round(S * dpr);
+    cv.setAttribute('aria-label', 'Фото: двигай, чтобы выбрать, что будет видно');
+    var ctx = cv.getContext('2d');
+    var iw = img.naturalWidth, ih = img.naturalHeight;
+    var base = Math.max(S / iw, S / ih), zoom = 1, ox = 0, oy = 0;
+    function size() { return { w: iw * base * zoom, h: ih * base * zoom }; }
+    function clamp() {
+      var z = size(), mx = (z.w - S) / 2, my = (z.h - S) / 2;
+      ox = Math.max(-mx, Math.min(mx, ox)); oy = Math.max(-my, Math.min(my, oy));
+    }
+    function paint(c, k) {
+      var z = size();
+      c.drawImage(img, (S / 2 - z.w / 2 + ox) * k, (S / 2 - z.h / 2 + oy) * k, z.w * k, z.h * k);
+    }
+    function draw() {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      paint(ctx, dpr);
+      // Затемняем всё, кроме рамки, — как будет выглядеть аватар.
+      var r = S * 0.29, m = 14, x = m, y = m, w = S - 2 * m, h = S - 2 * m;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.beginPath();
+      ctx.rect(0, 0, S, S);
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x, y, x, y + h, r); ctx.arcTo(x, y + h, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x + w, y, r); ctx.arcTo(x + w, y, x, y, r);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(0,0,0,.55)';
+      ctx.fill('evenodd');
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(255,201,64,.9)'; ctx.lineWidth = 2; ctx.stroke();
+    }
+    var range = document.createElement('input');
+    range.type = 'range'; range.min = '1'; range.max = '4'; range.step = '0.01'; range.value = '1';
+    range.setAttribute('aria-label', 'Масштаб');
+    function setZoom(z) { zoom = Math.max(1, Math.min(4, z)); range.value = String(zoom); clamp(); draw(); }
+    range.addEventListener('input', function () { setZoom(parseFloat(range.value)); });
+    var pts = {}, pinch = null;
+    cv.addEventListener('pointerdown', function (e) { cv.setPointerCapture(e.pointerId); pts[e.pointerId] = { x: e.clientX, y: e.clientY }; });
+    cv.addEventListener('pointermove', function (e) {
+      var p = pts[e.pointerId]; if (!p) return;
+      var ids = Object.keys(pts);
+      if (ids.length === 2) {
+        var o = pts[ids[0] == e.pointerId ? ids[1] : ids[0]];
+        var d = Math.hypot(e.clientX - o.x, e.clientY - o.y);
+        if (pinch) setZoom(pinch.zoom * d / pinch.d); else pinch = { d: d, zoom: zoom };
+      } else {
+        var k = S / cv.getBoundingClientRect().width;
+        ox += (e.clientX - p.x) * k; oy += (e.clientY - p.y) * k; clamp(); draw();
+      }
+      p.x = e.clientX; p.y = e.clientY;
+    });
+    function up(e) { delete pts[e.pointerId]; pinch = null; }
+    cv.addEventListener('pointerup', up);
+    cv.addEventListener('pointercancel', up);
+    cv.addEventListener('wheel', function (e) { e.preventDefault(); setZoom(zoom * (e.deltaY < 0 ? 1.08 : 1 / 1.08)); }, { passive: false });
+    var zoomRow = document.createElement('label');
+    zoomRow.className = 'zoom';
+    zoomRow.innerHTML = '<span>−</span>';
+    zoomRow.appendChild(range);
+    zoomRow.insertAdjacentHTML('beforeend', '<span>+</span>');
+    mount.appendChild(cv);
+    mount.appendChild(zoomRow);
+    draw();
+    return {
+      result: function () {
+        var out = document.createElement('canvas');
+        out.width = OUT_SIZE; out.height = OUT_SIZE;
+        var o = out.getContext('2d');
+        o.fillStyle = '#000'; o.fillRect(0, 0, OUT_SIZE, OUT_SIZE);
+        // Рамка внутри поля — 14px отступа; переводим её в квадрат OUT_SIZE.
+        var m = 14, k = OUT_SIZE / (S - 2 * m);
+        o.translate(-m * k, -m * k);
+        paint(o, k);
+        return out;
+      }
+    };
+  }
+  function canvasToBlob(cv) {
+    return new Promise(function (resolve, reject) {
+      if (cv.toBlob) cv.toBlob(function (b) { if (b) resolve(b); else reject(new Error('toBlob')); }, 'image/jpeg', 0.88);
+      else reject(new Error('toBlob'));
+    });
+  }
+  function loadImage(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () { resolve(img); };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('image')); };
+      img.src = url;
+    });
+  }
+  function storageError(err) {
+    var msg = String((err && err.message) || '');
+    if (/too large|payload|exceeded the maximum/i.test(msg)) return 'Фото слишком большое. Выбери другое.';
+    if (/mime|content type|not supported/i.test(msg)) return 'Такой формат не подходит. Нужна картинка JPG или PNG.';
+    if (/reauthentication required/i.test(msg)) return 'Подтверждение устарело. Введи пароль ещё раз.';
+    if (/could not find the function|PGRST202/i.test(msg + ' ' + String((err && err.code) || ''))) return 'Удаление аккаунта ещё не включено на сервере (supabase/account.sql).';
+    if (/row-level security|unauthorized|jwt|403|permission denied/i.test(msg)) return 'Сессия устарела. Выйди и войди в кабинет заново.';
+    return authError(err).text;
+  }
+
+  function openProfile() {
+    var u = state.user;
+    if (!u || $('.modal.profile-modal')) return;
+    var draft = { color: u.color || 'gold', photo: null, removePhoto: false };
+    var m = document.createElement('div');
+    m.className = 'modal profile-modal';
+    m.innerHTML =
+      '<div class="box glass profile" role="dialog" aria-modal="true" aria-labelledby="p-title">' +
+        '<div class="panel-head"><div><h2 id="p-title">Мой профиль</h2><p>Фото, имя и пара слов о себе.</p></div>' +
+        '<button class="icon-btn" type="button" data-close aria-label="Закрыть">' + use('x') + '</button></div>' +
+        '<div class="p-form">' +
+          '<div class="p-top"><button class="ava-btn" type="button" data-pick aria-label="Сменить фото"><div class="ava" id="p-ava"></div></button>' +
+            '<div class="p-btns"><div class="row-btns"><button class="btn-glass sm" type="button" data-pick>' + use('camera') + '<span>Сменить фото</span></button>' +
+            '<button class="btn-glass sm" type="button" data-unphoto>' + use('trash') + '<span>Убрать</span></button></div>' +
+            '<small>Подойдёт любое фото с телефона или компьютера.</small></div></div>' +
+          '<div class="field"><label for="p-name">Имя</label><div class="input"><svg class="i lead"><use href="#i-user"/></svg><input id="p-name" type="text" maxlength="40" autocomplete="name"></div><small class="err" aria-live="polite"></small></div>' +
+          '<div class="field"><label for="p-bio">О себе <span class="count" id="p-count"></span></label><textarea id="p-bio" maxlength="120" rows="2" placeholder="Например: играю в CS2 и настраиваю Windows под себя"></textarea></div>' +
+          '<div class="field"><label>Цвет профиля</label><div class="swatches" role="radiogroup" aria-label="Цвет профиля"></div></div>' +
+          '<div class="p-meta"><span>Почта: <b class="p-mail"></b> <span class="ok">· подтверждена</span></span><span class="p-since"></span></div>' +
+          '<div class="p-sec"><span class="p-sec-t">' + use('shield') + 'Безопасность</span><div class="row-btns">' +
+            '<button class="btn-glass sm" type="button" data-pane="pass">' + use('key') + '<span>Сменить пароль</span></button>' +
+            '<button class="btn-glass sm bad" type="button" data-pane="del">' + use('trash') + '<span>Удалить аккаунт</span></button></div></div>' +
+          '<div class="row"><button class="btn-glass sm" type="button" data-close>Отмена</button><button class="btn-gold sm" type="button" data-save>' + use('check') + '<span>Сохранить</span></button></div>' +
+        '</div>' +
+        '<div class="p-pane" id="pane-pass" hidden><h3>Сменить пароль</h3>' +
+          '<p>Сначала текущий пароль: так мы убедимся, что это ты. После смены все другие входы в аккаунт закроются.</p>' +
+          pwField('pp-cur', 'Текущий пароль', 'current-password', '') +
+          '<p class="hint"><a class="link" href="#forgot" data-close>Не помню пароль</a></p>' +
+          pwField('pp-new', 'Новый пароль', 'new-password', '8+ символов, буквы и цифры') +
+          pwField('pp-new2', 'Повтори новый пароль', 'new-password', 'Ещё раз') +
+          '<div class="row"><button class="btn-glass sm" type="button" data-pane-back>Назад</button><button class="btn-gold sm" type="button" data-pass-ok>' + use('check') + '<span>Сменить</span></button></div></div>' +
+        '<div class="p-pane" id="pane-del" hidden><h3 class="bad-t">Удалить аккаунт</h3>' +
+          '<p>' + (REAL ? 'С сервера сразу и навсегда удалятся почта, пароль, имя, «о себе» и фото. Вернуть их не получится.' : 'Демо: удалятся данные профиля в этом браузере.') +
+          ' Программа Nova на компьютере продолжит работать: ей аккаунт не нужен.</p>' +
+          pwField('pd-pass', 'Пароль — подтверди, что это ты', 'current-password', '') +
+          '<div class="row"><button class="btn-glass sm" type="button" data-pane-back>Не удалять</button><button class="btn-bad sm" type="button" data-del-ok>' + use('trash') + '<span>Удалить навсегда</span></button></div></div>' +
+        '<div class="crop" hidden><p>Двигай фото пальцем, увеличивай ползунком.</p><div class="crop-stage"></div>' +
+          '<div class="row" style="align-self:stretch"><button class="btn-glass sm" type="button" data-crop-back>Назад</button><button class="btn-gold sm" type="button" data-crop-ok>' + use('check') + '<span>Готово</span></button></div></div>' +
+        '<input type="file" accept="image/*" hidden>' +
+      '</div>';
+    var form = $('.p-form', m), crop = $('.crop', m), file = $('input[type=file]', m), ava = $('#p-ava', m);
+    $$('.eye', m).forEach(bindEye);
+    function showPane(name) {
+      form.hidden = !!name; crop.hidden = true;
+      $$('.p-pane', m).forEach(function (pane) {
+        pane.hidden = pane.id !== 'pane-' + name;
+        $$('input', pane).forEach(function (i) { i.value = ''; setErr(i, ''); });
+      });
+      var first = name && $('#pane-' + name + ' input', m);
+      if (first) first.focus();
+    }
+    $$('[data-pane]', m).forEach(function (b) { b.addEventListener('click', function () { showPane(b.getAttribute('data-pane')); }); });
+    $$('[data-pane-back]', m).forEach(function (b) { b.addEventListener('click', function () { showPane(null); }); });
+
+    $('[data-pass-ok]', m).addEventListener('click', function () {
+      var cur = $('#pp-cur', m), nw = $('#pp-new', m), nw2 = $('#pp-new2', m), ok = true;
+      if (!cur.value) { setErr(cur, 'Введи текущий пароль'); ok = false; } else setErr(cur, '');
+      var perr = passwordProblem(nw.value);
+      if (!perr && nw.value === cur.value) perr = 'Новый пароль должен отличаться от старого';
+      setErr(nw, perr);
+      if (perr) ok = false;
+      if (nw2.value !== nw.value || !nw2.value) { setErr(nw2, 'Пароли не совпадают'); ok = false; } else setErr(nw2, '');
+      if (!ok) return;
+      var stop = spin(this, 'Меняю…');
+      reauth(cur.value)
+        .then(function () { return REAL ? changePassword(nw.value) : wait(300); })
+        .then(function () { stop(); close(); log('Пароль изменён'); passwordChangedToast(); }, function (err) {
+          stop();
+          if (err && err.wrongPassword) { setErr(cur, 'Текущий пароль неверный'); cur.focus(); return; }
+          var info = authError(err);
+          if (info.field === 'password') setErr(nw, info.text); else errToast(info);
+        });
+    });
+
+    $('[data-del-ok]', m).addEventListener('click', function () {
+      var pw = $('#pd-pass', m);
+      if (!pw.value) { setErr(pw, 'Введи пароль'); pw.focus(); return; }
+      setErr(pw, '');
+      var stop = spin(this, 'Удаляю…');
+      var email = u.email;
+      reauth(pw.value).then(deleteAccount).then(function () {
+        stop(); close();
+        forgetLocal(email);
+        toast({ title: 'Аккаунт удалён', text: REAL ? 'Почта, пароль и профиль стёрты с сервера.' : 'Демо: профиль стёрт из этого браузера.', icon: 'trash' });
+        go('register');
+      }, function (err) {
+        stop();
+        if (err && err.wrongPassword) { setErr(pw, 'Пароль неверный'); pw.focus(); return; }
+        toast({ title: 'Не получилось удалить', text: storageError(err), icon: 'trash' });
+      });
+    });
+    var nameIn = $('#p-name', m), bioIn = $('#p-bio', m), count = $('#p-count', m);
+    nameIn.value = u.name || '';
+    bioIn.value = u.bio || '';
+    $('.p-mail', m).textContent = u.email;
+    $('.ok', m).hidden = !REAL;
+    var since = sinceText(u.created);
+    $('.p-since', m).textContent = since ? 'В Nova с ' + since : '';
+    function updCount() { count.textContent = bioIn.value.length + '/120'; }
+    bioIn.addEventListener('input', updCount); updCount();
+
+    function preview() {
+      var tmp = Object.assign({}, u, { name: nameIn.value.trim() || u.name, color: draft.color });
+      var src = draft.photo ? draft.photo.url : (draft.removePhoto ? '' : undefined);
+      paintAva(ava, tmp, src);
+      $('[data-unphoto]', m).hidden = !(draft.photo || (!draft.removePhoto && safeAvatar(u.avatar)));
+    }
+    nameIn.addEventListener('input', preview);
+
+    var sw = $('.swatches', m);
+    Object.keys(COLORS).forEach(function (key) {
+      var c = COLORS[key], b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('role', 'radio'); b.title = c.name; b.setAttribute('aria-label', c.name);
+      b.style.background = 'linear-gradient(135deg, ' + c.a + ', ' + c.b + ')';
+      b.setAttribute('aria-checked', String(key === draft.color));
+      b.addEventListener('click', function () {
+        draft.color = key;
+        $$('button', sw).forEach(function (x) { x.setAttribute('aria-checked', String(x === b)); });
+        preview();
+      });
+      sw.appendChild(b);
+    });
+
+    var cropCtl = null;
+    $$('[data-pick]', m).forEach(function (b) { b.addEventListener('click', function () { file.value = ''; file.click(); }); });
+    file.addEventListener('change', function () {
+      var f = file.files && file.files[0];
+      if (!f) return;
+      if (!/^image\//.test(f.type || 'image/')) { toast({ title: 'Это не картинка', text: 'Выбери фото в формате JPG, PNG или HEIC.', icon: 'camera' }); return; }
+      if (f.size > 25 * 1024 * 1024) { toast({ title: 'Фото слишком большое', text: 'Выбери фото до 25 МБ.', icon: 'camera' }); return; }
+      loadImage(f).then(function (img) {
+        var stage = $('.crop-stage', m); stage.innerHTML = '';
+        cropCtl = cropper(img, stage);
+        form.hidden = true; crop.hidden = false;
+      }, function () {
+        toast({ title: 'Не получилось открыть фото', text: 'Попробуй другое фото или сохрани его как JPG.', icon: 'camera' });
+      });
+    });
+    $('[data-crop-back]', m).addEventListener('click', function () { crop.hidden = true; form.hidden = false; });
+    $('[data-crop-ok]', m).addEventListener('click', function () {
+      var cv = cropCtl.result();
+      draft.photo = { canvas: cv, url: cv.toDataURL('image/jpeg', 0.88) };
+      draft.removePhoto = false;
+      crop.hidden = true; form.hidden = false;
+      preview();
+    });
+    $('[data-unphoto]', m).addEventListener('click', function () { draft.photo = null; draft.removePhoto = true; preview(); });
+
+    function close() { m.remove(); document.removeEventListener('keydown', onKey); }
+    function onKey(e) { if (e.key === 'Escape') close(); }
+    m.addEventListener('click', function (e) { if (e.target === m || e.target.closest('[data-close]')) close(); });
+    document.addEventListener('keydown', onKey);
+
+    $('[data-save]', m).addEventListener('click', function () {
+      var name = nameIn.value.trim().replace(/\s+/g, ' ');
+      if (name.length < 2) { setErr(nameIn, 'Напиши имя — хотя бы 2 буквы'); nameIn.focus(); return; }
+      setErr(nameIn, '');
+      var bio = bioIn.value.trim().replace(/\s+/g, ' ').slice(0, 120);
+      var btn = this, stop = spin(btn, 'Сохраняю…');
+      saveProfile({ name: name, bio: bio, color: draft.color, photo: draft.photo, removePhoto: draft.removePhoto })
+        .then(function () {
+          stop(); close();
+          renderDash();
+          log(draft.photo ? 'Новое фото профиля' : 'Профиль обновлён');
+          toast({ title: 'Профиль сохранён', text: 'Так тебя теперь видно в Nova.', icon: 'user', kind: 'ok' });
+        })
+        .catch(function (err) {
+          stop();
+          toast({ title: 'Не получилось сохранить', text: storageError(err), icon: 'user' });
+        });
+    });
+
+    preview();
+    document.body.appendChild(m);
+    nameIn.blur();
+  }
+
+  function pwField(id, label, ac, ph) {
+    return '<div class="field"><label for="' + id + '">' + label + '</label><div class="input"><svg class="i lead"><use href="#i-lock"/></svg>' +
+      '<input id="' + id + '" type="password" autocomplete="' + ac + '" placeholder="' + ph + '">' +
+      '<button class="eye" type="button" aria-label="Показать пароль">' + use('eye') + '</button></div><small class="err" aria-live="polite"></small></div>';
+  }
+  // Перед опасным действием ещё раз спрашиваем пароль. Свежий вход проверяет и сервер (supabase/account.sql).
+  function reauth(pass) {
+    if (!REAL) return pass.length >= 8 ? wait(400) : Promise.reject({ wrongPassword: true });
+    return call(function (a) { return a.signInWithPassword({ email: state.user.email, password: pass }); })
+      .then(function (data) { if (data && data.user) signIn(userFrom(data.user), remembered()); }, function (err) {
+        if (authError(err).field === 'password') throw { wrongPassword: true };
+        throw err;
+      });
+  }
+  // Сначала фото (из SQL файлы хранилища удалять нельзя), потом сам аккаунт.
+  function deleteAccount() {
+    if (!REAL) {
+      var all = readJSON('local', 'nova.profiles') || {};
+      delete all[String(state.user.email).toLowerCase()];
+      writeJSON('local', 'nova.profiles', all);
+      return wait(400);
+    }
+    return sb().then(function (c) {
+      return c.auth.getSession().then(function (r) {
+        var sess = r && r.data && r.data.session;
+        if (!sess) throw new Error('JWT expired');
+        return c.storage.from('avatars').remove([sess.user.id + '/avatar.jpg']);
+      }).then(function (res) {
+        if (res && res.error) throw res.error;
+        return c.rpc('delete_my_account');
+      }).then(function (res) {
+        if (res && res.error) throw res.error;
+        // Аккаунта на сервере больше нет: забываем сессию в браузере.
+        return c.auth.signOut({ scope: 'local' }).catch(function () { /* ничего */ });
+      });
+    });
+  }
+  function forgetLocal(email) {
+    var known = readJSON('local', 'nova.known') || {};
+    delete known[String(email).toLowerCase()];
+    writeJSON('local', 'nova.known', known);
+    state.activity = [];
+    writeJSON('local', 'nova.activity', null);
+    signOutLocal();
+    setRecovery(false);
+  }
+
+  function saveProfile(p) {
+    var u = state.user;
+    if (!REAL) {
+      var avatar = p.photo ? p.photo.url : (p.removePhoto ? '' : u.avatar);
+      var extra = { name: p.name, bio: p.bio, color: p.color, avatar: avatar };
+      var all = readJSON('local', 'nova.profiles') || {};
+      all[String(u.email).toLowerCase()] = extra;
+      writeJSON('local', 'nova.profiles', all);
+      signIn(Object.assign({}, u, extra), remembered() || !!readJSON('local', 'nova.user'));
+      return wait(500);
+    }
+    return sb().then(function (c) {
+      return c.auth.getSession().then(function (r) {
+        var sess = r && r.data && r.data.session;
+        if (!sess) throw new Error('JWT expired');
+        return { c: c, uid: sess.user.id };
+      });
+    }).then(function (ctx) {
+      var c = ctx.c, path = ctx.uid + '/avatar.jpg';
+      var bucket = c.storage.from('avatars');
+      var step = Promise.resolve(u.avatar);
+      if (p.photo) {
+        step = canvasToBlob(p.photo.canvas).then(function (blob) {
+          return bucket.upload(path, blob, { upsert: true, contentType: 'image/jpeg', cacheControl: '3600' });
+        }).then(function (res) {
+          if (res.error) throw res.error;
+          return bucket.getPublicUrl(path).data.publicUrl + '?v=' + Date.now();
+        });
+      } else if (p.removePhoto) {
+        step = bucket.remove([path]).then(function (res) { if (res.error) throw res.error; return ''; });
+      }
+      return step.then(function (avatarUrl) {
+        return c.auth.updateUser({ data: { name: p.name, bio: p.bio, color: p.color, avatar_url: avatarUrl || '' } });
+      }).then(function (res) {
+        if (res.error) throw res.error;
+        signIn(userFrom(res.data.user), remembered());
+      });
+    });
+  }
+  $$('[data-profile]').forEach(function (b) { b.addEventListener('click', openProfile); });
+
+  function counts() {
+    var c = {};
+    CATS.forEach(function (cat) { c[cat.id] = { on: 0, total: 0 }; });
+    DATA.tweaks.forEach(function (t) { if (!c[t.category]) return; c[t.category].total++; if (state.builder.tweaks[t.id]) c[t.category].on++; });
+    ['removeApps', 'installApps'].forEach(function (sec) {
+      Object.keys(state.builder[sec]).forEach(function (k) { c[sec].total++; if (state.builder[sec][k]) c[sec].on++; });
+    });
+    return c;
+  }
+
+  function renderDash() {
+    var u = state.user;
+    $('#greet').textContent = greeting() + ', ' + String(u.name).split(/\s+/)[0];
+    var now = new Date();
+    var text = now.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+    $('#today').textContent = text.charAt(0).toUpperCase() + text.slice(1);
+    $('#day-num').textContent = now.getDate();
+    $('#day-name').textContent = now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }).replace(/^\d+\s*/, '') + ', ' + now.toLocaleDateString('ru-RU', { weekday: 'long' });
+    $$('.u-name').forEach(function (el) { el.textContent = u.name; });
+    $$('.u-mail').forEach(function (el) { el.textContent = u.email; });
+    $$('.u-ava').forEach(function (el) { paintAva(el, u); });
+    var bio = $('#u-bio');
+    bio.textContent = u.bio || '';
+    bio.hidden = !u.bio;
+    renderStats();
+    renderSteps();
+    renderTabs();
+    renderOpts();
+    renderActivity();
+    $('#restore-point').checked = state.builder.createRestorePoint;
+    setActiveNav('overview');
+  }
+
+  function animateNumber(el, to, suffix) {
+    if (reduce || state.counted) { el.textContent = to + (suffix || ''); return; }
+    var start = performance.now(), dur = 900;
+    (function frame(now) {
+      var p = Math.min(1, (now - start) / dur);
+      var e = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(to * e) + (suffix || '');
+      if (p < 1) requestAnimationFrame(frame);
+    })(start);
+  }
+
+  function renderStats() {
+    var c = counts();
+    var totalT = DATA.tweaks.length;
+    var onT = c.privacy.on + c.interface.on + c.style.on + c.performance.on + c.system.on;
+    var pct = totalT ? Math.round(onT / totalT * 100) : 0;
+
+    $('#hero-title').textContent = 'Включено ' + onT + ' из ' + totalT + ' ' + plural(totalT, 'настройки', 'настроек', 'настроек');
+    var parts = [];
+    if (c.privacy.on) parts.push('отключит ' + c.privacy.on + ' ' + plural(c.privacy.on, 'вид', 'вида', 'видов') + ' слежки и рекламы');
+    if (c.removeApps.on) parts.push('удалит ' + c.removeApps.on + ' ' + plural(c.removeApps.on, 'лишнее приложение', 'лишних приложения', 'лишних приложений'));
+    if (c.performance.on) parts.push('включит ' + c.performance.on + ' ' + plural(c.performance.on, 'игровую настройку', 'игровые настройки', 'игровых настроек'));
+    $('#hero-text').textContent = parts.length ? 'Твоя сборка ' + parts.join(', ') + '.' : 'Пока ничего не включено — открой конструктор и выбери, что менять.';
+
+    var circ = 2 * Math.PI * 50, bar = $('#ring-bar');
+    bar.style.strokeDasharray = circ.toFixed(1);
+    if (!state.counted) { bar.style.strokeDashoffset = circ.toFixed(1); bar.getBoundingClientRect(); }
+    bar.style.strokeDashoffset = (circ * (1 - pct / 100)).toFixed(1);
+    animateNumber($('#ring-val'), pct, '%');
+
+    var tiles = [
+      { cat: 'privacy', label: 'Приватность', icon: 'shield' },
+      { cat: 'interface', label: 'Интерфейс', icon: 'layout' },
+      { cat: 'performance', label: 'Скорость и игры', icon: 'zap' },
+      { cat: 'removeApps', label: 'Лишних приложений уберём', icon: 'trash' }
+    ];
+    var box = $('#stats');
+    if (!box.children.length) {
+      tiles.forEach(function (t) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'stat glass'; b.setAttribute('data-cat', t.cat);
+        b.innerHTML = '<div class="head"><span class="ic">' + use(t.icon) + '</span><span class="pct"></span></div>' +
+          '<div class="num"><span></span><small></small></div><div class="lbl"></div><div class="bar"><i></i></div>';
+        b.querySelector('.lbl').textContent = t.label;
+        b.addEventListener('click', function () { state.tab = t.cat; renderTabs(); renderOpts(); scrollToId('builder'); });
+        box.appendChild(b);
+      });
+    }
+    tiles.forEach(function (t) {
+      var el = box.querySelector('[data-cat="' + t.cat + '"]'), v = c[t.cat];
+      var p = v.total ? Math.round(v.on / v.total * 100) : 0;
+      animateNumber(el.querySelector('.num span'), v.on, '');
+      el.querySelector('.num small').textContent = ' / ' + v.total;
+      el.querySelector('.pct').textContent = p + '%';
+      var fill = el.querySelector('.bar i');
+      if (!state.counted) { fill.style.width = '0'; fill.getBoundingClientRect(); }
+      fill.style.width = p + '%';
+    });
+    state.counted = true;
+  }
+
+  var STEPS = [
+    { id: 'build', text: 'Собрать сборку в конструкторе' },
+    { id: 'config', text: 'Скачать свой config.json' },
+    { id: 'download', text: 'Скачать Nova и положить config.json в папку' },
+    { id: 'preview', text: 'Запустить Nova.cmd → «Посмотреть»' },
+    { id: 'apply', text: '«Применить» и перезагрузить ПК' }
+  ];
+  function renderSteps() {
+    var ul = $('#steps');
+    ul.innerHTML = '';
+    STEPS.forEach(function (s) {
+      var li = document.createElement('li');
+      var b = document.createElement('button');
+      b.type = 'button';
+      if (state.steps[s.id]) b.className = 'done-step';
+      b.innerHTML = '<span class="box">' + use('check') + '</span><span></span>';
+      b.lastChild.textContent = s.text;
+      b.addEventListener('click', function () { markStep(s.id, !state.steps[s.id]); });
+      li.appendChild(b); ul.appendChild(li);
+    });
+  }
+  function markStep(id, value) {
+    state.steps[id] = value !== false;
+    writeJSON('local', 'nova.steps', state.steps);
+    if (state.view === 'dashboard') renderSteps();
+  }
+
+  function renderTabs() {
+    var c = counts(), tabs = $('#tabs');
+    tabs.innerHTML = '';
+    CATS.forEach(function (cat) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('role', 'tab');
+      b.className = cat.id === state.tab ? 'active' : '';
+      b.setAttribute('aria-selected', cat.id === state.tab ? 'true' : 'false');
+      b.innerHTML = use(cat.icon) + '<span></span><span class="cnt"></span>';
+      b.children[1].textContent = cat.name;
+      b.children[2].textContent = c[cat.id].on + '/' + c[cat.id].total;
+      b.addEventListener('click', function () { state.tab = cat.id; renderTabs(); renderOpts(); });
+      tabs.appendChild(b);
+    });
+    var def = defaults(), changed = 0;
+    ['tweaks', 'removeApps', 'installApps'].forEach(function (sec) {
+      Object.keys(def[sec]).forEach(function (k) { if (def[sec][k] !== state.builder[sec][k]) changed++; });
+    });
+    if (def.createRestorePoint !== state.builder.createRestorePoint) changed++;
+    $('#changed').textContent = changed ? 'изменено: ' + changed : 'как по умолчанию';
+  }
+
+  function renderOpts() {
+    var box = $('#opts'), cat = CATS.filter(function (x) { return x.id === state.tab; })[0];
+    box.innerHTML = '';
+    var items = [];
+    if (cat.sec === 'tweaks') {
+      DATA.tweaks.forEach(function (t) { if (t.category === cat.id) items.push({ key: t.id, title: t.title, desc: t.description }); });
+    } else {
+      Object.keys(state.builder[cat.sec]).forEach(function (k) { items.push({ key: k, title: APP_NAMES[k] || k, code: k }); });
+    }
+    items.forEach(function (it) {
+      var label = document.createElement('label');
+      label.className = 'opt';
+      label.innerHTML = '<span class="sw"><input type="checkbox"><i></i></span><span class="txt"><b></b><small></small></span>';
+      var input = label.querySelector('input');
+      input.checked = !!state.builder[cat.sec][it.key];
+      input.setAttribute('data-sec', cat.sec);
+      input.setAttribute('data-key', it.key);
+      input.setAttribute('data-title', it.title);
+      label.querySelector('b').textContent = it.title;
+      var small = label.querySelector('small');
+      if (it.desc) small.textContent = it.desc;
+      else { var code = document.createElement('code'); code.textContent = it.code; small.appendChild(code); }
+      box.appendChild(label);
+    });
+  }
+
+  $('#opts').addEventListener('change', function (e) {
+    var input = e.target;
+    if (!input.matches('input[data-sec]')) return;
+    var sec = input.getAttribute('data-sec');
+    state.builder[sec][input.getAttribute('data-key')] = input.checked;
+    saveBuilder();
+    var verb = sec === 'removeApps' ? (input.checked ? 'Удалить: ' : 'Оставить: ') : sec === 'installApps' ? (input.checked ? 'Поставить: ' : 'Не ставить: ') : (input.checked ? 'Включено: ' : 'Выключено: ');
+    log(verb + input.getAttribute('data-title'));
+    markStep('build');
+  });
+  $('#restore-point').addEventListener('change', function (e) { state.builder.createRestorePoint = e.target.checked; saveBuilder(); });
+  $('#reset').addEventListener('click', function () {
+    state.builder = defaults(); saveBuilder(); renderOpts();
+    $('#restore-point').checked = state.builder.createRestorePoint;
+    log('Сборка сброшена к настройкам по умолчанию');
+    toast({ title: 'Вернул как по умолчанию', text: 'Все переключатели — как в стандартной сборке Nova.', icon: 'back', kind: 'ok' });
+  });
+  function saveBuilder() {
+    writeJSON('local', 'nova.builder', state.builder);
+    renderTabs();
+    renderStats();
+  }
+
+  function buildConfig() {
+    var base = DATA.config, b = state.builder, out = {};
+    if (base._info) out._info = base._info;
+    out.createRestorePoint = b.createRestorePoint;
+    ['tweaks', 'removeApps', 'installApps'].forEach(function (sec) {
+      out[sec] = {};
+      Object.keys(base[sec] || {}).forEach(function (k) { out[sec][k] = !!b[sec][k]; });
+    });
+    return JSON.stringify(out, null, 2) + '\n';
+  }
+  function downloadConfig() {
+    var text = buildConfig();
+    try {
+      var url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      var a = document.createElement('a');
+      a.href = url; a.download = 'config.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    } catch (e) { /* в некоторых встроенных браузерах скачивание запрещено */ }
+    markStep('config'); markStep('build');
+    log('Скачан config.json');
+    toast({ title: 'config.json готов', text: 'Положи его в папку Nova с заменой. Не скачался? Нажми «Показать» и скопируй текст.', icon: 'download', kind: 'ok', ms: 6000 });
+  }
+  function showConfig() {
+    var m = document.createElement('div');
+    m.className = 'modal';
+    m.innerHTML = '<div class="box glass" role="dialog" aria-modal="true" aria-label="Твой config.json"><div class="panel-head"><div><h2>Твой config.json</h2><p>Скопируй и сохрани в папку Nova вместо старого.</p></div></div><textarea readonly spellcheck="false"></textarea><div class="row"><button class="btn-glass sm" type="button" data-close>Закрыть</button><button class="btn-gold sm" type="button" data-copy>' + use('copy') + 'Скопировать</button></div></div>';
+    var ta = m.querySelector('textarea');
+    ta.value = buildConfig();
+    function close() { m.remove(); document.removeEventListener('keydown', onKey); }
+    function onKey(e) { if (e.key === 'Escape') close(); }
+    m.addEventListener('click', function (e) { if (e.target === m || e.target.closest('[data-close]')) close(); });
+    m.querySelector('[data-copy]').addEventListener('click', function () {
+      function fallback() { ta.focus(); ta.select(); try { document.execCommand('copy'); } catch (e) { /* выделено — можно скопировать вручную */ } }
+      try {
+        navigator.clipboard.writeText(ta.value).then(function () {
+          toast({ title: 'Скопировано', text: 'Вставь текст в config.json в папке Nova.', icon: 'copy', kind: 'ok' });
+          markStep('config');
+        }, fallback);
+      } catch (e) { fallback(); }
+    });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(m);
+    ta.scrollTop = 0;
+  }
+
+  function renderActivity() {
+    var ul = $('#acts');
+    ul.innerHTML = '';
+    if (!state.activity.length) { ul.innerHTML = '<li class="empty">Пока пусто.</li>'; return; }
+    state.activity.forEach(function (a) {
+      var li = document.createElement('li');
+      li.innerHTML = '<span class="d"></span><div><span></span><time></time></div>';
+      li.querySelector('span:not(.d)').textContent = a.text;
+      li.querySelector('time').textContent = ago(a.t);
+      ul.appendChild(li);
+    });
+  }
+  function ago(t) {
+    var s = Math.round((Date.now() - t) / 1000);
+    if (s < 60) return 'только что';
+    var m = Math.round(s / 60);
+    if (m < 60) return m + ' ' + plural(m, 'минуту', 'минуты', 'минут') + ' назад';
+    var d = new Date(t);
+    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ', ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function scrollToId(id) {
+    var el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    setActiveNav(id);
+  }
+  function setActiveNav(id) {
+    $$('[data-go]').forEach(function (b) { if (b.closest('.nav, .tabbar')) b.classList.toggle('active', b.getAttribute('data-go') === id); });
+  }
+  $$('[data-go]').forEach(function (b) { b.addEventListener('click', function () { scrollToId(b.getAttribute('data-go')); }); });
+  $$('[data-download]').forEach(function (b) { b.addEventListener('click', downloadConfig); });
+  var getNova = $('#get-nova');
+  getNova.href = SITE.download;
+  getNova.addEventListener('click', function () { markStep('download'); log('Открыта загрузка Nova'); });
+  $$('[data-show-config]').forEach(function (b) { b.addEventListener('click', showConfig); });
+  $$('[data-logout]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      signOutLocal();
+      setRecovery(false);
+      if (REAL) call(function (a) { return a.signOut({ scope: 'local' }); }).catch(function () { /* сессия всё равно удалена из браузера */ });
+      toast({ title: 'Ты вышел из кабинета', text: 'Сборка сохранена в этом браузере.', icon: 'logout' });
+      go('login');
+    });
+  });
+
+  // ---------- Фон: золотые ленты ----------
+  (function background() {
+    var canvas = $('#bg'), ctx = canvas.getContext('2d');
+    var W = 0, H = 0, dpr = 1, raf = 0, last = 0;
+    var ribbons = [
+      { y: .18, tilt: .35, amp: .07, f: 1.1, w: .10, speed: .07, hue: 40, a: .55 },
+      { y: .42, tilt: .30, amp: .09, f: .8, w: .16, speed: -.05, hue: 36, a: .45 },
+      { y: .66, tilt: .25, amp: .06, f: 1.4, w: .08, speed: .09, hue: 44, a: .6 },
+      { y: .86, tilt: .20, amp: .08, f: .9, w: .13, speed: -.06, hue: 32, a: .4 },
+      { y: .05, tilt: .45, amp: .05, f: 1.7, w: .06, speed: .11, hue: 46, a: .35 }
+    ];
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      W = window.innerWidth; H = window.innerHeight;
+      canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    function draw(t) {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = '#050505';
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalCompositeOperation = 'lighter';
+      var small = W < 600;
+      var strands = small ? 16 : 22, steps = small ? 28 : 44;
+      var boost = small ? .55 : .4;
+      ribbons.forEach(function (r) {
+        var phase = t * r.speed;
+        // Мягкое свечение под лентой — «глянец».
+        ctx.beginPath();
+        for (var s0 = 0; s0 <= steps; s0++) {
+          var u0 = s0 / steps;
+          var x0 = -0.1 * W + u0 * 1.2 * W;
+          var y0 = H * r.y + (u0 - .5) * H * r.tilt + Math.sin(u0 * r.f * Math.PI * 2 + phase) * H * r.amp;
+          if (s0 === 0) ctx.moveTo(x0, y0); else ctx.lineTo(x0, y0);
+        }
+        ctx.strokeStyle = 'hsla(' + r.hue + ', 95%, 55%, ' + (r.a * .06).toFixed(3) + ')';
+        ctx.lineWidth = Math.max(18, H * r.w * .9);
+        ctx.stroke();
+        for (var k = 0; k < strands; k++) {
+          var pos = k / (strands - 1) - .5;
+          var alpha = r.a * Math.pow(1 - Math.abs(pos) * 2, 1.6) * boost + .01;
+          ctx.beginPath();
+          for (var s = 0; s <= steps; s++) {
+            var u = s / steps;
+            var x = -0.1 * W + u * 1.2 * W;
+            var y = H * r.y + (u - .5) * H * r.tilt + Math.sin(u * r.f * Math.PI * 2 + phase + pos * .9) * H * r.amp + pos * H * r.w * (1 + .35 * Math.sin(u * 3 + phase));
+            if (s === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.strokeStyle = 'hsla(' + r.hue + ', 95%, ' + (58 + pos * 20) + '%, ' + alpha.toFixed(3) + ')';
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+        }
+      });
+      var g = ctx.createRadialGradient(W * .5, H * .45, 0, W * .5, H * .45, Math.max(W, H) * .6);
+      g.addColorStop(0, 'rgba(255,190,70,.06)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    }
+    function loop(now) {
+      raf = requestAnimationFrame(loop);
+      if (now - last < 33) return;
+      last = now;
+      draw(now / 1000);
+    }
+    resize();
+    if (reduce) { draw(4); }
+    else { raf = requestAnimationFrame(loop); }
+    window.addEventListener('resize', function () { resize(); if (reduce) draw(4); });
+    document.addEventListener('visibilitychange', function () {
+      if (reduce) return;
+      if (document.hidden) cancelAnimationFrame(raf); else raf = requestAnimationFrame(loop);
+    });
+  })();
+
+  window.addEventListener('hashchange', route);
+  route();
+
+  // Настоящие аккаунты: другие надписи и проверка, жива ли сессия на сервере.
+  if (REAL) {
+    $('#mode-chip').textContent = 'Аккаунт Nova';
+    $('#mode-foot').textContent = 'Пароль хранится на сервере в зашифрованном виде. Код подтверждения приходит на почту.';
+    $('#dash-chip').textContent = 'аккаунт Nova · почта подтверждена';
+    call(function (a) { return a.getSession(); }).then(function (data) {
+      var s = data && data.session;
+      if (s && s.user) {
+        signIn(userFrom(s.user), remembered());
+        if (state.view === 'dashboard') { state.view = null; show('dashboard'); }
+        else if (state.view === 'login' || state.view === 'register') go('dashboard');
+      } else if (state.user) {
+        signOutLocal();
+        setRecovery(false);
+        if (state.view === 'dashboard' || state.view === 'newpass') go('login');
+      }
+    }).catch(function () { /* нет связи — оставляем как есть */ });
+  }
+})();
+</script>
+</body>
+</html>
