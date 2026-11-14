@@ -1117,10 +1117,22 @@ function Get-NovaEnabledNames {
     return @($Section.PSObject.Properties | Where-Object { $_.Value -eq $true } | ForEach-Object { $_.Name })
 }
 
+# Имя приложения или id программы из config.json. Без «*» и «?» (иначе «*» удалил бы все приложения)
+# и без «-» в начале (иначе id стал бы параметром winget).
+function Test-NovaAppName {
+    param([string]$Name)
+    return ($Name -match '^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}\z')
+}
+
 function Get-NovaAppPlan {
     param([Parameter(Mandatory)]$Context)
     $toRemove = @(Get-NovaEnabledNames (Get-NovaProp $Context.Config 'removeApps'))
     $toInstall = @(Get-NovaEnabledNames (Get-NovaProp $Context.Config 'installApps'))
+    foreach ($bad in @(@($toRemove) + @($toInstall) | Where-Object { -not (Test-NovaAppName $_) })) {
+        Write-Nova ('В config.json странное имя приложения «{0}» — пропускаю.' -f ($bad -replace '[\p{Cc}\p{Cf}]', '')) warn
+    }
+    $toRemove = @($toRemove | Where-Object { Test-NovaAppName $_ })
+    $toInstall = @($toInstall | Where-Object { Test-NovaAppName $_ })
 
     $installed = @()
     $provisioned = @()

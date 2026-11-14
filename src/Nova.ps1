@@ -59,13 +59,14 @@ Import-Module (Join-Path $PSScriptRoot 'NovaMove.psm1') -Force -DisableNameCheck
 if (-not (Test-NovaAdmin)) {
     Write-Host ''
     Write-Host '  Nova нужны права администратора. Windows сейчас спросит разрешение — нажми «Да».' -ForegroundColor Yellow
+    if ($ConfigPath -match '"') { Write-Host '  В пути к config.json не может быть кавычек.' -ForegroundColor Red; return }
     $argumentList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $PSCommandPath),
         '-Mode', $Mode, '-ConfigPath', ('"{0}"' -f $ConfigPath), '-PauseAtEnd')
     if ($Yes) { $argumentList += '-Yes' }
     if ($NoRestorePoint) { $argumentList += '-NoRestorePoint' }
     if ($Mode -eq 'Fps') { $argumentList += @('-Seconds', $Seconds, '-Delay', $Delay) }
     try {
-        Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $argumentList
+        Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList $argumentList
     } catch {
         Write-Host '  Запуск отменён. Без прав администратора Nova работать не может.' -ForegroundColor Red
     }
@@ -467,15 +468,31 @@ function Invoke-NovaMoveFlow {
         return 0
     }
     if ($choice -eq '2') {
-        $files = @(Find-NovaMoveList)
-        if ($files.Count -eq 0) {
+        $found = @(Find-NovaMoveList)
+        $ok = @($found | Where-Object { $_.Trusted })
+        if ($found.Count -eq 0) {
             Write-Nova 'Не нашла сохранённый список. Вставь флешку с папкой «Nova-переезд» (или положи её на рабочий стол) и выбери этот пункт снова.' warn
             return 1
         }
-        $list = Read-NovaMoveList -Path $files[0]
+        Write-Host ''
+        Write-Nova 'Нашла сохранённые списки программ:' info
+        $i = 0
+        foreach ($f in $found) {
+            if ($f.Trusted) { $i++; Write-Host ('  {0}  {1} — {2}, {3}' -f $i, $f.Where, $f.Date.ToString('d MMMM yyyy, HH:mm', [Globalization.CultureInfo]'ru-RU'), $f.Folder) -ForegroundColor White }
+            else { Write-Host ('  —  {0} — пропущен: {1}' -f $f.Where, $f.Problem) -ForegroundColor DarkGray }
+        }
+        if ($ok.Count -eq 0) { Write-Nova 'Ни одному из этих списков нельзя доверять. Сохрани список заново на старой системе или возьми свою флешку.' warn; return 1 }
+        $pick = 1
+        if ($ok.Count -gt 1) {
+            $answer = (Read-Host '  Какой список взять? Номер').Trim()
+            if (-not [int]::TryParse($answer, [ref]$pick) -or $pick -lt 1 -or $pick -gt $ok.Count) { Write-Nova 'Нет такого номера.' warn; return 1 }
+        }
+        $chosen = $ok[$pick - 1]
+        $list = Read-NovaMoveList -Path $chosen.Path
         $apps = @($list.Apps)
         Write-Host ''
-        Write-Nova ('Нашла список от {0}: {1}' -f $list.Created, $list.Path) info
+        $when = $list.Created; if (-not $when) { $when = 'неизвестной даты' }
+        Write-Nova ('Список от {0}: {1}' -f $when, $chosen.Folder) info
         if ($list.Skipped -gt 0) { Write-Nova ('Пропущено подозрительных записей: {0} — их Nova ставить не будет.' -f $list.Skipped) warn }
         if ($apps.Count -eq 0) { Write-Nova 'В списке нет программ, которые можно поставить.' warn; return 1 }
         $shown = @($apps | Select-Object -First 40 | ForEach-Object { $_.Id })

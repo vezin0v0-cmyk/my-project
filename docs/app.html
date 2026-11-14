@@ -14,7 +14,7 @@
   })();
 </script>
 <!-- Странице можно ходить только к себе и к серверу аккаунтов: чужие скрипты и отправка данных на другие сайты запрещены. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://udnjvgvdiyfafsiqdkox.supabase.co; connect-src 'self' https://udnjvgvdiyfafsiqdkox.supabase.co; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://udnjvgvdiyfafsiqdkox.supabase.co; connect-src 'self' https://udnjvgvdiyfafsiqdkox.supabase.co https://api.pwnedpasswords.com; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>Nova — кабинет</title>
 <meta name="theme-color" content="#050505">
 <style>
@@ -1098,7 +1098,12 @@
     }
     var stop = spin(btn, 'Создаём…');
     setRemember(true);
-    call(function (a) { return a.signUp({ email: email, password: f.password.value, options: { data: { name: name } } }); })
+    var pass = f.password.value;
+    leakCheck(pass)
+      .then(function (leak) {
+        if (leak) throw { leak: leak };
+        return call(function (a) { return a.signUp({ email: email, password: pass, options: { data: { name: name } } }); });
+      })
       .then(function (data) {
         stop();
         var u = data && data.user;
@@ -1120,6 +1125,7 @@
       })
       .catch(function (err) {
         stop();
+        if (err && err.leak) { setErr(f.password, err.leak); f.password.focus(); return; }
         var info = authError(err);
         if (info.field === 'email') setErr(f.email, info.text);
         else if (info.field === 'password') setErr(f.password, info.text);
@@ -1128,6 +1134,26 @@
   });
   regForm.terms.addEventListener('change', function () { $('#terms-label').classList.remove('invalid'); });
 
+  // Пароль из утечек. Проверяем по базе Have I Been Pwned так, что сам пароль никуда не уходит:
+  // отправляются только первые 5 символов его SHA-1 — по ним пароль не узнать (k-анонимность).
+  // Нет связи или сервис не ответил за 4 секунды — не мешаем: проверка лишь дополнительная.
+  function leakCheck(pass) {
+    if (!REAL || !window.crypto || !crypto.subtle || !window.fetch || !window.TextEncoder) return Promise.resolve('');
+    return crypto.subtle.digest('SHA-1', new TextEncoder().encode(pass)).then(function (buf) {
+      var hex = Array.prototype.map.call(new Uint8Array(buf), function (b) { return ('0' + b.toString(16)).slice(-2); }).join('').toUpperCase();
+      var prefix = hex.slice(0, 5), suffix = hex.slice(5);
+      var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 4000);
+      return fetch('https://api.pwnedpasswords.com/range/' + prefix, { credentials: 'omit', referrerPolicy: 'no-referrer', signal: ctrl ? ctrl.signal : undefined })
+        .then(function (r) { return r.ok ? r.text() : ''; })
+        .then(function (text) {
+          clearTimeout(timer);
+          var n = 0;
+          text.split('\n').forEach(function (line) { var p = line.trim().split(':'); if (p[0] === suffix) n = parseInt(p[1], 10) || 0; });
+          return n > 0 ? 'Этот пароль уже утекал в интернет — он есть в базах взломанных паролей (' + n.toLocaleString('ru-RU') + ' раз). Придумай другой.' : '';
+        });
+    }).catch(function () { return ''; });
+  }
   function passwordProblem(pv) {
     if (pv.length < 8) return 'Минимум 8 символов';
     if (!/[A-Za-z]/.test(pv) || !/[0-9]/.test(pv)) return 'Нужны латинские буквы и хотя бы одна цифра';
@@ -1187,8 +1213,9 @@
     }
     if (!REAL) { busy(btn, 'Сохраняю…', finish); return; }
     var stop = spin(btn, 'Сохраняю…');
-    changePassword(pv).then(function () { stop(); finish(); }, function (err) {
+    leakCheck(pv).then(function (leak) { if (leak) throw { leak: leak }; return changePassword(pv); }).then(function () { stop(); finish(); }, function (err) {
       stop();
+      if (err && err.leak) { setErr(npForm.password, err.leak); return; }
       var info = authError(err);
       if (info.field === 'password') setErr(npForm.password, info.text); else errToast(info);
     });
@@ -1652,10 +1679,12 @@
       if (nw2.value !== nw.value || !nw2.value) { setErr(nw2, 'Пароли не совпадают'); ok = false; } else setErr(nw2, '');
       if (!ok) return;
       var stop = spin(this, 'Меняю…');
-      reauth(cur.value)
+      leakCheck(nw.value)
+        .then(function (leak) { if (leak) throw { leak: leak }; return reauth(cur.value); })
         .then(function () { return REAL ? changePassword(nw.value) : wait(300); })
         .then(function () { stop(); close(); log('Пароль изменён'); passwordChangedToast(); }, function (err) {
           stop();
+          if (err && err.leak) { setErr(nw, err.leak); nw.focus(); return; }
           if (err && err.wrongPassword) { setErr(cur, 'Текущий пароль неверный'); cur.focus(); return; }
           var info = authError(err);
           if (info.field === 'password') setErr(nw, info.text); else errToast(info);

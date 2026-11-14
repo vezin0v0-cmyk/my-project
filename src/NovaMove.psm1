@@ -9,7 +9,8 @@ Import-Module (Join-Path $PSScriptRoot 'Nova.psm1') -DisableNameChecking
 
 $script:MoveFolder = 'Nova-переезд'
 $script:ListName = 'programmy.json'
-$script:IdPattern = '^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$'
+$script:IdPattern = '^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}\z'
+$script:DatePattern = '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}\z'
 $script:Sources = @('winget', 'msstore')
 $script:MaxApps = 400
 $script:MaxBytes = 1MB
@@ -21,7 +22,10 @@ function Get-NovaMoveTarget {
         foreach ($d in @(Get-CimInstance -ClassName Win32_LogicalDisk -Filter 'DriveType=2' -ErrorAction Stop)) {
             if (-not $d.Size) { continue }
             $label = 'флешка'
-            if ($d.VolumeName) { $label = 'флешка «{0}»' -f $d.VolumeName }
+            # Название флешки задаёт тот, кто её подготовил: без управляющих символов.
+            $vol = ([string]$d.VolumeName -replace '[\p{Cc}\p{Cf}]', '').Trim()
+            if ($vol.Length -gt 32) { $vol = $vol.Substring(0, 32) }
+            if ($vol) { $label = 'флешка «{0}»' -f $vol }
             $list.Add([pscustomobject]@{ Path = $d.DeviceID + '\'; Title = ('{0} ({1})' -f $label, $d.DeviceID); Removable = $true })
         }
         # второй диск (D: и т. п.) переживёт переустановку, если его не форматировать
@@ -67,7 +71,10 @@ function Read-NovaMoveList {
         if ($apps.Count -ge $script:MaxApps) { $bad++; continue }
         $apps.Add($app)
     }
-    return [pscustomobject]@{ Path = $info.FullName; Created = [string](Get-NovaProp $data 'created' ''); Apps = $apps.ToArray(); Skipped = $bad }
+    # Дату показываем, только если это действительно дата: иначе через неё можно «нарисовать» в окне чужой текст.
+    $created = [string](Get-NovaProp $data 'created' '')
+    if ($created -notmatch $script:DatePattern) { $created = '' }
+    return [pscustomobject]@{ Path = $info.FullName; Created = $created; Apps = $apps.ToArray(); Skipped = $bad }
 }
 
 # Список из файла winget export → наш простой формат. Источники берём только известные.
@@ -85,18 +92,90 @@ function ConvertFrom-NovaWingetExport {
     return $apps.ToArray()
 }
 
+# Поддерживает ли диск права доступа (NTFS, ReFS). На FAT/exFAT прав и ссылок нет вовсе.
+function Test-NovaAclDrive {
+    param([Parameter(Mandatory)][string]$Path)
+    try {
+        $fs = (New-Object System.IO.DriveInfo($Path.Substring(0, 1))).DriveFormat
+        return ($fs -eq 'NTFS' -or $fs -eq 'ReFS')
+    } catch { return $true }
+}
+
+# Настоящий путь открытого файла — после всех ссылок.
+function Get-NovaFinalPath {
+    param([Parameter(Mandatory)]$Handle)
+    if (-not ('NovaNative.FinalPath' -as [type])) {
+        Invoke-NovaAddType -Arguments @{ Namespace = 'NovaNative'; Name = 'FinalPath'; MemberDefinition = @'
+[DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+public static extern uint GetFinalPathNameByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle handle, System.Text.StringBuilder path, uint size, uint flags);
+'@ }
+    }
+    $sb = New-Object System.Text.StringBuilder 2048
+    $n = [NovaNative.FinalPath]::GetFinalPathNameByHandle($Handle, $sb, 2048, 0)
+    if ($n -eq 0 -or $n -ge 2048) { return '' }
+    $path = $sb.ToString()
+    if ($path.StartsWith('\\?\UNC\')) { return '\\' + $path.Substring(8) }
+    if ($path.StartsWith('\\?\')) { return $path.Substring(4) }
+    return $path
+}
+
+# Новая папка «Nova-переезд». Старую не используем: в ней могли подложить ссылки на системные файлы.
+# Откладываем её (переименовывается сама папка или ссылка, а не то, куда она ведёт) и создаём новую,
+# в которую пишут только администраторы — так её не подменят, пока Nova пишет.
+function New-NovaMoveFolder {
+    param([Parameter(Mandatory)][string]$Target)
+    $dir = Join-Path $Target $script:MoveFolder
+    if (Get-Item -LiteralPath $dir -Force -ErrorAction SilentlyContinue) {
+        $aside = '{0}.old-{1}' -f $dir, (Get-Date -Format 'yyyyMMdd-HHmmss')
+        [System.IO.Directory]::Move($dir, $aside)
+    }
+    if (Test-NovaAclDrive $Target) {
+        [void][System.IO.Directory]::CreateDirectory($dir, (New-NovaDataDirSecurity))
+        # CreateDirectory молча вернёт уже существующую папку или ссылку — поэтому проверяем.
+        $problem = Get-NovaPathProblem -Path $dir -Trusted (Get-NovaTrustedSid)
+        if ($problem) { throw ('Папку для переезда подменили ({0}). Выбери другое место.' -f $problem) }
+    } else {
+        [void][System.IO.Directory]::CreateDirectory($dir)
+    }
+    return $dir
+}
+
+# Тот же ли это файл: тот же диск, та же папка «Nova-переезд», то же имя. Сравниваем по частям, потому что
+# Windows может вернуть длинное имя вместо короткого (RUNNER~1 → runneradmin) — это не подмена.
+function Test-NovaSamePlace {
+    param([string]$Real, [string]$Expected)
+    $leaf = { param($x) [System.IO.Path]::GetFileName($x) }
+    $parent = { param($x) [System.IO.Path]::GetFileName([System.IO.Path]::GetDirectoryName($x)) }
+    return ((& $leaf $Real) -ieq (& $leaf $Expected)) -and ((& $parent $Real) -ieq (& $parent $Expected)) -and ($Real.Substring(0, 2) -ieq $Expected.Substring(0, 2))
+}
+
+# Пишет только новый файл. Если путь куда-то ведёт (ссылка), созданное удаляется, а Nova останавливается.
+function Write-NovaNewFile {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][byte[]]$Bytes)
+    $expected = [System.IO.Path]::GetFullPath($Path)
+    $fs = [System.IO.File]::Open($expected, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+    $real = ''
+    try {
+        $real = Get-NovaFinalPath $fs.SafeFileHandle
+        if ($real -and -not (Test-NovaSamePlace $real $expected)) { throw 'redirected' }
+        $fs.Write($Bytes, 0, $Bytes.Length)
+    } catch {
+        $fs.Dispose()
+        if ($real -and -not (Test-NovaSamePlace $real $expected)) {
+            [System.IO.File]::Delete($real)
+            throw ('Файл {0} уводят в другое место ({1}) — Nova остановилась.' -f $expected, $real)
+        }
+        throw
+    }
+    $fs.Dispose()
+}
+
 # Сохранить: программы через winget export + копии config.json и voice.json.
 function Export-NovaMove {
     param([Parameter(Mandatory)][string]$Target, [string]$ProjectRoot)
     $winget = Get-NovaWingetPath
     if (-not $winget) { throw 'winget не найден. Обнови «Установщик приложений» (App Installer) в Microsoft Store.' }
-    $dir = Join-Path $Target $script:MoveFolder
-    if (Test-Path -LiteralPath $dir) {
-        $existing = Get-Item -LiteralPath $dir -Force
-        if ($existing.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Вместо папки «Nova-переезд» лежит ссылка — удали её и попробуй снова.' }
-    } else {
-        New-Item -ItemType Directory -Path $dir | Out-Null
-    }
+    # Сначала долгий winget export во временную папку, и только потом — быстрая запись на место.
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ('nova-export-' + [guid]::NewGuid() + '.json')
     try {
         $run = Invoke-NovaNative $winget @('export', '--output', $tmp, '--accept-source-agreements')
@@ -106,29 +185,52 @@ function Export-NovaMove {
         Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
     }
     $doc = [ordered]@{ nova = 'apps'; version = 1; created = (Get-Date).ToString('yyyy-MM-dd HH:mm'); apps = @($apps | ForEach-Object { [ordered]@{ id = $_.Id; source = $_.Source } }) }
+    $utf8 = New-Object Text.UTF8Encoding($false)
+    $dir = New-NovaMoveFolder -Target $Target
     $listPath = Join-Path $dir $script:ListName
-    [IO.File]::WriteAllText($listPath, ($doc | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding($false)))
+    Write-NovaNewFile -Path $listPath -Bytes $utf8.GetBytes(($doc | ConvertTo-Json -Depth 5))
     $copied = @()
     if ($ProjectRoot) {
         foreach ($f in @('config.json', 'voice.json')) {
             $src = Join-Path $ProjectRoot $f
-            if (Test-Path -LiteralPath $src -PathType Leaf) { Copy-Item -LiteralPath $src -Destination (Join-Path $dir $f) -Force; $copied += $f }
+            if (Test-Path -LiteralPath $src -PathType Leaf) { Write-NovaNewFile -Path (Join-Path $dir $f) -Bytes ([IO.File]::ReadAllBytes($src)); $copied += $f }
         }
     }
     return [pscustomobject]@{ Folder = $dir; ListPath = $listPath; Apps = $apps; Copied = $copied }
 }
 
-# Где искать сохранённый список после переустановки.
+# Все сохранённые списки, которые нашлись, — с местом, датой и тем, можно ли им доверять.
+# Сами не выбираем «самый свежий»: дату файла может подделать кто угодно. Выбирает человек.
+# Список на NTFS, который записал другой пользователь компьютера, не принимается.
 function Find-NovaMoveList {
-    $roots = New-Object System.Collections.Generic.List[string]
-    foreach ($t in @(Get-NovaMoveTarget)) { $roots.Add($t.Path) }
-    foreach ($k in @('MyDocuments')) { $p = [Environment]::GetFolderPath($k); if ($p) { $roots.Add($p) } }
-    $dl = Join-Path $env:USERPROFILE 'Downloads'; if (Test-Path -LiteralPath $dl) { $roots.Add($dl) }
-    $found = @(foreach ($r in $roots) {
-            $f = Join-Path (Join-Path $r $script:MoveFolder) $script:ListName
-            if (Test-Path -LiteralPath $f -PathType Leaf) { Get-Item -LiteralPath $f -Force }
+    param([object[]]$Roots)
+    if (-not $Roots) {
+        $Roots = @(Get-NovaMoveTarget | ForEach-Object { [pscustomobject]@{ Path = $_.Path; Title = ($_.Title -replace ' \(.*$', '') } })
+        foreach ($k in @('MyDocuments')) { $p = [Environment]::GetFolderPath($k); if ($p) { $Roots += [pscustomobject]@{ Path = $p; Title = 'Документы' } } }
+        $dl = Join-Path $env:USERPROFILE 'Downloads'; if (Test-Path -LiteralPath $dl) { $Roots += [pscustomobject]@{ Path = $dl; Title = 'Загрузки' } }
+    }
+    $trusted = $null
+    $seen = @{}
+    $found = @(foreach ($r in $Roots) {
+            $dir = Join-Path $r.Path $script:MoveFolder
+            $file = Join-Path $dir $script:ListName
+            if ($seen.ContainsKey($file.ToLowerInvariant())) { continue }
+            $seen[$file.ToLowerInvariant()] = $true
+            $item = Get-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
+            if (-not $item -or $item.PSIsContainer) { continue }
+            $problem = ''
+            $folder = Get-Item -LiteralPath $dir -Force -ErrorAction SilentlyContinue
+            if (($folder.Attributes -band [IO.FileAttributes]::ReparsePoint) -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                $problem = 'вместо файла или папки — ссылка'
+            } elseif (Test-NovaAclDrive $r.Path) {
+                if ($null -eq $trusted) { $trusted = Get-NovaTrustedSid }
+                $problem = Get-NovaPathProblem -Path $dir -Trusted $trusted
+                if (-not $problem) { $problem = Get-NovaPathProblem -Path $file -Trusted $trusted }
+                if ($problem) { $problem = 'записан или может быть изменён другим пользователем' }
+            }
+            [pscustomobject]@{ Path = $item.FullName; Folder = $dir; Where = $r.Title; Date = $item.LastWriteTime; Trusted = (-not $problem); Problem = $problem }
         })
-    return @($found | Sort-Object LastWriteTime -Descending | ForEach-Object { $_.FullName } | Select-Object -Unique)
+    return $found
 }
 
 # Поставить программы из списка. Источник берём из проверенного пункта, id — только как значение --id.

@@ -65,6 +65,46 @@ try {
     Write-Host 'ok  не больше 400 программ за раз'
 
     # Настоящий winget export, если winget есть на этой машине.
+    # Папка для сохранения: старая (и ссылка вместо неё) откладывается, по ссылке ничего не пишется.
+    $victim = Join-Path $dir 'victim'; New-Item -ItemType Directory -Path $victim | Out-Null
+    $t1 = Join-Path $dir 't1'; New-Item -ItemType Directory -Path $t1 | Out-Null
+    New-Item -ItemType Junction -Path (Join-Path $t1 'Nova-переезд') -Target $victim | Out-Null
+    $made = New-NovaMoveFolder -Target $t1
+    if ((Get-Item -LiteralPath $made -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'новая папка — ссылка' }
+    if (-not (Get-ChildItem -LiteralPath $t1 -Force | Where-Object { $_.Name -like 'Nova-переезд.old-*' })) { throw 'прежняя папка-ссылка не отложена' }
+    Write-NovaNewFile -Path (Join-Path $made 'programmy.json') -Bytes ([Text.Encoding]::UTF8.GetBytes('{"nova":"apps","created":"2026-11-14 12:00","apps":[{"id":"Valve.Steam","source":"winget"}]}'))
+    if (Test-Path -LiteralPath (Join-Path $victim 'programmy.json')) { throw 'Nova написала по подложенной ссылке' }
+    $p = Get-NovaPathProblem -Path $made -Trusted (Get-NovaTrustedSid)
+    if ($p) { throw ('новая папка не закрыта: {0}' -f $p) }
+    Write-Host 'ok  папка для переезда: ссылка отложена, новая закрыта, по ссылке ничего не записано'
+    $twice = $false
+    try { Write-NovaNewFile -Path (Join-Path $made 'programmy.json') -Bytes ([byte[]]@(1, 2, 3)) } catch { $twice = $true }
+    if (-not $twice) { throw 'существующий файл перезаписан' }
+    Write-Host 'ok  существующий файл не перезаписывается'
+
+    # Поиск: список, который может менять другой пользователь, не принимается.
+    $t2 = Join-Path $dir 't2'; $bad = Join-Path $t2 'Nova-переезд'
+    New-Item -ItemType Directory -Path $bad -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $bad 'programmy.json'), '{"nova":"apps","apps":[{"id":"Evil.Tool","source":"winget"}]}')
+    $acl = Get-Acl -LiteralPath $bad
+    $users = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-545')
+    $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($users, 'Modify', 'ContainerInherit, ObjectInherit', 'None', 'Allow')))
+    Set-Acl -LiteralPath $bad -AclObject $acl
+    $found = @(Find-NovaMoveList -Roots @([pscustomobject]@{ Path = $t1; Title = 'свой' }, [pscustomobject]@{ Path = $t2; Title = 'чужой' }))
+    $mine = $found | Where-Object Where -eq 'свой'; $theirs = $found | Where-Object Where -eq 'чужой'
+    if ($found.Count -ne 2 -or -not $mine.Trusted -or $theirs.Trusted) { throw ('поиск списков: {0}' -f (($found | ForEach-Object { '{0}={1}' -f $_.Where, $_.Trusted }) -join ', ')) }
+    Write-Host 'ok  список, который может менять другой пользователь, помечен и не выбирается'
+
+    $fake = Join-Path $dir 'fake.json'
+    [IO.File]::WriteAllText($fake, ('{"nova":"apps","created":"2026-11-14 12:00' + [char]27 + '[2J fake USB","apps":[]}'))
+    if ((Read-NovaMoveList -Path $fake).Created -ne '') { throw 'поддельная дата показана' }
+    if ((Read-NovaMoveList -Path (Join-Path $made 'programmy.json')).Created -ne '2026-11-14 12:00') { throw 'настоящая дата потерялась' }
+    Write-Host 'ok  дата из списка показывается, только если это действительно дата'
+
+    foreach ($n in @('*', 'Microsoft.*', '-h', 'a b', '--override')) { if (Test-NovaAppName $n) { throw ('имя «{0}» в config.json принято' -f $n) } }
+    foreach ($n in @('Microsoft.BingNews', 'Notepad++.Notepad++', '7zip.7zip', 'MicrosoftCorporationII.MicrosoftFamily')) { if (-not (Test-NovaAppName $n)) { throw ('нормальное имя «{0}» не принято' -f $n) } }
+    Write-Host 'ok  config.json: «*» и «параметры» вместо имён не принимаются'
+
     [void](Find-NovaMoveList)
     if (Get-NovaWingetPath) {
         $saved = $null

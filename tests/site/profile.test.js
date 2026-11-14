@@ -129,6 +129,9 @@ async function makePhoto() {
   return buf;
 }
 
+// Сервис проверки утечек: ни один пароль из этих тестов не утекал.
+async function hibpNone(route) { return route.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*', 'content-type': 'text/plain' }, body: '0018A45C4D1DEF81644B54AB7F969B88D65:1\r\n' }); }
+
 async function register(p) {
   await p.goto(p.__base + '/app.html#register');
   await p.waitForSelector('#view-register:not([hidden])');
@@ -250,6 +253,7 @@ async function profileFlow(p, tag) {
       const b = await chromium.launch();
       const ctx = await b.newContext(opts);
       await ctx.route(SB + '/**', handle);
+      await ctx.route('https://api.pwnedpasswords.com/**', hibpNone);
       const p = await ctx.newPage(); p.__base = base;
       const errors = [];
       p.on('pageerror', e => errors.push(e.message));

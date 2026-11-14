@@ -3,6 +3,8 @@ rem Nova launcher: asks Windows for admin rights and opens the Nova menu.
 rem No parenthesized blocks on purpose: a folder like "Nova (1)" would break them.
 rem The file stays ASCII: messages are UTF-8 in base64 and printed by PowerShell, so any console code page works.
 setlocal
+rem Work from our own folder right away, so nothing is picked up from a foreign current folder.
+cd /d "%~dp0"
 title Nova
 
 set "PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -12,7 +14,7 @@ rem Started from inside a ZIP: Windows copies only this file to a temp folder.
 if not exist "%~dp0src\Nova.ps1" goto nofiles
 
 rem fltmc works only with admin rights - a reliable way to check them.
-fltmc >nul 2>&1
+"%SystemRoot%\System32\fltmc.exe" >nul 2>&1
 if not errorlevel 1 goto run
 if /i "%~1"=="elevated" goto noadmin
 rem The path goes through an environment variable, so quotes or apostrophes in folder names are safe.

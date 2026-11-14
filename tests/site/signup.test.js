@@ -105,12 +105,26 @@ async function handle(route) {
   return err(route, 404, 'not_found', 'not found ' + ep);
 }
 
+
+// Имитация Have I Been Pwned: сайт должен отправлять только 5 символов SHA-1, а «Qwerty123» — считаться утёкшим.
+const LEAKED = 'Qwerty123';
+const leakedHash = require('crypto').createHash('sha1').update(LEAKED).digest('hex').toUpperCase();
+const hibpCalls = [];
+async function hibp(route) {
+  const prefix = route.request().url().split('/range/')[1] || '';
+  hibpCalls.push(prefix);
+  let body = '0018A45C4D1DEF81644B54AB7F969B88D65:1\r\n00D4F6E8FA6EECAD2A3AA415EEC418D38EC:2\r\n';
+  if (prefix === leakedHash.slice(0, 5)) body += leakedHash.slice(5) + ':123456\r\n';
+  return route.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*', 'content-type': 'text/plain' }, body });
+}
+
 async function flow(ctxOpts, tag, base) {
   for (const k of Object.keys(users)) delete users[k];
   mails.length = 0; calls.length = 0;
   const b = await chromium.launch();
   const ctx = await b.newContext(ctxOpts);
   await ctx.route(SB + '/**', handle);
+  await ctx.route('https://api.pwnedpasswords.com/**', hibp);
   const p = await ctx.newPage();
   const errors = [];
   p.on('pageerror', e => errors.push(e.message));
@@ -127,11 +141,19 @@ async function flow(ctxOpts, tag, base) {
   await p.waitForTimeout(1300);
   await p.fill('#r-name', 'Вадим');
   await p.fill('#r-email', 'vadim@mail.ru');
-  await p.fill('#r-pass', 'Nova2026!pass');
-  await p.fill('#r-pass2', 'Nova2026!pass');
+  // сначала пароль из утечек — не пропускаем
+  hibpCalls.length = 0;
+  await p.fill('#r-pass', LEAKED);
+  await p.fill('#r-pass2', LEAKED);
   await p.click('#terms-label i');
   await p.click('#form-register [type=submit]');
-  await p.waitForSelector('#view-verify:not([hidden])', { timeout: 6000 });
+  await p.waitForFunction(() => /утекал/.test(document.querySelector('#view-register').textContent), null, { timeout: 8000 });
+  check(tag + ' leaked password rejected', mails.length === 0);
+  check(tag + ' only 5 hash chars sent', hibpCalls.length > 0 && hibpCalls.every(x => /^[0-9A-F]{5}$/.test(x)), hibpCalls);
+  await p.fill('#r-pass', 'Nova2026!pass');
+  await p.fill('#r-pass2', 'Nova2026!pass');
+  await p.click('#form-register [type=submit]');
+  await p.waitForSelector('#view-verify:not([hidden])', { timeout: 8000 });
   check(tag + ' signup sent one mail', mails.length === 1 && mails[0].email === 'vadim@mail.ru', mails);
   check(tag + ' signup carried name', users['vadim@mail.ru'] && users['vadim@mail.ru'].name === 'Вадим');
   await p.waitForSelector('.toast', { timeout: 4000 });
@@ -153,9 +175,9 @@ async function flow(ctxOpts, tag, base) {
 
   // повторная отправка (сервер разрешает сразу, чтобы не ждать минуту)
   users['vadim@mail.ru'].allowResend = true;
-  await p.evaluate(() => { document.querySelector('#resend').disabled = false; });
   const oldCode = mails[0].code;
-  await p.click('#resend');
+  // снять блокировку и нажать одним действием: таймер страницы раз в секунду блокирует кнопку снова
+  await p.evaluate(() => { const b = document.querySelector('#resend'); b.disabled = false; b.click(); });
   await p.waitForTimeout(800);
   check(tag + ' resend sent new mail', mails.length === 2 && mails[1].code !== oldCode, mails);
   check(tag + ' resend timer restarted', /через 00:5\d/.test(await p.textContent('#resend')));
