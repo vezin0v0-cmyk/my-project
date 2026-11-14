@@ -115,24 +115,31 @@ function Get-NovaStartupItem {
                     })
         }
         foreach ($e in $entries) {
-            $file = Get-NovaCommandFile $e.Command
-            $local = [bool]$file -and (Test-NovaLocalPath $file)
-            $title = [IO.Path]::GetFileNameWithoutExtension($e.Name)
-            $company = ''; $exists = $false
-            if ($local -and (Test-Path -LiteralPath $file -PathType Leaf)) {
-                $exists = $true
-                try {
-                    $info = (Get-Item -LiteralPath $file).VersionInfo
-                    if ($info.FileDescription -and $info.FileDescription.Trim()) { $title = $info.FileDescription }
-                } catch { Write-Verbose ('Нет сведений о {0}' -f $file) }
-                $company = Get-NovaSigner $file
+            # Одна «кривая» запись (недопустимые символы в имени или пути) не должна ронять весь список.
+            $clean = Get-NovaCleanText $e.Name
+            $title = $clean -replace '\.(lnk|exe|bat|cmd|url|vbs|js)$', ''
+            $file = ''; $local = $false; $exists = $false; $company = ''
+            try {
+                $file = Get-NovaCommandFile $e.Command
+                $local = [bool]$file -and (Test-NovaLocalPath $file)
+                if ($local -and (Test-Path -LiteralPath $file -PathType Leaf)) {
+                    $exists = $true
+                    try {
+                        $info = (Get-Item -LiteralPath $file).VersionInfo
+                        if ($info.FileDescription -and $info.FileDescription.Trim()) { $title = $info.FileDescription }
+                    } catch { Write-Verbose ('Нет сведений о {0}' -f $file) }
+                    $company = Get-NovaSigner $file
+                }
+            } catch {
+                Write-Verbose ('Запись автозагрузки не разобрана: {0}' -f $clean)
+                $local = $false; $exists = $false; $company = ''
             }
             $approved = Get-NovaRegValue -Path $src.Approved -Name $e.Name
             $items.Add([pscustomobject]@{
-                    RawName = $e.Name; Name = (Get-NovaCleanText $e.Name); Title = (Get-NovaCleanText $title 60); Company = (Get-NovaCleanText $company 50)
+                    RawName = $e.Name; Name = $clean; Title = (Get-NovaCleanText $title 60); Company = (Get-NovaCleanText $company 50)
                     Command = $e.Command; File = $file; Where = $src.Where; Approved = $src.Approved
                     Enabled = (Test-NovaStartupEnabled $approved.Value)
-                    Signed = [bool]$company; Network = ([bool]$file -and -not $local -and [IO.Path]::IsPathRooted($file))
+                    Signed = [bool]$company; Network = ([bool]$file -and -not $local -and ($file -match '^(\\\\|[A-Za-z]:\\)'))
                     Protected = ($src.Machine -and $exists -and $local -and ($script:ProtectedPaths -contains $file.ToLowerInvariant()) -and [bool]$company)
                     Missing = ($local -and -not $exists)
                 })
