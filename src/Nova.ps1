@@ -398,7 +398,7 @@ function Show-NovaStartupList {
         $i++
         $state = 'вкл '
         $color = 'Green'
-        if ($it.Protected) { $state = 'защ'; $color = 'DarkGray' } elseif (-not $it.Enabled) { $state = 'выкл'; $color = 'DarkGray' }
+        if ($it.Protected) { $state = 'защ '; $color = 'DarkGray' } elseif (-not $it.Enabled) { $state = 'выкл'; $color = 'DarkGray' }
         $who = ''
         if ($it.Company) { $who = ' — ' + $it.Company }
         $note = ''
