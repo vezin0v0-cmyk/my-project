@@ -1965,9 +1965,9 @@ function Get-NovaHealthSummary {
 }
 
 function Show-NovaHealth {
-    param($Checks, [switch]$ProblemsOnly)
+    param($Checks, [switch]$ProblemsOnly, [string]$Title = 'ПРОВЕРКА СИСТЕМЫ', [switch]$NoVerdict)
     Write-Host ''
-    Write-Nova 'ПРОВЕРКА СИСТЕМЫ' title
+    Write-Nova $Title title
     $shown = 0
     foreach ($check in $Checks) {
         if ($ProblemsOnly -and ($check.Status -eq 'ok' -or $check.Status -eq 'info')) { continue }
@@ -1983,6 +1983,7 @@ function Show-NovaHealth {
     }
     if ($ProblemsOnly -and $shown -eq 0) { Write-Nova 'Всё в порядке.' ok }
     $summary = Get-NovaHealthSummary $Checks
+    if ($NoVerdict) { return $summary }
     if ($summary.Stop -gt 0) {
         Write-Nova 'Nova не сможет работать, пока это не исправлено.' err
     } elseif (-not $ProblemsOnly -and $summary.Warn -eq 0) {

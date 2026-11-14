@@ -41,6 +41,10 @@ jobs:
         shell: powershell
         run: ./tests/Test-Clean.ps1
 
+      - name: Готовность к играм (видеокарта, монитор, память, диск)
+        shell: powershell
+        run: ./tests/Test-Game.ps1
+
       - name: Освободить место (без долгого DISM)
         shell: powershell
         run: ./src/Nova.ps1 -Mode Clean -Yes -Quick

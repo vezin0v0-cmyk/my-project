@@ -12,7 +12,7 @@
     .\Nova.ps1 -Mode Preview      # только посмотреть, что изменится
     .\Nova.ps1 -Mode Apply -Yes   # применить без вопросов
     .\Nova.ps1 -Mode Undo -Yes    # отменить последний запуск
-    .\Nova.ps1 -Mode Check        # проверить, готова ли система
+    .\Nova.ps1 -Mode Check        # проверить, готова ли система и что мешает играм
     .\Nova.ps1 -Mode Fps          # замер FPS в игре: до и после Nova
     .\Nova.ps1 -Mode Clean        # освободить место на диске
 #>
@@ -50,6 +50,7 @@ if (-not $ConfigPath) { $ConfigPath = Join-Path $projectRoot 'config.json' }
 $tweaksPath = Join-Path $PSScriptRoot 'tweaks.json'
 Import-Module (Join-Path $PSScriptRoot 'Nova.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaClean.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'NovaGame.psm1') -Force -DisableNameChecking
 
 # Без прав администратора Windows не даст менять системные настройки — перезапускаемся с ними.
 if (-not (Test-NovaAdmin)) {
@@ -128,11 +129,73 @@ function Import-NovaSettings {
 
 # Проверка системы: версия Windows, перезагрузка после обновлений, место на диске, ноутбук.
 function Invoke-NovaCheckFlow {
+    param([switch]$Interactive)
     $context = $null
     try { $context = Import-NovaSettings } catch { Write-Nova 'Проверяю систему без config.json.' dim }
     $summary = Show-NovaHealth (Get-NovaHealth -Context $context)
+    $game = @(Get-NovaGameCheck)
+    if ($game.Count -gt 0) {
+        [void](Show-NovaHealth $game -Title 'ДЛЯ ИГР: ВАЖНЕЕ ЛЮБЫХ НАСТРОЕК' -NoVerdict)
+    }
+    # Частоту монитора Nova может включить сама — только из меню, с подтверждением и откатом.
+    if ($Interactive -and -not $Yes) {
+        foreach ($check in $game) {
+            if (-not $check.PSObject.Properties['Fix'] -or -not $check.Fix -or $check.Fix.Kind -ne 'hz') { continue }
+            if (Confirm-NovaAction ('Включить {0} Гц вместо {1} Гц ({2})?' -f $check.Fix.Hz, $check.Fix.From, $check.Fix.Name.ToLowerInvariant())) {
+                Invoke-NovaHzFix $check.Fix
+            }
+        }
+    }
     if ($summary.Stop -gt 0) { return 1 }
     return 0
+}
+
+# Ждёт подтверждения N секунд. Нет ответа (например, экран погас и ничего не видно) — значит «нет».
+function Read-NovaTimedYes {
+    param([int]$Seconds = 15)
+    try { if ([Console]::IsInputRedirected) { return $false } } catch { return $false }
+    while ([Console]::KeyAvailable) { [void][Console]::ReadKey($true) }
+    $end = (Get-Date).AddSeconds($Seconds)
+    while ((Get-Date) -lt $end) {
+        $left = [int][math]::Ceiling(($end - (Get-Date)).TotalSeconds)
+        Write-Host ("`r  Картинка в порядке? Нажми 1, чтобы оставить. Иначе верну как было через {0,2} с " -f $left) -NoNewline -ForegroundColor Yellow
+        if ([Console]::KeyAvailable) {
+            $key = [Console]::ReadKey($true)
+            Write-Host ''
+            return ($key.KeyChar -eq '1')
+        }
+        Start-Sleep -Milliseconds 200
+    }
+    Write-Host ''
+    return $false
+}
+
+# Новая частота сначала включается «на время»: если картинка пропала, через 15 секунд всё вернётся,
+# а после перезагрузки — тем более. Запоминается, только когда человек подтвердил, что видит экран.
+function Invoke-NovaHzFix {
+    param($Fix)
+    if ((Set-NovaDisplayHz -Device $Fix.Device -Hz $Fix.Hz -Test) -ne 0) {
+        Write-Nova 'Windows не разрешает эту частоту для этого монитора — оставляю как есть.' warn
+        return
+    }
+    Write-Nova ('Включаю {0} Гц. Если экран погаснет — ничего не нажимай: через 15 секунд вернётся как было.' -f $Fix.Hz) info
+    Start-Sleep -Seconds 2
+    if ((Set-NovaDisplayHz -Device $Fix.Device -Hz $Fix.Hz) -ne 0) {
+        [void](Restore-NovaDisplay -Device $Fix.Device)
+        Write-Nova 'Не получилось переключить частоту — оставил как было.' warn
+        return
+    }
+    if (Read-NovaTimedYes -Seconds 15) {
+        if ((Set-NovaDisplayHz -Device $Fix.Device -Hz $Fix.Hz -Persist) -eq 0) {
+            Write-Nova ('Готово: {0} работает на {1} Гц. Вернуть можно в «Параметры → Дисплей».' -f $Fix.Name.ToLowerInvariant(), $Fix.Hz) ok
+            return
+        }
+        [void](Restore-NovaDisplay -Device $Fix.Device)
+        Write-Nova 'Windows не сохранила новую частоту — вернул прежнюю.' warn
+        return
+    }
+    [void](Restore-NovaDisplay -Device $Fix.Device)
+    Write-Nova ('Вернул {0} Гц.' -f $Fix.From) info
 }
 
 # Короткий итог проверки для главного меню.
@@ -274,6 +337,16 @@ function Invoke-NovaFpsFlow {
                 return 0
             }
             if ($choice -ne '1') { return 0 }
+        }
+        $problems = @()
+        try { $problems = @(Get-NovaGameCheck | Where-Object { $_.Status -eq 'warn' }) } catch { $problems = @() }
+        if ($problems.Count -gt 0) {
+            Write-Host ''
+            Write-Nova 'Сначала главное — это влияет на FPS сильнее любых настроек:' title
+            foreach ($p in $problems) {
+                Write-Nova ('{0}: {1}' -f $p.Name, $p.Text) warn
+                if ($p.Hint) { Write-Nova ('    ' + $p.Hint) dim }
+            }
         }
         Write-Host ''
         Write-Nova 'Как мерить честно:' title
@@ -418,7 +491,7 @@ function Start-NovaMenu {
         Write-Host '  3  Отменить последний запуск' -ForegroundColor White
         Write-Host '  4  Открыть config.json — выбрать, что включать' -ForegroundColor White
         Write-Host '  5  Замерить: было → стало (процессы, службы, память)' -ForegroundColor White
-        Write-Host '  6  Проверить систему' -ForegroundColor White
+        Write-Host '  6  Проверить систему и готовность к играм' -ForegroundColor White
         Write-Host '  7  Замерить FPS в игре: до и после Nova' -ForegroundColor White
         Write-Host '  8  Голосовые команды: «Нова, сверни все окна»' -ForegroundColor White
         Write-Host '  9  Освободить место на диске' -ForegroundColor White
@@ -437,7 +510,7 @@ function Start-NovaMenu {
                     Start-Sleep -Seconds 2
                 }
                 '5' { [void](Invoke-NovaMeasureFlow); Wait-NovaKey }
-                '6' { [void](Invoke-NovaCheckFlow); Wait-NovaKey }
+                '6' { [void](Invoke-NovaCheckFlow -Interactive); Wait-NovaKey }
                 '7' { [void](Invoke-NovaFpsFlow); Wait-NovaKey }
                 '8' { Start-NovaVoiceFlow; Wait-NovaKey }
                 '9' { [void](Invoke-NovaCleanFlow); Wait-NovaKey }
