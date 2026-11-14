@@ -49,8 +49,8 @@ jobs:
         shell: powershell
         run: |
           ./tests/Test-Startup.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./src/Nova.ps1 -Mode Startup
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Освободить место (без долгого DISM)
         shell: powershell
