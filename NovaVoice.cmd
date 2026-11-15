@@ -2,6 +2,8 @@
 rem Nova Voice: voice commands like "Nova, minimize all windows". Runs without admin rights.
 rem The file stays ASCII: messages are UTF-8 in base64 and printed by PowerShell.
 setlocal
+rem Work from our own folder, so nothing is picked up from a foreign current folder.
+cd /d "%~dp0"
 title Nova Voice
 
 set "PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"

@@ -132,7 +132,16 @@ function novaProblems(doc) {
       check(T + ' keys added', (await add(p, 'диспетчер', 'keys', 'Ctrl + Shift + Esc')) === '');
       check(T + ' program added', (await add(p, 'блокнот', 'run', 'notepad.exe')) === '');
       check(T + ' bare msi refused', (await add(p, 'установщик', 'run', 'setup.msi')).includes('полный путь'));
-      check(T + ' installer by full path added', (await add(p, 'установщик', 'run', 'C:\\Games\\setup.msi')) === '');
+      check(T + ' installer by full path refused', (await add(p, 'установщик', 'run', 'C:\\Games\\setup.msi')).includes('только программы'));
+      check(T + ' game by full path added', (await add(p, 'установщик', 'run', 'C:\\Program Files (x86)\\Steam\\steam.exe')) === '');
+      check(T + ' bat by full path refused', (await add(p, 'файл', 'run', 'C:\\Users\\me\\Downloads\\run.bat')).includes('только программы'));
+      check(T + ' hidden stream refused', (await add(p, 'файл', 'run', 'C:\\x.txt:evil.exe')).includes('Двоеточие'));
+      check(T + ' wildcard refused', (await add(p, 'файл', 'run', 'C:\\Games\\*.exe')).includes('символов'));
+      check(T + ' dot-dot refused', (await add(p, 'файл', 'run', 'C:\\Games\\..\\Windows\\x.exe')).includes('«..»'));
+      check(T + ' steam launch args refused', (await add(p, 'файл', 'run', 'steam://run/730//-console')).includes('Steam'));
+      check(T + ' steam game added', (await add(p, 'стрелялка', 'run', 'steam://rungameid/730')) === '');
+      check(T + ' telegram proxy refused', (await add(p, 'файл', 'run', 'tg://proxy?server=evil&port=443')).includes('прокси'));
+      check(T + ' zero-width refused', (await add(p, 'файл', 'run', 'notepad.exe\u200b')).includes('невидимых'));
       check(T + ' UNC path refused', (await add(p, 'сеть', 'run', '\\\\evil\\share\\x.exe')).includes('Сетевые пути'));
       check(T + ' search-ms refused', (await add(p, 'поиск', 'run', 'search-ms:query=x&crumb=location:\\\\evil')).includes('не открывает'));
       check(T + ' file: refused', (await add(p, 'файл', 'run', 'file:///C:/x.exe')).includes('не открывает'));
@@ -144,9 +153,9 @@ function novaProblems(doc) {
       check(T + ' plain site added', (await add(p, 'проверка', 'run', 'https://example.com')) === '');
       await p.waitForTimeout(200);
       check(T + ' no html injected', !(await p.evaluate(() => window.__xss)) && (await p.$$('#voice img')).length === 0);
-      check(T + ' custom rows', (await p.$$('#v-custom .vcmd')).length === 6);
+      check(T + ' custom rows', (await p.$$('#v-custom .vcmd')).length === 7);
       await p.click('#v-custom .vcmd:has-text("проверка") button');
-      check(T + ' custom deleted', (await p.$$('#v-custom .vcmd')).length === 5);
+      check(T + ' custom deleted', (await p.$$('#v-custom .vcmd')).length === 6);
 
       await p.click('label.check:has(#v-speak) i');
       const doc = JSON.parse(await shown(p));
@@ -158,12 +167,14 @@ function novaProblems(doc) {
       check(T + ' keys normalized', tm && tm.keys === 'ctrl+shift+esc', tm);
       const np = doc.commands.find(c => c.say[0] === 'блокнот');
       check(T + ' exe left as is', np && np.run === 'notepad.exe', np);
-      const msi = doc.commands.find(c => c.say[0] === 'установщик');
-      check(T + ' msi not turned into a site', msi && msi.run === 'C:\\Games\\setup.msi', msi);
+      const game = doc.commands.find(c => c.say[0] === 'установщик');
+      check(T + ' path left as is', game && game.run === 'C:\\Program Files (x86)\\Steam\\steam.exe', game);
+      const sg = doc.commands.find(c => c.say[0] === 'стрелялка');
+      check(T + ' steam link left as is', sg && sg.run === 'steam://rungameid/730', sg);
       const ch = doc.commands.find(c => c.say[0] === 'мой канал');
       check(T + ' site with path gets https', ch && ch.run === 'https://www.youtube.com/@nova', ch);
       check(T + ' speak off', doc.speak === false);
-      check(T + ' count', doc.commands.length === DEFAULT.commands.length - 1 + 5, doc.commands.length);
+      check(T + ' count', doc.commands.length === DEFAULT.commands.length - 1 + 6, doc.commands.length);
       check(T + ' keeps wake word and info', doc.wakeWord === DEFAULT.wakeWord && doc._info === DEFAULT._info && doc.delaySeconds === DEFAULT.delaySeconds);
       check(T + ' Nova would accept it', novaProblems(doc).length === 0, novaProblems(doc));
 
@@ -180,7 +191,7 @@ function novaProblems(doc) {
       await p.reload();
       await p.waitForSelector('#dash:not([hidden])', { timeout: 5000 });
       await p.waitForTimeout(400);
-      check(T + ' kept after reload', (await p.$$('#v-custom .vcmd')).length === 5 && !(await p.$eval('#v-speak', c => c.checked)));
+      check(T + ' kept after reload', (await p.$$('#v-custom .vcmd')).length === 6 && !(await p.$eval('#v-speak', c => c.checked)));
       check(T + ' toggle kept', !(await p.$eval('#v-list input[data-vkey="выключи компьютер"]', c => c.checked)));
 
       // подделанное хранилище: неправильные команды не загружаются

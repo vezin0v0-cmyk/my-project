@@ -923,19 +923,27 @@
     }
     if (kind !== 'run') return { error: 'Выбери, что сделать.', field: 'kind' };
     if (!v) return { error: 'Напиши сайт или программу.', field: 'value' };
-    if (/[\u0000-\u001f\u007f"<>|]/.test(v)) return { error: 'Без кавычек, знаков < > | и невидимых символов.', field: 'value' };
+    if (/[\p{Cc}\p{Cf}"<>|]/u.test(v)) return { error: 'Без кавычек, знаков < > | и невидимых символов.', field: 'value' };
     if (/^(\\\\|\/\/)/.test(v)) return { error: 'Сетевые пути (\\\\сервер\\…) Nova не открывает: так по голосовой команде мог бы запуститься чужой файл.', field: 'value' };
     // «youtube.com» без https:// Windows не откроет — дописываем сами, но только к адресам сайтов.
     var site = /^([a-z0-9-]+\.)+([a-z]{2,})(\/\S*)?$/i.exec(v);
     if (site && WEB_ENDS.indexOf(site[2].toLowerCase()) >= 0) v = 'https://' + v;
     var scheme = /^([a-z][a-z0-9+.-]*):/i.exec(v);
     if (scheme && scheme[1].length === 1) {
+      // Как в Nova Голос: только программа, ровно по этому пути — без «..», подстановок и двоеточия внутри.
       if (!/^[a-z]:\\/i.test(v)) return { error: 'Путь — полный, например C:\\Games\\game.exe.', field: 'value' };
+      if (v.indexOf(':', 2) >= 0) return { error: 'Двоеточие внутри пути Nova не примет.', field: 'value' };
+      if (/[*?\[\]%~]/.test(v)) return { error: 'В пути не должно быть символов * ? [ ] % ~ — напиши его полностью.', field: 'value' };
+      if (/(^|\\)\.{1,2}(\\|$)/.test(v)) return { error: 'Путь без «.» и «..» — напиши его полностью.', field: 'value' };
+      if (!/\.(exe|msc|cpl)$/i.test(v)) return { error: 'Из папок Nova открывает только программы: путь должен кончаться на .exe.', field: 'value' };
     } else if (scheme) {
       var name = scheme[1].toLowerCase();
       if (VOICE_SCHEMES.indexOf(name) < 0) return { error: 'Ссылки «' + name + ':» Nova не открывает. Можно: сайт, программу, ссылки Steam, Discord, Spotify, Telegram.', field: 'value' };
-      if ((name === 'http' || name === 'https') && !/^https?:\/\/[^\s\/]+/i.test(v)) return { error: 'Непонятный адрес сайта.', field: 'value' };
-    } else if (!/^[a-z0-9 ._()-]+\.(exe|msc|cpl)$/i.test(v)) {
+      if ((name === 'http' || name === 'https') && !/^https?:\/\/[^\s\/\\]+/i.test(v)) return { error: 'Непонятный адрес сайта.', field: 'value' };
+      // Без «//» после номера игры: так игре передают свои параметры запуска.
+      if (name === 'steam' && !/^steam:\/\/[a-z]+(\/[a-z0-9_][a-z0-9_.-]*)*\/?$/i.test(v)) return { error: 'Ссылки Steam — только вида steam://open/main или steam://rungameid/730.', field: 'value' };
+      if (name === 'tg' && /^tg:(\/\/)?(proxy|socks|login|passport)\b/i.test(v)) return { error: 'Ссылки Telegram на прокси и вход Nova не открывает.', field: 'value' };
+    } else if (!/^[a-z0-9 ._()-]+\.(exe|msc|cpl)$/i.test(v) || /\.\./.test(v)) {
       return { error: 'Укажи сайт (youtube.com), программу (notepad.exe) или полный путь (C:\\Games\\game.exe).', field: 'value' };
     }
     if (v.length > 300) return { error: 'Слишком длинный адрес.', field: 'value' };

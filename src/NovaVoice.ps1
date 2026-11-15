@@ -102,11 +102,16 @@ try {
         }
     }
     $config = Read-NovaVoiceConfig -Path $ConfigPath
-    if ($config.Problems.Count -gt 0) {
+    if ($config.Fatal) {
         Write-Nova 'В voice.json есть ошибки:' err
         foreach ($problem in $config.Problems) { Write-Nova $problem warn }
         throw 'Исправь voice.json и запусти снова.'
     }
+    if ($config.Problems.Count -gt 0) {
+        Write-Nova 'Эти команды из voice.json я пропущу — остальные работают:' warn
+        foreach ($problem in $config.Problems) { Write-Nova $problem dim }
+    }
+    if (@($config.Commands).Count -eq 0) { throw 'В voice.json не осталось ни одной рабочей команды.' }
     if (Test-NovaAdmin) {
         # Если контроль учётных записей выключен или это встроенный «Администратор», у всех программ
         # и так права администратора — отдельной защиты тут не получится, работаем с предупреждением.

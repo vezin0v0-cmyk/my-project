@@ -836,7 +836,9 @@ function Write-NovaNewFile {
 function Start-NovaAsUser {
     param([Parameter(Mandatory)][string]$Target)
     $session = (Get-Process -Id $PID).SessionId
-    $shell = @(Get-Process -Name explorer -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $session })
+    # Только настоящий Проводник Windows: процесс с тем же именем из другой папки не считается.
+    $real = Join-Path $env:SystemRoot 'explorer.exe'
+    $shell = @(Get-Process -Name explorer -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $session -and $_.Path -and ($_.Path -ieq $real) })
     if ($shell.Count -eq 0) { return $false }
     Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList ('"{0}"' -f $Target)
     return $true
@@ -1422,8 +1424,11 @@ $script:ProtectedApps = @('Microsoft.WindowsStore', 'Microsoft.StorePurchaseApp'
     'Microsoft.Windows.CloudExperienceHost', 'Microsoft.AAD.BrokerPlugin', 'Microsoft.AccountsControl', 'Microsoft.LockApp', 'Microsoft.CredDialogHost',
     'Microsoft.Windows.Apprep.ChxApp', 'Microsoft.Windows.AssignedAccessLockApp', 'Microsoft.Windows.OOBENetworkConnectionFlow', 'Microsoft.Windows.XGpuEjectDialog',
     'Microsoft.XboxIdentityProvider', 'Microsoft.WindowsTerminal', 'Microsoft.HEIFImageExtension', 'Microsoft.WebMediaExtensions', 'Microsoft.WebpImageExtension',
-    'Microsoft.VP9VideoExtensions', 'Microsoft.HEVCVideoExtension', 'Microsoft.AV1VideoExtension', 'Microsoft.RawImageExtension')
+    'Microsoft.VP9VideoExtensions', 'Microsoft.HEVCVideoExtension', 'Microsoft.AV1VideoExtension', 'Microsoft.RawImageExtension',
+    'Microsoft.Winget.Source', 'Microsoft.GamingServices', 'Microsoft.Xbox.TCUI', 'Microsoft.BioEnrollment', 'Microsoft.Windows.CapturePicker',
+    'Microsoft.Windows.OOBENetworkCaptivePortal')
 $script:ProtectedAppPrefixes = @('Microsoft.VCLibs', 'Microsoft.UI.Xaml', 'Microsoft.NET.', 'Microsoft.WindowsAppRuntime', 'Microsoft.Services.Store',
+    'Microsoft.LanguageExperiencePack',
     'Microsoft.MicrosoftEdge', 'MicrosoftWindows.Client.', 'Microsoft.Windows.CBS', 'windows.immersivecontrolpanel', 'Windows.')
 
 function Test-NovaProtectedApp {
@@ -2431,7 +2436,10 @@ function Get-NovaRemoteChangelog {
         $stream = $response.GetResponseStream()
         $buffer = New-Object byte[] ($script:NovaUpdate.MaxBytes + 1)
         $total = 0
+        # Общий срок: сервер, который отдаёт по байту, не задержит Nova надолго.
+        $watch = [Diagnostics.Stopwatch]::StartNew()
         while ($total -le $script:NovaUpdate.MaxBytes) {
+            if ($watch.Elapsed.TotalSeconds -gt 30) { throw 'GitHub отвечает слишком долго.' }
             $read = $stream.Read($buffer, $total, $buffer.Length - $total)
             if ($read -le 0) { break }
             $total += $read

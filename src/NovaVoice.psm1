@@ -307,19 +307,47 @@ function Get-NovaVoiceRunProblem {
     if ($r.StartsWith('\\') -or $r.StartsWith('//')) { return 'сетевые пути не открываю' }
     if ($r -match '^([A-Za-z][A-Za-z0-9+.-]*):') {
         $scheme = $Matches[1].ToLowerInvariant()
-        if ($scheme.Length -eq 1) {
-            if ($r -notmatch '^[A-Za-z]:\\') { return 'путь должен быть полным, например C:\Games\game.exe' }
-            try {
-                if ((New-Object System.IO.DriveInfo($r.Substring(0, 1))).DriveType -eq [System.IO.DriveType]::Network) { return 'сетевой диск не открываю' }
-            } catch { Write-Verbose 'Диск не найден — Windows просто не откроет файл.' }
-            return ''
-        }
+        if ($scheme.Length -eq 1) { return (Get-NovaVoicePathProblem $r) }
         if ($script:VoiceSchemes -notcontains $scheme) { return ('ссылки «{0}:» не открываю' -f $scheme) }
-        if (@('http', 'https') -contains $scheme -and $r -notmatch '^https?://[^\s/]+') { return 'непонятный адрес сайта' }
+        return (Get-NovaVoiceLinkProblem $scheme $r)
+    }
+    if ($r -match '^[A-Za-z0-9 ._()-]+\.(exe|msc|cpl)\z' -and $r -notmatch '\.\.') { return '' }
+    return 'укажи сайт (https://…), программу (notepad.exe) или полный путь (C:\…\игра.exe)'
+}
+
+# Полный путь: только программа (.exe, .msc, .cpl) на этом компьютере. Без «.»/«..», подстановок
+# (* ? [ ] % ~) и двоеточия внутри (так прячут второй «поток» файла) — открывается ровно то, что написано.
+function Get-NovaVoicePathProblem {
+    param([string]$Path)
+    if ($Path -notmatch '^[A-Za-z]:\\') { return 'путь должен быть полным, например C:\Games\game.exe' }
+    if ($Path.IndexOf(':', 2) -ge 0) { return 'двоеточие внутри пути не принимаю' }
+    if ($Path -match '[*?\[\]%~]') { return 'в пути не должно быть символов * ? [ ] % ~' }
+    if ($Path -match '(^|\\)\.{1,2}(\\|\z)') { return 'путь без «.» и «..»' }
+    if ($Path -notmatch '\.(exe|msc|cpl)\z') { return 'из папок открываю только программы — путь должен кончаться на .exe' }
+    try {
+        if ((New-Object System.IO.DriveInfo($Path.Substring(0, 1))).DriveType -eq [System.IO.DriveType]::Network) { return 'сетевой диск не открываю' }
+    } catch { Write-Verbose 'Диск не найден — Windows просто не откроет файл.' }
+    return ''
+}
+
+# Ссылки программ — только безопасного вида.
+function Get-NovaVoiceLinkProblem {
+    param([string]$Scheme, [string]$Link)
+    if (@('http', 'https') -contains $Scheme) {
+        if ($Link -notmatch '^https?://[^\s/\\]+') { return 'непонятный адрес сайта' }
         return ''
     }
-    if ($r -match '^[A-Za-z0-9 ._()-]+\.(exe|msc|cpl)\z') { return '' }
-    return 'укажи сайт (https://…), программу (notepad.exe) или полный путь (C:\…)'
+    if ($Scheme -eq 'steam') {
+        # Открыть Steam, страницу или игру по номеру. Без «//» — так игре передают свои параметры запуска.
+        if ($Link -notmatch '^steam://[a-z]+(/[a-z0-9_][a-z0-9_.-]*)*/?\z') { return 'ссылки Steam — только вида steam://open/main или steam://rungameid/730' }
+        return ''
+    }
+    if ($Scheme -eq 'tg') {
+        # Прокси и вход Telegram по голосу не нужны: такой ссылкой меняют, через кого идёт весь Telegram.
+        if ($Link -match '^tg:(//)?(proxy|socks|login|passport)\b') { return 'ссылки Telegram на прокси и вход не открываю' }
+        return ''
+    }
+    return ''
 }
 
 function Read-NovaVoiceConfig {
@@ -338,8 +366,12 @@ function Read-NovaVoiceConfig {
         $pushKeys = ConvertTo-NovaVoiceKeys $pushToTalk
         if ($null -eq $pushKeys) { $problems.Add("voice.json: непонятная клавиша pushToTalk '$pushToTalk'") }
     }
+    # До этой строки — ошибки всего файла: с ними голос не запустится. Дальше — ошибки отдельных команд:
+    # такие команды Nova просто пропустит, остальные будут работать.
+    $fatal = $problems.Count -gt 0
     $commands = New-Object System.Collections.Generic.List[object]
     foreach ($item in @(Get-NovaProp $doc 'commands' @())) {
+        $before = $problems.Count
         $say = @(@(Get-NovaProp $item 'say' @()) | ForEach-Object { ([string]$_).Trim().ToLowerInvariant() -replace '\s+', ' ' } | Where-Object { $_ })
         $do = [string](Get-NovaProp $item 'do' '')
         $run = [string](Get-NovaProp $item 'run' '')
@@ -355,9 +387,10 @@ function Read-NovaVoiceConfig {
             $why = Get-NovaVoiceRunProblem $run
             if ($why) { $problems.Add(('voice.json: у «{0}» в run — {1}' -f $label, $why)) }
         }
+        if ($problems.Count -gt $before) { continue }
         $commands.Add([pscustomobject]@{ Say = $say; Do = $do; Run = $run; Keys = $keys; Label = $say[0] })
     }
-    return [pscustomobject]@{ WakeWord = $wake; Delay = $delay; PushToTalk = $pushToTalk; PushKeys = $pushKeys; Speak = $speak; Commands = $commands.ToArray(); Problems = $problems.ToArray() }
+    return [pscustomobject]@{ WakeWord = $wake; Delay = $delay; PushToTalk = $pushToTalk; PushKeys = $pushKeys; Speak = $speak; Commands = $commands.ToArray(); Problems = $problems.ToArray(); Fatal = $fatal }
 }
 
 # Все фразы, которые слушает распознаватель. Фразы без «Нова» тоже в списке — чтобы распознать

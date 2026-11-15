@@ -67,12 +67,18 @@ foreach ($good in @('https://youtube.com', 'https://www.youtube.com/@nova', 'ste
     $why = Get-NovaVoiceRunProblem $good
     if ($why) { throw ('«{0}» не принят: {1}' -f $good, $why) }
 }
-foreach ($bad in @('\\evil\share\x.exe', '//evil/x.exe', 'file:///C:/x.exe', 'search-ms:query=x&crumb=location:\\evil', 'ms-msdt:/id PCWDiagnostic', 'javascript:alert(1)', 'games\x.exe', 'x.bat', 'https:evil', ('notepad.exe' + [char]27), 'C:x.exe')) {
+foreach ($good in @('C:\Program Files (x86)\Steam\steam.exe', 'steam://rungameid/730', 'steam://store/730/', 'tg://resolve?domain=durov', 'compmgmt.msc')) {
+    $why = Get-NovaVoiceRunProblem $good
+    if ($why) { throw ('«{0}» не принят: {1}' -f $good, $why) }
+}
+foreach ($bad in @('\\evil\share\x.exe', '//evil/x.exe', 'file:///C:/x.exe', 'search-ms:query=x&crumb=location:\\evil', 'ms-msdt:/id PCWDiagnostic', 'javascript:alert(1)', 'games\x.exe', 'x.bat', 'https:evil', ('notepad.exe' + [char]27), 'C:x.exe',
+        'C:\Users\me\Downloads\run.bat', 'C:\x.lnk', 'C:\x.txt:evil.exe', 'C:\Games\*.exe', 'C:\%TEMP%\x.exe', 'C:\PROGRA~1\x.exe', 'C:\Games\..\Windows\x.exe', 'C:\.\x.exe',
+        'steam://run/730//+exec evil', 'steam://run/730//-console', 'tg://proxy?server=evil&port=1', 'tg:socks?server=x', ('notepad.exe' + [char]0x200B), 'x..exe')) {
     if (-not (Get-NovaVoiceRunProblem $bad)) { throw ('«{0}» принят в run' -f $bad) }
 }
 $unc = [pscustomobject]@{ Run = '\\evil\share\x.exe'; Keys = ''; Do = ''; Label = 'вирус' }
 if ((Invoke-NovaVoiceCommand -Command $unc -Config $config -DryRun) -notlike 'не открываю*') { throw 'сетевой путь открылся бы по голосовой команде' }
-Write-Host 'ok  run: сайты, программы и ссылки Steam/Discord/Параметров — да; сетевые пути, file:, search-ms:, ms-msdt: — нет'
+Write-Host 'ok  run: сайты, программы и ссылки Steam/Discord/Параметров — да; сетевые пути, file:, search-ms:, ms-msdt:, .bat, подстановки, «//» в Steam и прокси Telegram — нет'
 
 # Ошибки в voice.json находятся
 $bad = Join-Path $env:TEMP ('voice-bad-{0}.json' -f [guid]::NewGuid())
@@ -80,8 +86,17 @@ $badJson = '{"wakeWord":"nova","delaySeconds":1,"speak":"yes","commands":[{"say"
 [System.IO.File]::WriteAllText($bad, $badJson, (New-Object System.Text.UTF8Encoding($false)))
 $badConfig = Read-NovaVoiceConfig -Path $bad
 Remove-Item -LiteralPath $bad -Force
+if (-not $badConfig.Fatal) { throw 'сломанный wakeWord и delaySeconds должны останавливать голос' }
 if ($badConfig.Problems.Count -lt 7 -or -not ($badConfig.Problems -like '*speak*') -or -not ($badConfig.Problems -like '*сетевые пути*')) { $badConfig.Problems | ForEach-Object { Write-Host $_ }; throw ('нашлось только {0} ошибок в плохом voice.json' -f $badConfig.Problems.Count) }
 Write-Host ('ok  в плохом voice.json найдено ошибок: {0}' -f $badConfig.Problems.Count)
+
+# Одна плохая команда не ломает остальные: её Nova пропускает.
+$mixed = Join-Path $env:TEMP ('voice-mixed-{0}.json' -f [guid]::NewGuid())
+[System.IO.File]::WriteAllText($mixed, '{"wakeWord":"нова","commands":[{"say":["тише"],"do":"volumeDown"},{"say":["вирус"],"run":"C:\\x.bat"},{"say":["клавиши"],"keys":"ctrl+???"}]}', (New-Object System.Text.UTF8Encoding($false)))
+$mixedConfig = Read-NovaVoiceConfig -Path $mixed
+Remove-Item -LiteralPath $mixed -Force
+if ($mixedConfig.Fatal -or @($mixedConfig.Commands).Count -ne 1 -or $mixedConfig.Commands[0].Do -ne 'volumeDown' -or $mixedConfig.Problems.Count -ne 2) { throw ('плохие команды не пропустились: команд {0}, замечаний {1}' -f @($mixedConfig.Commands).Count, $mixedConfig.Problems.Count) }
+Write-Host 'ok  плохие команды пропускаются, хорошие работают'
 
 # pushToTalk: понятная клавиша проходит, непонятная — нет
 $ptt = Join-Path $env:TEMP ('voice-ptt-{0}.json' -f [guid]::NewGuid())
