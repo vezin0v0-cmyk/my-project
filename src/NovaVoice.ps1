@@ -151,6 +151,7 @@ try {
     }
 } catch {
     Write-Nova ('Ошибка: {0}' -f $_.Exception.Message) err
+    Write-Nova ('Не получается? Напиши в поддержку: {0}' -f (Get-NovaSupportEmail)) dim
     $exitCode = 1
 }
 exit $exitCode

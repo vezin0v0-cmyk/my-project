@@ -167,6 +167,7 @@
   .badge-ic svg.i { width: 22px; height: 22px; }
   .card.success .badge-ic { color: var(--ok); background: rgba(61,220,132,.1); border-color: rgba(61,220,132,.4); }
   .resend-hint { margin: 6px 0 0; color: var(--dim); font-size: 12.5px; text-align: center; }
+  .help-mail { margin: 10px 0 0; color: var(--dim); font-size: 12.5px; text-align: center; overflow-wrap: anywhere; }
   .captcha { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 70; }
   .otp { position: relative; display: flex; justify-content: center; align-items: center; gap: 7px; height: 70px; margin: 6px 0 8px; transition: height .55s cubic-bezier(.6,0,.2,1); }
   .otp.tall { height: 176px; }
@@ -519,6 +520,7 @@
             <button class="btn-glass" type="button" data-oauth="Telegram"><svg class="i"><use href="#i-send"/></svg>Telegram</button>
           </div>
           <p class="switch">Нет аккаунта? <a class="link" href="#register">Создать</a></p>
+          <p class="help-mail">Не получается войти? Напиши: <a class="link" href="mailto:nova.windows.auth@gmail.com?subject=Nova">nova.windows.auth@gmail.com</a></p>
         </form>
       </div>
 
@@ -584,7 +586,7 @@
         </div>
         <p class="otp-err" id="otp-err" aria-live="polite"></p>
         <p class="resend">Не пришёл код? <button class="link" type="button" id="resend" disabled>Отправить снова</button></p>
-        <p class="resend-hint">Загляни в «Спам». Если аккаунт с этой почтой уже есть, письма не будет — войди или нажми «Забыли пароль?».</p>
+        <p class="resend-hint">Загляни в «Спам». Если аккаунт с этой почтой уже есть, письма не будет — войди или нажми «Забыли пароль?». Совсем не приходит — напиши на <a class="link" href="mailto:nova.windows.auth@gmail.com?subject=Nova">nova.windows.auth@gmail.com</a>.</p>
         <button class="btn-gold wide" type="button" id="verify-btn"><span>Подтвердить</span><svg class="i"><use href="#i-arrow"/></svg></button>
         <p class="switch"><a class="link" href="#register" id="v-back">← Изменить почту</a></p>
       </div>
@@ -722,6 +724,8 @@
         <div class="support">
           <p>Nova бесплатна. Если она тебе помогла — можно поддержать проект.</p>
           <a class="btn-glass sm wide" href="index.html#support"><svg class="i"><use href="#i-heart"/></svg>Поддержать</a>
+          <p style="margin-top:14px">Вопрос, ошибка или идея — пиши в поддержку.</p>
+          <a class="btn-glass sm wide" href="mailto:nova.windows.auth@gmail.com?subject=Nova"><svg class="i"><use href="#i-mail"/></svg>Написать в поддержку</a>
         </div>
       </section>
     </div>

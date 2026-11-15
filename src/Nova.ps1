@@ -731,6 +731,7 @@ function Start-NovaMenu {
         Write-Host ' 10  Автозагрузка: что запускается вместе с Windows' -ForegroundColor White
         Write-Host ' 11  Переезд на чистую Windows: сохранить и вернуть свои программы' -ForegroundColor White
         Write-Host ' 12  Есть ли новая версия Nova' -ForegroundColor White
+        Write-Host ('      Вопросы и ошибки: {0}' -f (Get-NovaSupportEmail)) -ForegroundColor DarkGray
         Write-Host '  0  Выход' -ForegroundColor White
         Write-Host ''
         $choice = (Read-Host '  Выбери пункт').Trim()
@@ -761,6 +762,7 @@ function Start-NovaMenu {
             }
         } catch {
             Write-Nova ('Ошибка: {0}' -f $_.Exception.Message) err
+            Write-Nova ('Не получается? Напиши в поддержку: {0}' -f (Get-NovaSupportEmail)) dim
             Wait-NovaKey
         }
     }
@@ -804,6 +806,7 @@ try {
     }
 } catch {
     Write-Nova ('Ошибка: {0}' -f $_.Exception.Message) err
+    Write-Nova ('Не получается? Напиши в поддержку: {0} — приложи снимок экрана и лог: {1}' -f (Get-NovaSupportEmail), $logPath) dim
     $exitCode = 1
 } finally {
     if ($transcript) { Stop-Transcript | Out-Null }

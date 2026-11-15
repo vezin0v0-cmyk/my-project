@@ -194,6 +194,8 @@
   /* Поддержка */
   .support { display: grid; grid-template-columns: 1.2fr 1fr; gap: 14px; align-items: stretch; }
   .support .body { padding: 22px; }
+  .support .support-mail { grid-column: 1 / -1; }
+  .support-mail a:not(.btn) { color: var(--accent); }
   .support p { color: var(--muted); margin: 0 0 18px; }
   .donate { display: flex; flex-wrap: wrap; gap: 10px; }
   .note { font: 12px/1.5 var(--mono); color: var(--dim); margin-top: 14px; }
@@ -528,6 +530,13 @@
             <div class="donate" id="channel"></div>
           </div>
         </div>
+        <div class="panel reveal support-mail">
+          <div class="panel-head"><b>поддержка</b><span>отвечаем по-русски</span></div>
+          <div class="body">
+            <p>Вопрос, ошибка, идея или что-то не получается — пиши на <a href="mailto:nova.windows.auth@gmail.com?subject=Nova">nova.windows.auth@gmail.com</a>. Если Nova показала ошибку, приложи снимок экрана. Никогда не присылай пароль и код из письма — мы их не спрашиваем.</p>
+            <div class="donate"><a class="btn primary" href="mailto:nova.windows.auth@gmail.com?subject=Nova">Написать в поддержку</a></div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -561,6 +570,10 @@
         <p>Да. Всё в файле <code>config.json</code>: <code>true</code> — включено, <code>false</code> — выключено. Пункт 4 в меню Nova открывает этот файл. Описание каждой настройки — в <code>src/tweaks.json</code>. Проще — в <a href="app.html#login">кабинете</a>: отметь нужное и скачай готовый файл.</p>
       </details>
       <details>
+        <summary>Куда писать, если что-то не так?</summary>
+        <p>На почту поддержки <a href="mailto:nova.windows.auth@gmail.com?subject=Nova">nova.windows.auth@gmail.com</a>: вопросы, ошибки, идеи — всё туда. Письма Nova тоже приходят только с этого адреса. Пароль и код из письма никогда никому не присылай.</p>
+      </details>
+      <details>
         <summary>Nova что-то запрещает или блокирует?</summary>
         <p>Нет. Windows остаётся обычной Windows — просто настроенной под тебя. Любой пункт можно выключить, а любой запуск — отменить одной кнопкой. Где Windows позволяет, Nova меняет настройку так, что переключатель в Параметрах остаётся у тебя. Часть настроек Windows разрешает менять только «политиками» — тогда переключатель станет серым с надписью «управляет организация»; выключи пункт или нажми «Отменить», и он снова твой.</p>
       </details>
@@ -587,7 +600,7 @@
 <footer>
   <div class="wrap">
     <span>NOVA — открытый проект. Не связан с Microsoft.</span>
-    <span><a href="privacy.html">Конфиденциальность и условия</a> · Windows — товарный знак Microsoft Corporation.</span>
+    <span>Поддержка: <a href="mailto:nova.windows.auth@gmail.com?subject=Nova">nova.windows.auth@gmail.com</a> · <a href="privacy.html">Конфиденциальность и условия</a> · Windows — товарный знак Microsoft Corporation.</span>
   </div>
 </footer>
 

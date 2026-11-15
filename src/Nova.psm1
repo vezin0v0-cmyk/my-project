@@ -22,6 +22,10 @@ $script:ServiceStartups = @('Automatic', 'Manual', 'Disabled')
 
 function Get-NovaVersion { return $script:NovaVersion }
 
+# Почта поддержки Nova: вопросы, ошибки, идеи. С неё же приходят письма сайта.
+$script:NovaSupport = 'nova.windows.auth@gmail.com'
+function Get-NovaSupportEmail { return $script:NovaSupport }
+
 function Write-Nova {
     param(
         [Parameter(Position = 0)][string]$Text = '',
