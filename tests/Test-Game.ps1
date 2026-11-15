@@ -84,8 +84,8 @@ Write-Host 'ok  неизвестный тип диска — без совета
 
 # Библиотеки для игр (Visual C++, DirectX)
 $rtAll = @(
-    [pscustomobject]@{ Id = 'Microsoft.VCRedist.2015+.x64'; Name = 'Visual C++ 2015–2022 (64 бита)'; Vital = $true; Installed = $true },
-    [pscustomobject]@{ Id = 'Microsoft.VCRedist.2015+.x86'; Name = 'Visual C++ 2015–2022 (32 бита)'; Vital = $true; Installed = $true },
+    [pscustomobject]@{ Id = 'Microsoft.VCRedist.2015+.x64'; Name = 'Visual C++ 2015+ (64 бита)'; Vital = $true; Installed = $true },
+    [pscustomobject]@{ Id = 'Microsoft.VCRedist.2015+.x86'; Name = 'Visual C++ 2015+ (32 бита)'; Vital = $true; Installed = $true },
     [pscustomobject]@{ Id = 'Microsoft.DirectX'; Name = 'DirectX 9 для старых игр'; Vital = $false; Installed = $true }
 )
 Assert-Check (Get-NovaRuntimeAdvice $rtAll) 'ok' 'на месте' 'все библиотеки есть'

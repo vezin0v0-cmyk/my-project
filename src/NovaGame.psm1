@@ -382,8 +382,8 @@ function Get-NovaDiskHealth {
 # Библиотеки, без которых многие игры не запускаются: «не найден MSVCP140.dll», «d3dx9_43.dll».
 # На чистой Windows их нет. Nova проверяет и по просьбе ставит с серверов Microsoft через winget.
 $script:Runtimes = @(
-    [pscustomobject]@{ Id = 'Microsoft.VCRedist.2015+.x64'; Name = 'Visual C++ 2015–2022 (64 бита)'; Key = 'HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64'; File = ''; Vital = $true }
-    [pscustomobject]@{ Id = 'Microsoft.VCRedist.2015+.x86'; Name = 'Visual C++ 2015–2022 (32 бита)'; Key = 'HKLM\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\X86'; File = ''; Vital = $true }
+    [pscustomobject]@{ Id = 'Microsoft.VCRedist.2015+.x64'; Name = 'Visual C++ 2015+ (64 бита)'; Key = 'HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64'; File = ''; Vital = $true }
+    [pscustomobject]@{ Id = 'Microsoft.VCRedist.2015+.x86'; Name = 'Visual C++ 2015+ (32 бита)'; Key = 'HKLM\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\X86'; File = ''; Vital = $true }
     [pscustomobject]@{ Id = 'Microsoft.DirectX'; Name = 'DirectX 9 для старых игр'; Key = ''; File = 'd3dx9_43.dll'; Vital = $false }
 )
 
