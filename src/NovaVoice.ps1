@@ -120,11 +120,23 @@ try {
         if (-not $alwaysAdmin) {
             Write-Nova 'Голосовые команды не нужно запускать от имени администратора — так безопаснее.' warn
             # Перезапускаем обычным окном через Проводник — от имени того, кто сидит за компьютером.
+            # Только обычный запуск (без своих параметров) и не чаще раза в минуту: если сам Проводник
+            # почему-то запущен с правами администратора, новое окно снова было бы таким — без петли.
+            $mark = Get-NovaRegValue -Path 'HKCU\Software\Nova' -Name 'VoiceRelaunch'
+            $recent = $false
+            if ($mark.Exists) {
+                $when = 0L
+                if ([long]::TryParse([string]$mark.Value, [ref]$when)) { $recent = ([DateTime]::UtcNow.Ticks - $when) -lt [TimeSpan]::FromMinutes(1).Ticks }
+            }
+            $plain = -not $PSBoundParameters.ContainsKey('ConfigPath') -and -not $WavFile -and -not $Yes
             $relaunch = Join-Path (Split-Path -Parent $PSScriptRoot) 'NovaVoice.cmd'
             if ($Startup) { $relaunch = Join-Path $PSScriptRoot 'NovaVoiceStartup.cmd' }
-            if ((Test-Path -LiteralPath $relaunch) -and (Start-NovaAsUser $relaunch)) {
-                Write-Nova 'Открываю Nova Голос обычным окном — это окно можно закрыть.' ok
-                exit 0
+            if ($plain -and -not $recent -and (Test-Path -LiteralPath $relaunch)) {
+                Set-NovaRegValue -Path 'HKCU\Software\Nova' -Name 'VoiceRelaunch' -Value ([string][DateTime]::UtcNow.Ticks) -Kind 'String'
+                if (Start-NovaAsUser $relaunch) {
+                    Write-Nova 'Открываю Nova Голос обычным окном — это окно можно закрыть.' ok
+                    exit 0
+                }
             }
             Write-Nova 'Открой NovaVoice.cmd обычным двойным кликом (или пункт 8 в меню Nova).' info
             throw 'Nova Голос запущен с правами администратора.'

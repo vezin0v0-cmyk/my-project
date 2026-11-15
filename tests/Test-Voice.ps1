@@ -73,7 +73,8 @@ foreach ($good in @('C:\Program Files (x86)\Steam\steam.exe', 'steam://rungameid
 }
 foreach ($bad in @('\\evil\share\x.exe', '//evil/x.exe', 'file:///C:/x.exe', 'search-ms:query=x&crumb=location:\\evil', 'ms-msdt:/id PCWDiagnostic', 'javascript:alert(1)', 'games\x.exe', 'x.bat', 'https:evil', ('notepad.exe' + [char]27), 'C:x.exe',
         'C:\Users\me\Downloads\run.bat', 'C:\x.lnk', 'C:\x.txt:evil.exe', 'C:\Games\*.exe', 'C:\%TEMP%\x.exe', 'C:\PROGRA~1\x.exe', 'C:\Games\..\Windows\x.exe', 'C:\.\x.exe',
-        'steam://run/730//+exec evil', 'steam://run/730//-console', 'tg://proxy?server=evil&port=1', 'tg:socks?server=x', ('notepad.exe' + [char]0x200B), 'x..exe')) {
+        'steam://run/730//+exec evil', 'steam://run/730//-console', 'tg://proxy?server=evil&port=1', 'tg:socks?server=x', ('notepad.exe' + [char]0x200B), 'x..exe',
+        'C:\Games/../Windows/System32/cmd.exe', 'C:\x/./y.exe', 'tg://%70roxy?server=evil', ('C:\Games\game' + [char]::ConvertFromUtf32(0xE0041) + '.exe'))) {
     if (-not (Get-NovaVoiceRunProblem $bad)) { throw ('«{0}» принят в run' -f $bad) }
 }
 $unc = [pscustomobject]@{ Run = '\\evil\share\x.exe'; Keys = ''; Do = ''; Label = 'вирус' }

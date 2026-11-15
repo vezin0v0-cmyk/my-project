@@ -88,15 +88,23 @@ function Assert-NovaProjectFolder {
     try { if ([Console]::IsInputRedirected) { $canCopy = $false } } catch { $canCopy = $false }
     $target = $null
     if ($canCopy) { $target = Get-NovaSafeCopyTarget }
+    # Если небезопасна сама папка пользователя (или папки выше), копия туда не поможет — не предлагаем.
+    if ($target -and (Get-NovaAncestorProblem -Path $target -Trusted (Get-NovaTrustedSid))) { $target = $null }
     if ($target) {
         Write-Host ''
         Write-Nova ('Могу скопировать Nova в твою папку: {0}' -f $target) info
         Write-Nova 'Там её не изменит никто, кроме тебя и администраторов. Твои config.json и voice.json переедут вместе с ней.' dim
         Write-Nova 'Если на этом компьютере есть чужие учётные записи и папку могли подменить — лучше скачай Nova заново.' dim
         if (Confirm-NovaAction 'Скопировать и открыть Nova оттуда?') {
-            Copy-NovaProject -From $projectRoot -To $target
-            $left = Get-NovaProjectProblem -Root $target
-            if ($left) { throw ('Копия тоже не защищена: {0}' -f $left) }
+            try {
+                Copy-NovaProject -From $projectRoot -To $target
+                $left = Get-NovaProjectProblem -Root $target
+                if ($left) { throw ('Копия тоже не защищена: {0}' -f $left) }
+            } catch {
+                # Недоделанную копию убираем, чтобы не копились папки Nova-2, Nova-3...
+                if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue }
+                throw
+            }
             Write-Nova ('Готово. Теперь запускай Nova.cmd из {0} — старую папку можно удалить.' -f $target) ok
             $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
             Start-Process -FilePath $ps -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f (Join-Path $target 'src\Nova.ps1')))
@@ -704,8 +712,10 @@ function Invoke-NovaUndoFlow {
     Clear-NovaMeasurement
     if ($result.RestartExplorer) { Restart-NovaExplorer }
     Write-Host ''
-    if ($result.Failed -eq 0) {
+    if ($result.Failed -eq 0 -and $result.Kept -eq 0) {
         Write-Nova 'Готово! Всё вернулось, как было до этого запуска.' ok
+    } elseif ($result.Failed -eq 0) {
+        Write-Nova ('Готово! Вернулось, как было. Настроек, которые ты поменял сам уже после Nova, — {0}: их Nova оставила как есть.' -f $result.Kept) ok
     } else {
         Write-Nova ('Вернуть не удалось: {0} — подробности выше. Остальное возвращено.' -f $result.Failed) warn
     }

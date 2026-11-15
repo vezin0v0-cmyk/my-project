@@ -300,10 +300,24 @@ function Initialize-NovaVoiceNative {
 # Сетевые пути (\\сервер\...), сетевые диски, file:// и другие протоколы не открываем: чужой voice.json
 # («скачай мои крутые команды») мог бы так запустить что угодно по безобидной фразе.
 $script:VoiceSchemes = @('http', 'https', 'steam', 'discord', 'spotify', 'tg', 'com.epicgames.launcher', 'ms-settings', 'ms-windows-store')
+# Невидимые символы за пределами основной таблицы (например, «теги» U+E0000…): регулярное выражение
+# в PowerShell 5.1 их не видит, потому что они записываются двумя половинками.
+function Test-NovaVoiceHiddenChar {
+    param([string]$Text)
+    for ($i = 0; $i -lt $Text.Length; $i++) {
+        if ([char]::IsHighSurrogate($Text[$i])) {
+            $category = [Globalization.CharUnicodeInfo]::GetUnicodeCategory($Text, $i)
+            if (@([Globalization.UnicodeCategory]::Format, [Globalization.UnicodeCategory]::Control) -contains $category) { return $true }
+            $i++
+        }
+    }
+    return $false
+}
+
 function Get-NovaVoiceRunProblem {
     param([string]$Run)
     $r = ([string]$Run).Trim()
-    if (-not $r -or $r.Length -gt 300 -or $r -match '[\p{Cc}\p{Cf}"<>|]') { return 'непонятный адрес' }
+    if (-not $r -or $r.Length -gt 300 -or $r -match '[\p{Cc}\p{Cf}"<>|]' -or (Test-NovaVoiceHiddenChar $r)) { return 'непонятный адрес' }
     if ($r.StartsWith('\\') -or $r.StartsWith('//')) { return 'сетевые пути не открываю' }
     if ($r -match '^([A-Za-z][A-Za-z0-9+.-]*):') {
         $scheme = $Matches[1].ToLowerInvariant()
@@ -321,6 +335,8 @@ function Get-NovaVoicePathProblem {
     param([string]$Path)
     if ($Path -notmatch '^[A-Za-z]:\\') { return 'путь должен быть полным, например C:\Games\game.exe' }
     if ($Path.IndexOf(':', 2) -ge 0) { return 'двоеточие внутри пути не принимаю' }
+    # Windows понимает и «/» как разделитель — тогда «.»/«..» можно было бы спрятать за ним.
+    if ($Path.Contains('/')) { return 'в пути пиши «\», а не «/»' }
     if ($Path -match '[*?\[\]%~]') { return 'в пути не должно быть символов * ? [ ] % ~' }
     if ($Path -match '(^|\\)\.{1,2}(\\|\z)') { return 'путь без «.» и «..»' }
     if ($Path -notmatch '\.(exe|msc|cpl)\z') { return 'из папок открываю только программы — путь должен кончаться на .exe' }
@@ -345,6 +361,8 @@ function Get-NovaVoiceLinkProblem {
     if ($Scheme -eq 'tg') {
         # Прокси и вход Telegram по голосу не нужны: такой ссылкой меняют, через кого идёт весь Telegram.
         if ($Link -match '^tg:(//)?(proxy|socks|login|passport)\b') { return 'ссылки Telegram на прокси и вход не открываю' }
+        # «%70roxy» — тот же proxy, только закодированный.
+        if ($Link -match '^tg:(//)?[^?]*%') { return 'непонятная ссылка Telegram' }
         return ''
     }
     return ''

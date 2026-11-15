@@ -195,10 +195,12 @@ function Assert-NovaToolPath {
 # Папку самой Nova (где Nova.cmd и src) не должны менять другие пользователи: Nova запускается
 # с правами администратора и выполняет эти файлы. Например, C:\Nova наследует от диска C:
 # право «изменение» для всех пользователей, а флешка FAT/exFAT прав не хранит вовсе.
-# Папки выше папки Nova: если кто-то посторонний может удалять в них вложенное или менять их права,
-# он подменит папку Nova целиком (переименует и положит свою). Обычные права дисков (D:\ — «изменение»
-# для всех) этого не дают — ловим только «полный доступ», смену прав и чужого владельца.
+# Папки выше папки Nova: если кто-то посторонний может переименовать одну из них (право «Удаление»),
+# удалять в ней вложенное или менять её права, он подменит папку Nova целиком — переименует и положит свою.
+# Корень диска переименовать нельзя, поэтому обычное «изменение» для всех на D:\ не мешает; а вот папка
+# D:\Tools с тем же «изменением» — уже проблема, если Nova лежит в ней.
 $script:AncestorRights = [System.Security.AccessControl.FileSystemRights]'DeleteSubdirectoriesAndFiles, ChangePermissions, TakeOwnership'
+$script:AncestorRightsNotRoot = [System.Security.AccessControl.FileSystemRights]'Delete, DeleteSubdirectoriesAndFiles, ChangePermissions, TakeOwnership'
 function Get-NovaAncestorProblem {
     param([Parameter(Mandatory)][string]$Path, [string[]]$Trusted)
     $dir = (New-Object System.IO.DirectoryInfo($Path)).Parent
@@ -212,7 +214,9 @@ function Get-NovaAncestorProblem {
                 if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) { continue }
                 # Записи «только для вложенных» к самой папке не относятся.
                 if ($rule.PropagationFlags -band [System.Security.AccessControl.PropagationFlags]::InheritOnly) { continue }
-                if ((($rule.FileSystemRights -band $script:AncestorRights) -eq 0) -and (([int64]$rule.FileSystemRights -band 0x10000000) -eq 0)) { continue }
+                $rights = $script:AncestorRightsNotRoot
+                if ($null -eq $dir.Parent) { $rights = $script:AncestorRights }
+                if ((($rule.FileSystemRights -band $rights) -eq 0) -and (([int64]$rule.FileSystemRights -band 0x10000000) -eq 0)) { continue }
                 if ($rule.IdentityReference.Value -eq 'S-1-3-0') { continue }
                 if ($Trusted -notcontains $rule.IdentityReference.Value) { return ('{0}: менять может {1} — в том числе папку Nova целиком' -f $dir.FullName, $rule.IdentityReference.Value) }
             }
@@ -1131,6 +1135,10 @@ function Undo-NovaEntry {
                 $text = Get-NovaPairText $now
                 if ((Get-NovaPairValue $text $pair) -cne [string]$Entry.set) {
                     Write-Nova ('{0} в {1}\{2} оставлено как есть: после Nova его уже поменяли' -f $pair, $Entry.path, $Entry.name) dim
+                    return 'kept'
+                }
+                if ($Entry.existed -and [string]$Entry.kind -ne 'String') {
+                    Set-NovaRegValue -Path $Entry.path -Name $Entry.name -Value $Entry.value -Kind $Entry.kind
                     return
                 }
                 $restored = Set-NovaPairValue $text $pair (Get-NovaProp $Entry 'pairOld' $null)
@@ -1144,7 +1152,7 @@ function Undo-NovaEntry {
             $setKind = [string](Get-NovaProp $Entry 'setKind' '')
             if ($setKind -and -not ($now.Exists -and $now.Kind -eq $setKind -and (Test-NovaRegValueEqual $now.Value $Entry.set $setKind))) {
                 Write-Nova ('{0}\{1} оставлено как есть: после Nova его уже поменяли' -f $Entry.path, $Entry.name) dim
-                return
+                return 'kept'
             }
             if ($Entry.existed) {
                 Set-NovaRegValue -Path $Entry.path -Name $Entry.name -Value $Entry.value -Kind $Entry.kind
@@ -1165,7 +1173,7 @@ function Undo-NovaEntry {
             $set = [string](Get-NovaProp $Entry 'set' '')
             if ($set -and (Get-NovaServiceStartup $Entry.name) -ne $set) {
                 Write-Nova ('служба {0} оставлена как есть: после Nova её уже поменяли' -f $Entry.name) dim
-                return
+                return 'kept'
             }
             if ($script:ServiceStartups -contains $Entry.startup) {
                 Set-Service -Name $Entry.name -StartupType $Entry.startup
@@ -1923,6 +1931,7 @@ function Invoke-NovaUndo {
     $doc = Read-NovaJson $BackupPath
     $entries = @(Get-NovaProp $doc 'entries' @())
     $failed = 0
+    $kept = 0
     # Идём с конца: последнее изменение отменяем первым.
     for ($i = $entries.Count - 1; $i -ge 0; $i--) {
         $problem = Test-NovaJournalEntry -Entry $entries[$i] -Allowed $allowed
@@ -1932,7 +1941,7 @@ function Invoke-NovaUndo {
             continue
         }
         try {
-            Undo-NovaEntry -Entry $entries[$i] -Allowed $allowed
+            if (@(Undo-NovaEntry -Entry $entries[$i] -Allowed $allowed) -contains 'kept') { $kept++ }
         } catch {
             $failed++
             Write-Nova ('не удалось вернуть {0}: {1}' -f $entries[$i].type, $_.Exception.Message) err
@@ -1943,8 +1952,9 @@ function Invoke-NovaUndo {
     $restoredPath = $BackupPath -replace '\.json$', '.restored.json'
     Move-Item -LiteralPath $BackupPath -Destination $restoredPath -Force
     return [pscustomobject]@{
-        Restored        = ($entries.Count - $failed)
+        Restored        = ($entries.Count - $failed - $kept)
         Failed          = $failed
+        Kept            = $kept
         RestartExplorer = [bool](Get-NovaProp $doc 'restartExplorer' $false)
         RemovedApps     = $removedApps
         InstalledApps   = $installedApps

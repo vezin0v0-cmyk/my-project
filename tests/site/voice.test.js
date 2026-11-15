@@ -140,6 +140,8 @@ function novaProblems(doc) {
       check(T + ' dot-dot refused', (await add(p, 'файл', 'run', 'C:\\Games\\..\\Windows\\x.exe')).includes('«..»'));
       check(T + ' steam launch args refused', (await add(p, 'файл', 'run', 'steam://run/730//-console')).includes('Steam'));
       check(T + ' steam game added', (await add(p, 'стрелялка', 'run', 'steam://rungameid/730')) === '');
+      check(T + ' slash path refused', (await add(p, 'файл', 'run', 'C:\\Games/../Windows/System32/cmd.exe')).includes('а не «/»'));
+      check(T + ' encoded telegram refused', (await add(p, 'файл', 'run', 'tg://%70roxy?server=evil')).includes('Непонятная ссылка Telegram'));
       check(T + ' telegram proxy refused', (await add(p, 'файл', 'run', 'tg://proxy?server=evil&port=443')).includes('прокси'));
       check(T + ' zero-width refused', (await add(p, 'файл', 'run', 'notepad.exe\u200b')).includes('невидимых'));
       check(T + ' UNC path refused', (await add(p, 'сеть', 'run', '\\\\evil\\share\\x.exe')).includes('Сетевые пути'));

@@ -82,7 +82,7 @@ Write-Host '«Ключ=значение;» меняет только свой к
 $probe = 'HKCU\Software\NovaUndoTest'
 Set-NovaRegValue -Path $probe -Name 'Mine' -Value 5 -Kind 'DWord'
 $entry = [pscustomobject]@{ type = 'registry'; path = $probe; name = 'Mine'; existed = $true; kind = 'DWord'; value = 1; set = 2; setKind = 'DWord' }
-Undo-NovaEntry -Entry $entry
+if ((Undo-NovaEntry -Entry $entry) -ne 'kept') { throw 'Отмена не сообщила, что значение оставлено как есть.' }
 if ((Get-NovaRegValue -Path $probe -Name 'Mine').Value -ne 5) { throw 'Отмена затёрла значение, которое поменяли после Nova.' }
 Set-NovaRegValue -Path $probe -Name 'Mine' -Value 2 -Kind 'DWord'
 Undo-NovaEntry -Entry $entry
@@ -94,6 +94,11 @@ if ((Get-NovaRegValue -Path $probe -Name 'Gpu').Value -cne 'A=1;SwapEffectUpgrad
 Set-NovaRegValue -Path $probe -Name 'Gpu' -Value 'A=1;SwapEffectUpgradeEnable=1;B=2;' -Kind 'String'
 Undo-NovaEntry -Entry $pairEntry
 if ((Get-NovaRegValue -Path $probe -Name 'Gpu').Value -cne 'A=1;B=2;') { throw 'Отмена «ключ=значение» стёрла чужие ключи.' }
+Set-NovaRegValue -Path $probe -Name 'GpuNum' -Value 'SwapEffectUpgradeEnable=1;' -Kind 'String'
+$numEntry = [pscustomobject]@{ type = 'registry'; path = $probe; name = 'GpuNum'; existed = $true; kind = 'DWord'; value = 7; pair = 'SwapEffectUpgradeEnable'; pairOld = $null; set = '1' }
+[void](Undo-NovaEntry -Entry $numEntry)
+$numNow = Get-NovaRegValue -Path $probe -Name 'GpuNum'
+if ($numNow.Kind -ne 'DWord' -or $numNow.Value -ne 7) { throw ('Отмена не вернула прежнее числовое значение: {0} {1}' -f $numNow.Kind, $numNow.Value) }
 # keepIfSet: сведения производителя не заменяются, свои — обновляются.
 $keepTweak = [pscustomobject]@{ id = 'k'; keepIfSet = @([pscustomobject]@{ path = $probe; name = 'Maker' }); actions = @([pscustomobject]@{ type = 'registry'; path = $probe; name = 'Maker'; kind = 'String'; value = 'Nova' }) }
 Set-NovaRegValue -Path $probe -Name 'Maker' -Value 'LENOVO' -Kind 'String'
@@ -317,6 +322,19 @@ Set-Acl -LiteralPath $outer -AclObject $aclO
 $outerProblem = Get-NovaProjectProblem -Root $inner
 Remove-Item -LiteralPath $outer -Recurse -Force
 if ($outerProblem -notlike '*папку Nova целиком*') { throw ('Открытая папка выше папки Nova не замечена: «{0}»' -f $outerProblem) }
+# То же, если у папки выше есть лишь «изменение» (её можно переименовать), — а у корня диска это не проблема.
+$outer = Join-Path $env:TEMP ('nova-outer-' + [guid]::NewGuid())
+$inner = Join-Path $outer 'Nova'
+New-Item -ItemType Directory -Path $inner -Force | Out-Null
+$aclI = Get-Acl -LiteralPath $inner
+$aclI.SetAccessRuleProtection($true, $true)
+Set-Acl -LiteralPath $inner -AclObject $aclI
+$aclO = Get-Acl -LiteralPath $outer
+$aclO.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule((New-Object System.Security.Principal.SecurityIdentifier('S-1-5-11')), 'Modify', 'None', 'None', 'Allow')))
+Set-Acl -LiteralPath $outer -AclObject $aclO
+$modifyProblem = Get-NovaProjectProblem -Root $inner
+Remove-Item -LiteralPath $outer -Recurse -Force
+if ($modifyProblem -notlike '*папку Nova целиком*') { throw ('Папку выше с «изменением» для всех можно переименовать, но это не замечено: «{0}»' -f $modifyProblem) }
 Write-Host 'Папка выше папки Nova, где посторонние могут подменить её целиком, замечается.'
 Write-Host ('Папка проекта, открытая для всех, распознаётся. Эта папка в CI: {0}' -f $(if (Get-NovaProjectProblem -Root $root) { 'открыта для других' } else { 'закрыта' }))
 

@@ -297,7 +297,7 @@
           <div class="panel-head"><b>01 / приватность</b><span id="cnt-privacy">16 настроек</span></div>
           <div class="body">
             <h3>Меньше слежки</h3>
-            <p>Минимум телеметрии, без рекламного идентификатора, истории действий и скрытых задач сбора данных. Copilot и Recall выключены.</p>
+            <p>Минимум телеметрии, без рекламного идентификатора и скрытых задач сбора данных, кнопка Copilot убрана. Recall и журнал действий — по желанию.</p>
             <div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div>
           </div>
         </article>
@@ -657,7 +657,7 @@
   (function flow() {
     var canvas = document.getElementById('flow');
     var ctx = canvas.getContext('2d');
-    var LEFT = ['телеметрия', 'реклама в «Пуске»', 'Bing в поиске', 'Copilot', 'Recall', 'виджеты', 'Game DVR', 'Clipchamp', 'пасьянсы', 'новости'];
+    var LEFT = ['телеметрия', 'реклама в «Пуске»', 'Bing в поиске', 'кнопка Copilot', 'виджеты', 'Game DVR', 'Bing Новости', 'Cortana', 'советы Windows', 'новости'];
     var RIGHT = ['приватность', 'чистый «Пуск»', 'тёмная тема', 'игровой режим', 'быстрые меню', 'без мусора', 'отмена в 1 клик'];
     var W = 0, H = 0, dpr = 1, paths = [], particles = [], running = false, visible = true, t0 = 0;
 
