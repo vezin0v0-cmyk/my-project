@@ -81,6 +81,18 @@ Assert-Check (Get-NovaDiskAdvice ([pscustomobject]@{ FriendlyName = 'Samsung 980
 if ($null -ne (Get-NovaDiskAdvice ([pscustomobject]@{ FriendlyName = 'Virtual Disk'; MediaType = 'Unspecified'; BusType = 'SAS' }))) { throw 'неизвестный тип диска — без совета' }
 Write-Host 'ok  неизвестный тип диска — без совета'
 
+# Здоровье дисков
+$good = [pscustomobject]@{ Name = 'Samsung 980'; Health = 'Healthy'; Wear = 3; Temperature = 41 }
+Assert-Check (Get-NovaDiskHealthAdvice @($good)) 'ok' 'не сообщают' 'здоровые диски'
+Assert-Check (Get-NovaDiskHealthAdvice @($good, [pscustomobject]@{ Name = 'ST1000DM010'; Health = 'Warning'; Wear = $null; Temperature = $null })) 'warn' 'ST1000DM010 — предупреждение' 'диск с предупреждением SMART'
+Assert-Check (Get-NovaDiskHealthAdvice @([pscustomobject]@{ Name = 'Old HDD'; Health = '2'; Wear = $null; Temperature = $null })) 'warn' 'неисправен' 'неисправный диск (код 2)'
+Assert-Check (Get-NovaDiskHealthAdvice @([pscustomobject]@{ Name = 'Kingston A400'; Health = 'Healthy'; Wear = 91; Temperature = 38 })) 'warn' 'изношен на 91%' 'изношенный SSD'
+Assert-Check (Get-NovaDiskHealthAdvice @([pscustomobject]@{ Name = 'WD SN770'; Health = 'Healthy'; Wear = 5; Temperature = 78 })) 'info' '78 °C' 'горячий NVMe'
+Assert-Check (Get-NovaDiskHealthAdvice @([pscustomobject]@{ Name = 'Msft Virtual Disk'; Health = 'Unknown'; Wear = $null; Temperature = $null })) 'ok' '' 'диск без данных SMART'
+if ($null -ne (Get-NovaDiskHealthAdvice @())) { throw 'без дисков — без совета' }
+$real = @(Get-NovaDiskHealth)
+Write-Host ('i   диски этой машины: {0}' -f (($real | ForEach-Object { '{0} ({1}, износ {2}, {3} °C)' -f $_.Name, $_.Health, $_.Wear, $_.Temperature }) -join '; '))
+
 # Античиты: TPM 2.0 и Secure Boot
 $good = [pscustomobject]@{ Present = $true; Ready = $true; Version = '2.0' }
 Assert-Check (Get-NovaAntiCheatAdvice -Tpm $good -SecureBoot $true) 'ok' 'Valorant' 'TPM 2.0 и Secure Boot включены'

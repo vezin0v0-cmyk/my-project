@@ -326,6 +326,59 @@ function Get-NovaSystemDisk {
     return [pscustomobject]@{ FriendlyName = $disk.FriendlyName; MediaType = [string]$disk.MediaType; BusType = [string]$disk.BusType }
 }
 
+# Здоровье дисков — то, что диски сами сообщают Windows (SMART), и износ SSD из счётчиков надёжности.
+# $Disks: Name, Health (Healthy / Warning / Unhealthy / Unknown или их номера 0/1/2/5), Wear (% износа или $null),
+# Temperature (°C или $null). Диск без беды — общий «ок»; беда — предупреждение с советом сохранить важное.
+function ConvertTo-NovaDiskHealth {
+    param([string]$Health)
+    switch ($Health) {
+        '0' { return 'Healthy' }
+        '1' { return 'Warning' }
+        '2' { return 'Unhealthy' }
+        '5' { return 'Unknown' }
+    }
+    return $Health
+}
+
+function Get-NovaDiskHealthAdvice {
+    param([object[]]$Disks)
+    $list = @($Disks | Where-Object { $_ })
+    if ($list.Count -eq 0) { return $null }
+    $sick = @($list | Where-Object { @('Warning', 'Unhealthy') -contains (ConvertTo-NovaDiskHealth ([string]$_.Health)) })
+    if ($sick.Count -gt 0) {
+        $what = @($sick | ForEach-Object { if ((ConvertTo-NovaDiskHealth ([string]$_.Health)) -eq 'Unhealthy') { '{0} — неисправен' -f $_.Name } else { '{0} — предупреждение' -f $_.Name } })
+        return (New-NovaCheck 'Здоровье дисков' 'warn' ('Диск сообщает о проблемах: {0}.' -f ($what -join '; ')) 'Сначала сохрани важные файлы на другой диск или в облако — такой диск может отказать. Подробности покажет бесплатная программа CrystalDiskInfo.' 'disk-health')
+    }
+    $worn = @($list | Where-Object { $null -ne $_.Wear -and [int]$_.Wear -ge 80 })
+    if ($worn.Count -gt 0) {
+        return (New-NovaCheck 'Здоровье дисков' 'warn' ('SSD {0} изношен на {1}%.' -f $worn[0].Name, [int]$worn[0].Wear) 'Пока работает, но запас записи почти исчерпан: сохрани важное и присмотри замену.' 'disk-health')
+    }
+    $hot = @($list | Where-Object { $null -ne $_.Temperature -and [int]$_.Temperature -ge 70 })
+    if ($hot.Count -gt 0) {
+        return (New-NovaCheck 'Здоровье дисков' 'info' ('Диск {0} нагревается до {1} °C.' -f $hot[0].Name, [int]$hot[0].Temperature) 'Горячий SSD замедляет запись. Для NVMe помогает радиатор (часто есть на материнской плате) или обдув корпуса.' 'disk-health')
+    }
+    return (New-NovaCheck 'Здоровье дисков' 'ok' ('Диски не сообщают о проблемах ({0}).' -f $list.Count) -Id 'disk-health')
+}
+
+function Get-NovaDiskHealth {
+    foreach ($d in @(Get-PhysicalDisk -ErrorAction Stop)) {
+        $wear = $null
+        $temp = $null
+        try {
+            $r = $d | Get-StorageReliabilityCounter -ErrorAction Stop
+            # Диски, которые этого не умеют, отдают 0 — это «неизвестно», а не «новый».
+            if ($r.Wear -gt 0) { $wear = [int]$r.Wear }
+            if ($r.Temperature -gt 0) { $temp = [int]$r.Temperature }
+        } catch { Write-Verbose 'Счётчики надёжности недоступны.' }
+        [pscustomobject]@{
+            Name        = ([string]$d.FriendlyName -replace '[\p{Cc}\p{Cf}]', '').Trim()
+            Health      = [string]$d.HealthStatus
+            Wear        = $wear
+            Temperature = $temp
+        }
+    }
+}
+
 # Античиты Vanguard (Valorant) и FACEIT на Windows 11 требуют TPM 2.0 и безопасную загрузку (Secure Boot).
 # $Tpm: Present, Ready, Version ('2.0' / '1.2' / ''); $SecureBoot: $true, $false или $null (старый режим BIOS).
 function Get-NovaAntiCheatAdvice {
@@ -403,6 +456,11 @@ function Get-NovaGameCheck {
         $disk = Get-NovaDiskAdvice (Get-NovaSystemDisk)
         if ($disk) { $checks.Add($disk) }
     } catch { Write-Verbose ('Диск: {0}' -f $_.Exception.Message) }
+
+    try {
+        $health = Get-NovaDiskHealthAdvice -Disks @(Get-NovaDiskHealth)
+        if ($health) { $checks.Add($health) }
+    } catch { Write-Verbose ('Здоровье дисков: {0}' -f $_.Exception.Message) }
 
     try {
         $ac = Get-NovaAntiCheatState
