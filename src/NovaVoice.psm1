@@ -21,7 +21,7 @@ $script:Vosk = @{
         'libwinpthread-1.dll' = '92CAEB8A4EA281C674003462A233F3B445B685B0A6F93EB11254FEDA2DDA9CDE'
     }
 }
-$script:VoiceActions = @('shutdown', 'restart', 'cancel', 'minimizeAll', 'restoreAll', 'closeWindow', 'closeAll', 'lock', 'volumeUp', 'volumeDown', 'mute')
+$script:VoiceActions = @('shutdown', 'restart', 'cancel', 'minimizeAll', 'restoreAll', 'closeWindow', 'closeAll', 'lock', 'volumeUp', 'volumeDown', 'mute', 'playPause', 'nextTrack', 'prevTrack')
 $script:Pending = $null
 
 # Папка движка — личная: другие пользователи компьютера не могут туда ничего подложить.
@@ -358,6 +358,8 @@ function Resolve-NovaVoiceText {
 $script:VirtualKeys = @{
     ctrl = 0x11; shift = 0x10; alt = 0x12; win = 0x5B; esc = 0x1B; tab = 0x09; enter = 0x0D; space = 0x20
     printscreen = 0x2C; delete = 0x2E; home = 0x24; end = 0x23; up = 0x26; down = 0x28; left = 0x25; right = 0x27
+    # мультимедийные клавиши: работают в любом плеере — Spotify, Яндекс Музыка, YouTube в браузере
+    playpause = 0xB3; nexttrack = 0xB0; prevtrack = 0xB1; volumeup = 0xAF; volumedown = 0xAE; mute = 0xAD
 }
 function ConvertTo-NovaVoiceKeys {
     param([string]$Keys)
@@ -435,6 +437,9 @@ function Invoke-NovaVoiceCommand {
         'volumeUp' { if (-not $DryRun) { 1..5 | ForEach-Object { [NovaVoice.Win]::Tap([byte[]]@(0xAF)) } }; return 'громче' }
         'volumeDown' { if (-not $DryRun) { 1..5 | ForEach-Object { [NovaVoice.Win]::Tap([byte[]]@(0xAE)) } }; return 'тише' }
         'mute' { if (-not $DryRun) { [NovaVoice.Win]::Tap([byte[]]@(0xAD)) }; return 'звук вкл/выкл' }
+        'playPause' { if (-not $DryRun) { [NovaVoice.Win]::Tap([byte[]]@(0xB3)) }; return 'пауза / продолжить' }
+        'nextTrack' { if (-not $DryRun) { [NovaVoice.Win]::Tap([byte[]]@(0xB0)) }; return 'следующий трек' }
+        'prevTrack' { if (-not $DryRun) { [NovaVoice.Win]::Tap([byte[]]@(0xB1)) }; return 'предыдущий трек' }
     }
     return ''
 }

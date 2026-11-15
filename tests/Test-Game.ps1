@@ -81,6 +81,14 @@ Assert-Check (Get-NovaDiskAdvice ([pscustomobject]@{ FriendlyName = 'Samsung 980
 if ($null -ne (Get-NovaDiskAdvice ([pscustomobject]@{ FriendlyName = 'Virtual Disk'; MediaType = 'Unspecified'; BusType = 'SAS' }))) { throw 'неизвестный тип диска — без совета' }
 Write-Host 'ok  неизвестный тип диска — без совета'
 
+# Античиты: TPM 2.0 и Secure Boot
+$good = [pscustomobject]@{ Present = $true; Ready = $true; Version = '2.0' }
+Assert-Check (Get-NovaAntiCheatAdvice -Tpm $good -SecureBoot $true) 'ok' 'Valorant' 'TPM 2.0 и Secure Boot включены'
+Assert-Check (Get-NovaAntiCheatAdvice -Tpm $good -SecureBoot $false) 'info' 'Boot или Security' 'Secure Boot выключен'
+Assert-Check (Get-NovaAntiCheatAdvice -Tpm $good -SecureBoot $null) 'info' 'Legacy' 'старый режим BIOS'
+Assert-Check (Get-NovaAntiCheatAdvice -Tpm ([pscustomobject]@{ Present = $true; Ready = $true; Version = '1.2' }) -SecureBoot $true) 'info' 'fTPM' 'TPM 1.2 — мало'
+Assert-Check (Get-NovaAntiCheatAdvice -Tpm ([pscustomobject]@{ Present = $false; Ready = $false; Version = '' }) -SecureBoot $false) 'info' 'TPM 2.0 и Secure Boot' 'нет ни того, ни другого'
+
 # Настоящая Windows: ничего не падает, все статусы понятные.
 Write-Host ''
 Write-Host '== Эта машина'

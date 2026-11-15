@@ -326,6 +326,39 @@ function Get-NovaSystemDisk {
     return [pscustomobject]@{ FriendlyName = $disk.FriendlyName; MediaType = [string]$disk.MediaType; BusType = [string]$disk.BusType }
 }
 
+# Античиты Vanguard (Valorant) и FACEIT на Windows 11 требуют TPM 2.0 и безопасную загрузку (Secure Boot).
+# $Tpm: Present, Ready, Version ('2.0' / '1.2' / ''); $SecureBoot: $true, $false или $null (старый режим BIOS).
+function Get-NovaAntiCheatAdvice {
+    param($Tpm, $SecureBoot)
+    $tpmOk = $Tpm -and $Tpm.Present -and $Tpm.Ready -and ([string]$Tpm.Version).StartsWith('2')
+    if ($tpmOk -and $SecureBoot -eq $true) {
+        return (New-NovaCheck 'Античиты' 'ok' 'TPM 2.0 и Secure Boot включены — Valorant (Vanguard) и FACEIT запустятся.' -Id 'anticheat')
+    }
+    $miss = @()
+    if (-not $tpmOk) { $miss += 'TPM 2.0' }
+    if ($SecureBoot -ne $true) { $miss += 'Secure Boot' }
+    $hint = 'Без этого не запустятся Valorant (Vanguard) и FACEIT на Windows 11. Включается в BIOS/UEFI:'
+    if (-not $tpmOk) { $hint += ' TPM — пункт fTPM (AMD) или PTT (Intel);' }
+    if ($null -eq $SecureBoot) { $hint += ' компьютер загружается в старом режиме (Legacy/CSM) — для Secure Boot нужен режим UEFI, это лучше делать при установке Windows;' }
+    elseif ($SecureBoot -ne $true) { $hint += ' Secure Boot — раздел Boot или Security;' }
+    $hint += ' Если в такие игры не играешь — можно не трогать.'
+    return (New-NovaCheck 'Античиты' 'info' ('Выключено: {0}.' -f ($miss -join ' и ')) $hint 'anticheat')
+}
+
+function Get-NovaAntiCheatState {
+    $tpm = [pscustomobject]@{ Present = $false; Ready = $false; Version = '' }
+    try {
+        $t = Get-CimInstance -Namespace 'root/cimv2/Security/MicrosoftTpm' -ClassName Win32_Tpm -ErrorAction Stop | Select-Object -First 1
+        if ($t) {
+            $ver = ([string]$t.SpecVersion -split ',')[0].Trim()
+            $tpm = [pscustomobject]@{ Present = $true; Ready = [bool]$t.IsEnabled_InitialValue -and [bool]$t.IsActivated_InitialValue; Version = $ver }
+        }
+    } catch { Write-Verbose 'TPM не найден.' }
+    $sb = $null
+    try { $sb = [bool](Confirm-SecureBootUEFI -ErrorAction Stop) } catch { $sb = $null }
+    return [pscustomobject]@{ Tpm = $tpm; SecureBoot = $sb }
+}
+
 #endregion
 
 # Все проверки «для игр». Каждая часть сама по себе: если одна не сработала, остальные покажутся.
@@ -370,6 +403,11 @@ function Get-NovaGameCheck {
         $disk = Get-NovaDiskAdvice (Get-NovaSystemDisk)
         if ($disk) { $checks.Add($disk) }
     } catch { Write-Verbose ('Диск: {0}' -f $_.Exception.Message) }
+
+    try {
+        $ac = Get-NovaAntiCheatState
+        $checks.Add((Get-NovaAntiCheatAdvice -Tpm $ac.Tpm -SecureBoot $ac.SecureBoot))
+    } catch { Write-Verbose ('Античиты: {0}' -f $_.Exception.Message) }
 
     try {
         if ((Get-NovaActivePowerScheme) -eq $script:PowerSaver) {

@@ -19,6 +19,9 @@ $cases = @(
     @('нова закрой окно', 'closeWindow'),
     @('нова открой стим', 'run:steam://open/main'),
     @('нова сделай скриншот', 'keys:win+shift+s'),
+    @('нова пауза', 'playPause'),
+    @('нова следующий трек', 'nextTrack'),
+    @('нова предыдущая песня', 'prevTrack'),
     @('[unk] нова [unk]', ''),
     @('привет нова как дела', '')
 )
@@ -32,6 +35,7 @@ foreach ($case in $cases) {
 $keys = ConvertTo-NovaVoiceKeys 'win+shift+s'
 if (($keys -join ',') -ne '91,16,83') { throw ('win+shift+s → {0}' -f ($keys -join ',')) }
 if (((ConvertTo-NovaVoiceKeys 'ctrl+f5') -join ',') -ne '17,116') { throw 'ctrl+f5' }
+if (((ConvertTo-NovaVoiceKeys 'nexttrack') -join ',') -ne '176') { throw 'nexttrack' }
 if ($null -ne (ConvertTo-NovaVoiceKeys 'ctrl+боб')) { throw 'непонятные клавиши должны отклоняться' }
 Write-Host 'ok  клавиши'
 
