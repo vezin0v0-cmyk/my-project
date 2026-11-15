@@ -62,13 +62,25 @@ Write-Host 'ok  ответы: «15 часов ровно», «21 час 1 мин
 $speaker = Get-NovaVoiceSpeaker
 if ($speaker) { Write-Host ('i   русский голос для ответов: {0}' -f $speaker.Voice.Name) } else { Write-Host 'i   русского голоса в этой Windows нет — ответы будут текстом' }
 
+# Что может открыть «run»: сайты, программы, ссылки известных программ — но не сетевые пути и не чужие протоколы.
+foreach ($good in @('https://youtube.com', 'https://www.youtube.com/@nova', 'steam://open/main', 'notepad.exe', 'explorer.exe', 'C:\Games\game.exe', 'ms-settings:display')) {
+    $why = Get-NovaVoiceRunProblem $good
+    if ($why) { throw ('«{0}» не принят: {1}' -f $good, $why) }
+}
+foreach ($bad in @('\\evil\share\x.exe', '//evil/x.exe', 'file:///C:/x.exe', 'search-ms:query=x&crumb=location:\\evil', 'ms-msdt:/id PCWDiagnostic', 'javascript:alert(1)', 'games\x.exe', 'x.bat', 'https:evil', ('notepad.exe' + [char]27), 'C:x.exe')) {
+    if (-not (Get-NovaVoiceRunProblem $bad)) { throw ('«{0}» принят в run' -f $bad) }
+}
+$unc = [pscustomobject]@{ Run = '\\evil\share\x.exe'; Keys = ''; Do = ''; Label = 'вирус' }
+if ((Invoke-NovaVoiceCommand -Command $unc -Config $config -DryRun) -notlike 'не открываю*') { throw 'сетевой путь открылся бы по голосовой команде' }
+Write-Host 'ok  run: сайты, программы и ссылки Steam/Discord/Параметров — да; сетевые пути, file:, search-ms:, ms-msdt: — нет'
+
 # Ошибки в voice.json находятся
 $bad = Join-Path $env:TEMP ('voice-bad-{0}.json' -f [guid]::NewGuid())
-$badJson = '{"wakeWord":"nova","delaySeconds":1,"speak":"yes","commands":[{"say":["format c"],"do":"format"},{"say":["тест"],"do":"lock","run":"x.exe"},{"say":["клавиши"],"keys":"ctrl+???"}]}'
+$badJson = '{"wakeWord":"nova","delaySeconds":1,"speak":"yes","commands":[{"say":["format c"],"do":"format"},{"say":["тест"],"do":"lock","run":"x.exe"},{"say":["клавиши"],"keys":"ctrl+???"},{"say":["вирус"],"run":"\\\\evil\\x.exe"}]}'
 [System.IO.File]::WriteAllText($bad, $badJson, (New-Object System.Text.UTF8Encoding($false)))
 $badConfig = Read-NovaVoiceConfig -Path $bad
 Remove-Item -LiteralPath $bad -Force
-if ($badConfig.Problems.Count -lt 6 -or -not ($badConfig.Problems -like '*speak*')) { $badConfig.Problems | ForEach-Object { Write-Host $_ }; throw ('нашлось только {0} ошибок в плохом voice.json' -f $badConfig.Problems.Count) }
+if ($badConfig.Problems.Count -lt 7 -or -not ($badConfig.Problems -like '*speak*') -or -not ($badConfig.Problems -like '*сетевые пути*')) { $badConfig.Problems | ForEach-Object { Write-Host $_ }; throw ('нашлось только {0} ошибок в плохом voice.json' -f $badConfig.Problems.Count) }
 Write-Host ('ok  в плохом voice.json найдено ошибок: {0}' -f $badConfig.Problems.Count)
 
 # pushToTalk: понятная клавиша проходит, непонятная — нет

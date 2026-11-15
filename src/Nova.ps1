@@ -509,9 +509,11 @@ function Invoke-NovaMoveFlow {
         Write-Nova ('Список от {0}: {1}' -f $when, $chosen.Folder) info
         if ($list.Skipped -gt 0) { Write-Nova ('Пропущено подозрительных записей: {0} — их Nova ставить не будет.' -f $list.Skipped) warn }
         if ($apps.Count -eq 0) { Write-Nova 'В списке нет программ, которые можно поставить.' warn; return 1 }
-        $shown = @($apps | Select-Object -First 40 | ForEach-Object { $_.Id })
-        Write-Host ('  ' + ($shown -join ', ')) -ForegroundColor White
-        if ($apps.Count -gt $shown.Count) { Write-Nova ('… и ещё {0}' -f ($apps.Count - $shown.Count)) dim }
+        # Весь список, без «… и ещё»: всё, что Nova поставит, должно быть видно до ответа «да».
+        $ids = @($apps | ForEach-Object { $_.Id })
+        for ($i = 0; $i -lt $ids.Count; $i += 4) {
+            Write-Host ('  ' + (($ids[$i..([math]::Min($i + 3, $ids.Count - 1))]) -join ', ')) -ForegroundColor White
+        }
         Write-Nova 'Программы ставятся из официальных источников winget и Microsoft Store. Уже установленные Nova пропустит.' dim
         if (-not (Confirm-NovaAction ('Поставить программы ({0})? Это может занять время.' -f $apps.Count))) { return 0 }
         $result = Install-NovaMoveApps -Apps $apps -OnStep { param($a) Write-Nova ('ставлю {0}...' -f $a.Id) dim }
@@ -555,8 +557,8 @@ function Invoke-NovaUpdateFlow {
     Write-Nova ('Отмена прежних запусков не пропадёт: она хранится в {0}, а не в папке Nova.' -f (Get-NovaDataDir).TrimEnd('\')) dim
     Write-Nova 'Если Nova Голос запускался вместе с Windows — в новой папке включи это снова: пункт 8 → 2.' dim
     if ($Mode -eq 'Menu' -and (Confirm-NovaAction 'Открыть сайт Nova, чтобы скачать?')) {
-        # Через Проводник — браузер откроется без прав администратора.
-        Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList $source.DownloadPage
+        # Браузер — без прав администратора.
+        if (-not (Start-NovaAsUser $source.DownloadPage)) { Write-Nova ('Открой сам: {0}' -f $source.DownloadPage) info }
     } else {
         Write-Nova ('Скачать: {0}' -f $source.DownloadPage) dim
     }
@@ -586,14 +588,14 @@ function Start-NovaVoiceFlow {
     Write-Host '  0  Назад' -ForegroundColor White
     $choice = (Read-Host '  Выбери пункт').Trim()
     # Оба окна открываются через Проводник — без прав администратора, от имени того, кто сидит за компьютером.
-    $explorer = Join-Path $env:SystemRoot 'explorer.exe'
+    $noShell = 'Проводник Windows сейчас не запущен — без него Nova не может открыть окно без прав администратора. Открой NovaVoice.cmd двойным кликом сам.'
     if ($choice -eq '1') {
-        Start-Process -FilePath $explorer -ArgumentList ('"{0}"' -f $cmd)
+        if (-not (Start-NovaAsUser $cmd)) { Write-Nova $noShell warn; return $true }
         Write-Host ''
         Write-Nova 'Открываю «Nova Голос» в отдельном окне. Скажи, например: «Нова, сверни все окна» или «Нова, который час».' ok
         Write-Nova 'Команды и свои бинды — в файле voice.json. Голос работает, пока открыто его окно.' dim
     } elseif ($choice -eq '2') {
-        Start-Process -FilePath $explorer -ArgumentList ('"{0}"' -f $setup)
+        if (-not (Start-NovaAsUser $setup)) { Write-Nova $noShell warn; return $true }
         Write-Host ''
         Write-Nova 'Открываю окно настройки — ответь там 1 или 0. Выключить потом можно там же, в пункте 10 или в Диспетчере задач.' ok
     } else {
@@ -712,7 +714,7 @@ function Show-NovaWhatsNew {
 }
 
 function Start-NovaMenu {
-    Show-NovaWhatsNew
+    try { Show-NovaWhatsNew } catch { Write-Verbose ('Что нового: {0}' -f $_.Exception.Message) }
     while ($true) {
         Show-NovaBanner -Clear
         Show-NovaHealthLine
@@ -739,9 +741,13 @@ function Start-NovaMenu {
                 '3' { [void](Invoke-NovaUndoFlow); Wait-NovaKey }
                 '4' {
                     # Через Проводник — редактор откроется без прав администратора.
-                    Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList ('"{0}"' -f $ConfigPath)
-                    Write-Nova 'Открываю config.json. Если Windows спросит, чем открыть, — выбери «Блокнот».' dim
-                    Start-Sleep -Seconds 2
+                    if (Start-NovaAsUser $ConfigPath) {
+                        Write-Nova 'Открываю config.json. Если Windows спросит, чем открыть, — выбери «Блокнот».' dim
+                        Start-Sleep -Seconds 2
+                    } else {
+                        Write-Nova ('Проводник не запущен — открой файл сам: {0}' -f $ConfigPath) warn
+                        Wait-NovaKey
+                    }
                 }
                 '5' { [void](Invoke-NovaMeasureFlow); Wait-NovaKey }
                 '6' { [void](Invoke-NovaCheckFlow -Interactive); Wait-NovaKey }

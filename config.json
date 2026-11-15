@@ -62,7 +62,7 @@
     "bluetooth-off": false,
     "xbox-services-off": false,
     "security-updates-only": false,
-    "no-forced-restart": true,
+    "no-forced-restart": false,
     "wu-no-drivers": false,
     "edge-quiet": true,
     "onedrive-remove": true

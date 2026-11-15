@@ -46,7 +46,14 @@ function Invoke-NovaVoiceStartupFlow {
         }
         'other' {
             Write-Nova ('Ярлык ведёт на другую папку Nova: {0}' -f $state.Target) warn
-            $question = 'Запускать голос из этой папки?'
+            Write-Host '  1  Запускать голос из этой папки' -ForegroundColor White
+            Write-Host '  2  Убрать старый ярлык' -ForegroundColor White
+            Write-Host '  0  Ничего не менять' -ForegroundColor White
+            $pick = '1'
+            if (-not $Yes) { $pick = (Read-Host '  Выбери пункт').Trim() }
+            if ($pick -eq '2') { Remove-NovaVoiceAutostart; Write-Nova 'Старый ярлык убран: голос больше не запускается вместе с Windows.' ok; return }
+            if ($pick -ne '1') { Write-Nova 'Ничего не меняю.' dim; return }
+            $question = ''
         }
         default {
             Write-Nova 'Сейчас Nova Голос сам не запускается.' info
@@ -54,7 +61,7 @@ function Invoke-NovaVoiceStartupFlow {
         }
     }
     $answer = '1'
-    if (-not $Yes) { $answer = Read-Host ('  {0}  1 — да, 0 — нет' -f $question) }
+    if ($question -and -not $Yes) { $answer = Read-Host ('  {0}  1 — да, 0 — нет' -f $question) }
     if ($answer.Trim() -ne '1') { Write-Nova 'Ничего не меняю.' dim; return }
     if ($turnOn) {
         # Без движка окно голоса при включении компьютера молча ждало бы ответа «скачать?» — спросим сейчас.
@@ -83,6 +90,17 @@ Write-Nova 'Распознавание идёт на этом компьютер
 
 $exitCode = 0
 try {
+    # Голос может запускаться при каждом входе в Windows — его файлы не должен мочь подменить другой
+    # пользователь этого компьютера: иначе чужой код запускался бы от твоего имени.
+    if (-not ($env:NOVA_ALLOW_SHARED_FOLDER -eq '1' -and $env:GITHUB_ACTIONS -eq 'true')) {
+        $folderProblem = Get-NovaProjectProblem -Root $projectRoot -ConfigPath $ConfigPath
+        if ($folderProblem) {
+            Write-Nova 'Папку Nova могут менять другие пользователи этого компьютера — голос оттуда запускать небезопасно.' err
+            Write-Nova ('Подробно: {0}' -f $folderProblem) dim
+            Write-Nova ('Перенеси папку Nova в свою папку пользователя, например {0}' -f $env:USERPROFILE) warn
+            throw 'Папка Nova не защищена от других пользователей.'
+        }
+    }
     $config = Read-NovaVoiceConfig -Path $ConfigPath
     if ($config.Problems.Count -gt 0) {
         Write-Nova 'В voice.json есть ошибки:' err
@@ -122,7 +140,12 @@ try {
     } else {
         Write-Host ''
         Write-Nova 'Команды:' title
-        foreach ($command in $config.Commands) { Write-Nova ('«{0}, {1}»' -f $config.WakeWord, ($command.Say -join '» / «')) info }
+        foreach ($command in $config.Commands) {
+            # Свои команды — с тем, что именно они откроют или нажмут: чужой voice.json сразу виден.
+            $what = ''
+            if ($command.Run) { $what = ' → откроет ' + $command.Run } elseif ($command.Keys) { $what = ' → нажмёт ' + $command.Keys }
+            Write-Nova ('«{0}, {1}»{2}' -f $config.WakeWord, ($command.Say -join '» / «'), $what) info
+        }
         Write-Host ''
         Start-NovaVoiceListener -Config $config
     }

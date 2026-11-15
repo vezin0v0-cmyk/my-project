@@ -38,7 +38,15 @@ function Get-NovaVoiceDir {
     } catch {
         Write-Verbose 'Короткие имена папок недоступны.'
     }
-    return (Join-Path $env:ProgramData ('NovaVoice-{0}' -f [Security.Principal.WindowsIdentity]::GetCurrent().User.Value))
+    # Имя могли занять заранее (папку создал другой пользователь) — тогда берём следующее свободное или своё.
+    $me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $base = Join-Path $env:ProgramData ('NovaVoice-{0}' -f $me)
+    foreach ($suffix in @(@('') + @(1..9 | ForEach-Object { '-' + $_ }))) {
+        $dir = $base + $suffix
+        if (-not (Test-Path -LiteralPath $dir)) { return $dir }
+        if (-not (Get-NovaPathProblem -Path $dir -Trusted @($me, 'S-1-5-32-544', 'S-1-5-18'))) { return $dir }
+    }
+    return $base
 }
 
 # Создаёт папку движка закрытой (менять может только этот пользователь, администраторы и система)
@@ -287,6 +295,33 @@ function Initialize-NovaVoiceNative {
 }
 
 # Настройки из voice.json: фраза → действие. Ошибки в файле — понятным списком.
+# Что может открыть команда «run»: сайт (http/https), программу на этом компьютере или ссылку известной
+# программы (Steam, Discord, Spotify, Telegram, Epic Games, Параметры Windows, Microsoft Store).
+# Сетевые пути (\\сервер\...), сетевые диски, file:// и другие протоколы не открываем: чужой voice.json
+# («скачай мои крутые команды») мог бы так запустить что угодно по безобидной фразе.
+$script:VoiceSchemes = @('http', 'https', 'steam', 'discord', 'spotify', 'tg', 'com.epicgames.launcher', 'ms-settings', 'ms-windows-store')
+function Get-NovaVoiceRunProblem {
+    param([string]$Run)
+    $r = ([string]$Run).Trim()
+    if (-not $r -or $r.Length -gt 300 -or $r -match '[\p{Cc}\p{Cf}"<>|]') { return 'непонятный адрес' }
+    if ($r.StartsWith('\\') -or $r.StartsWith('//')) { return 'сетевые пути не открываю' }
+    if ($r -match '^([A-Za-z][A-Za-z0-9+.-]*):') {
+        $scheme = $Matches[1].ToLowerInvariant()
+        if ($scheme.Length -eq 1) {
+            if ($r -notmatch '^[A-Za-z]:\\') { return 'путь должен быть полным, например C:\Games\game.exe' }
+            try {
+                if ((New-Object System.IO.DriveInfo($r.Substring(0, 1))).DriveType -eq [System.IO.DriveType]::Network) { return 'сетевой диск не открываю' }
+            } catch { Write-Verbose 'Диск не найден — Windows просто не откроет файл.' }
+            return ''
+        }
+        if ($script:VoiceSchemes -notcontains $scheme) { return ('ссылки «{0}:» не открываю' -f $scheme) }
+        if (@('http', 'https') -contains $scheme -and $r -notmatch '^https?://[^\s/]+') { return 'непонятный адрес сайта' }
+        return ''
+    }
+    if ($r -match '^[A-Za-z0-9 ._()-]+\.(exe|msc|cpl)\z') { return '' }
+    return 'укажи сайт (https://…), программу (notepad.exe) или полный путь (C:\…)'
+}
+
 function Read-NovaVoiceConfig {
     param([Parameter(Mandatory)][string]$Path)
     $doc = Read-NovaJson $Path
@@ -316,6 +351,10 @@ function Read-NovaVoiceConfig {
         if ($kinds -ne 1) { $problems.Add("voice.json: у «$label» должно быть одно из do, run или keys"); continue }
         if ($do -and $script:VoiceActions -notcontains $do) { $problems.Add("voice.json: у «$label» неизвестное действие '$do'") }
         if ($keys -and $null -eq (ConvertTo-NovaVoiceKeys $keys)) { $problems.Add("voice.json: у «$label» непонятные клавиши '$keys'") }
+        if ($run) {
+            $why = Get-NovaVoiceRunProblem $run
+            if ($why) { $problems.Add(('voice.json: у «{0}» в run — {1}' -f $label, $why)) }
+        }
         $commands.Add([pscustomobject]@{ Say = $say; Do = $do; Run = $run; Keys = $keys; Label = $say[0] })
     }
     return [pscustomobject]@{ WakeWord = $wake; Delay = $delay; PushToTalk = $pushToTalk; PushKeys = $pushKeys; Speak = $speak; Commands = $commands.ToArray(); Problems = $problems.ToArray() }
@@ -468,6 +507,8 @@ function Invoke-NovaVoiceCommand {
     param([Parameter(Mandatory)]$Command, $Config, [switch]$DryRun)
     $delay = $Config.Delay
     if ($Command.Run) {
+        $why = Get-NovaVoiceRunProblem $Command.Run
+        if ($why) { return ('не открываю: {0}' -f $why) }
         if (-not $DryRun) { Start-Process -FilePath $Command.Run }
         return ('открываю {0}' -f $Command.Run)
     }

@@ -131,11 +131,17 @@ function novaProblems(doc) {
       check(T + ' site added', (await add(p, '  Открой   Ютуб ', 'run', 'youtube.com')) === '');
       check(T + ' keys added', (await add(p, 'диспетчер', 'keys', 'Ctrl + Shift + Esc')) === '');
       check(T + ' program added', (await add(p, 'блокнот', 'run', 'notepad.exe')) === '');
-      check(T + ' installer added', (await add(p, 'установщик', 'run', 'setup.msi')) === '');
+      check(T + ' bare msi refused', (await add(p, 'установщик', 'run', 'setup.msi')).includes('полный путь'));
+      check(T + ' installer by full path added', (await add(p, 'установщик', 'run', 'C:\\Games\\setup.msi')) === '');
+      check(T + ' UNC path refused', (await add(p, 'сеть', 'run', '\\\\evil\\share\\x.exe')).includes('Сетевые пути'));
+      check(T + ' search-ms refused', (await add(p, 'поиск', 'run', 'search-ms:query=x&crumb=location:\\\\evil')).includes('не открывает'));
+      check(T + ' file: refused', (await add(p, 'файл', 'run', 'file:///C:/x.exe')).includes('не открывает'));
+      check(T + ' ms-msdt refused', (await add(p, 'помощь', 'run', 'ms-msdt:/id PCWDiagnostic')).includes('не открывает'));
       check(T + ' site path added', (await add(p, 'мой канал', 'run', 'www.youtube.com/@nova')) === '');
       check(T + ' duplicate custom refused', (await add(p, 'открой ютуб', 'run', 'vk.com')).includes('уже есть'));
       // HTML в значении показывается как текст
-      check(T + ' html value added as text', (await add(p, 'проверка', 'run', '<img src=x onerror=window.__xss=1>')) === '');
+      check(T + ' html value refused', (await add(p, 'хтмл', 'run', '<img src=x onerror=window.__xss=1>')).includes('Без кавычек'));
+      check(T + ' plain site added', (await add(p, 'проверка', 'run', 'https://example.com')) === '');
       await p.waitForTimeout(200);
       check(T + ' no html injected', !(await p.evaluate(() => window.__xss)) && (await p.$$('#voice img')).length === 0);
       check(T + ' custom rows', (await p.$$('#v-custom .vcmd')).length === 6);
@@ -153,7 +159,7 @@ function novaProblems(doc) {
       const np = doc.commands.find(c => c.say[0] === 'блокнот');
       check(T + ' exe left as is', np && np.run === 'notepad.exe', np);
       const msi = doc.commands.find(c => c.say[0] === 'установщик');
-      check(T + ' msi not turned into a site', msi && msi.run === 'setup.msi', msi);
+      check(T + ' msi not turned into a site', msi && msi.run === 'C:\\Games\\setup.msi', msi);
       const ch = doc.commands.find(c => c.say[0] === 'мой канал');
       check(T + ' site with path gets https', ch && ch.run === 'https://www.youtube.com/@nova', ch);
       check(T + ' speak off', doc.speak === false);
@@ -180,7 +186,7 @@ function novaProblems(doc) {
       // подделанное хранилище: неправильные команды не загружаются
       await p.evaluate(() => {
         localStorage.setItem('nova.voice', JSON.stringify({ off: { 'пауза': 'yes', 'несуществующая': true, '__proto__': true }, speak: 'no', custom: [
-          { say: '<b>x</b>', kind: 'run', value: 'a.exe' }, { say: 'ок', kind: 'evil', value: 'x' }, { say: 'нормальная', kind: 'keys', value: 'win+d' }] }));
+          { say: '<b>x</b>', kind: 'run', value: 'a.exe' }, { say: 'ок', kind: 'evil', value: 'x' }, { say: 'сеть', kind: 'run', value: '\\\\evil\\x.exe' }, { say: 'картинка', kind: 'run', value: '<img src=x onerror=window.__xss=2>' }, { say: 'нормальная', kind: 'keys', value: 'win+d' }] }));
       });
       await p.reload();
       await p.waitForSelector('#dash:not([hidden])', { timeout: 5000 });

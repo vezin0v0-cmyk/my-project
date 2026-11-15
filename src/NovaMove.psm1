@@ -128,7 +128,8 @@ function Export-NovaMove {
     $winget = Get-NovaWingetPath
     if (-not $winget) { throw 'winget не найден. Обнови «Установщик приложений» (App Installer) в Microsoft Store.' }
     # Сначала долгий winget export во временную папку, и только потом — быстрая запись на место.
-    $tmp = Join-Path ([IO.Path]::GetTempPath()) ('nova-export-' + [guid]::NewGuid() + '.json')
+    # Временный файл — в папке Nova, куда пишут только администраторы (в общий TEMP могли бы подложить свой).
+    $tmp = Join-Path (Get-NovaBuildDir) ('nova-export-' + [guid]::NewGuid() + '.json')
     try {
         $run = Invoke-NovaNative $winget @('export', '--output', $tmp, '--accept-source-agreements')
         if (-not (Test-Path -LiteralPath $tmp)) { throw ('winget не смог составить список (код {0}).' -f $run.Code) }

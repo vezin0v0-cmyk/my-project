@@ -195,6 +195,8 @@ function Get-NovaProjectProblem {
     param([Parameter(Mandatory)][string]$Root, [string]$ConfigPath)
     $trusted = Get-NovaTrustedSid
     $paths = @($Root, (Join-Path $Root 'src'), (Join-Path $Root 'assets'), (Join-Path $Root 'config.json'), (Join-Path $Root 'Nova.cmd'))
+    # Все файлы в корне: NovaVoice.cmd (на него ведёт ярлык автозапуска), voice.json, CHANGELOG.md (его читает Nova).
+    $paths += @(Get-ChildItem -LiteralPath $Root -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
     if ($ConfigPath) { $paths += $ConfigPath }
     $paths += @(Get-ChildItem -LiteralPath (Join-Path $Root 'src') -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
     $paths += @(Get-ChildItem -LiteralPath (Join-Path $Root 'assets') -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
@@ -227,6 +229,18 @@ function Expand-NovaText {
 function Resolve-NovaAsset {
     param([string]$RelativePath)
     return (Join-Path $script:NovaRoot ($RelativePath -replace '/', '\'))
+}
+
+# Путь целиком внутри папки (после раскрытия «..»): «{NovaData}\..\..\Windows» начинается как надо, но ведёт не туда.
+function Test-NovaPathInside {
+    param([string]$Path, [string]$Folder)
+    try {
+        $full = [System.IO.Path]::GetFullPath($Path)
+        $base = [System.IO.Path]::GetFullPath($Folder).TrimEnd('\') + '\'
+        return $full.StartsWith($base, [StringComparison]::OrdinalIgnoreCase)
+    } catch {
+        return $false
+    }
 }
 
 # Системные программы — только из System32, а не «первая найденная по PATH».
@@ -679,13 +693,26 @@ public static extern uint GetFinalPathNameByHandle(Microsoft.Win32.SafeHandles.S
     return $path
 }
 
-# Тот же ли это файл: тот же диск, та же папка, то же имя. Сравниваем по частям, потому что
-# Windows может вернуть длинное имя вместо короткого (RUNNER~1 → runneradmin) — это не подмена.
+# Длинное имя пути: Windows может назвать папку коротко (RUNNER~1 вместо runneradmin) — это не подмена.
+function Get-NovaLongPath {
+    param([string]$Path)
+    if (-not ('NovaNative.LongPath' -as [type])) {
+        Invoke-NovaAddType -Arguments @{ Namespace = 'NovaNative'; Name = 'LongPath'; MemberDefinition = @'
+[DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+public static extern uint GetLongPathName(string shortPath, System.Text.StringBuilder longPath, uint size);
+'@ }
+    }
+    $sb = New-Object System.Text.StringBuilder 2048
+    $n = [NovaNative.LongPath]::GetLongPathName($Path, $sb, 2048)
+    if ($n -eq 0 -or $n -ge 2048) { return $Path }
+    return $sb.ToString()
+}
+
+# Тот же ли это файл: весь путь целиком, после раскрытия коротких имён. Любая ссылка (junction) по дороге
+# даёт другой настоящий путь — значит, файл увели в другое место.
 function Test-NovaSamePlace {
     param([string]$Real, [string]$Expected)
-    $leaf = { param($x) [System.IO.Path]::GetFileName($x) }
-    $parent = { param($x) [System.IO.Path]::GetFileName([System.IO.Path]::GetDirectoryName($x)) }
-    return ((& $leaf $Real) -ieq (& $leaf $Expected)) -and ((& $parent $Real) -ieq (& $parent $Expected)) -and ($Real.Substring(0, 2) -ieq $Expected.Substring(0, 2))
+    return ((Get-NovaLongPath $Real) -ieq (Get-NovaLongPath ([System.IO.Path]::GetFullPath($Expected))))
 }
 
 # Пишет только новый файл. Если путь куда-то ведёт (ссылка), созданное удаляется, а Nova останавливается.
@@ -707,6 +734,18 @@ function Write-NovaNewFile {
         throw
     }
     $fs.Dispose()
+}
+
+# Открыть файл или ссылку от имени того, кто сидит за компьютером, — без прав администратора.
+# Проводник передаёт запуск уже работающей оболочке рабочего стола. Если оболочки в этом сеансе нет
+# (Проводник упал), он запустил бы файл с правами Nova — поэтому тогда ничего не открываем.
+function Start-NovaAsUser {
+    param([Parameter(Mandatory)][string]$Target)
+    $session = (Get-Process -Id $PID).SessionId
+    $shell = @(Get-Process -Name explorer -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $session })
+    if ($shell.Count -eq 0) { return $false }
+    Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList ('"{0}"' -f $Target)
+    return $true
 }
 
 # Ставит обои сразу, без перезагрузки (SystemParametersInfo).
@@ -1083,10 +1122,13 @@ function Test-NovaDefinition {
             } elseif ($type -eq 'wallpaper') {
                 $file = [string](Get-NovaProp $action 'file')
                 if (-not $file -or -not (Test-Path -LiteralPath (Resolve-NovaAsset $file))) { $problems.Add("tweaks.json: у '$id' не найден файл обоев '$file'") }
+                elseif (-not (Test-NovaPathInside (Resolve-NovaAsset $file) (Join-Path $script:NovaRoot 'assets'))) { $problems.Add("tweaks.json: у '$id' обои можно брать только из папки assets") }
             } elseif ($type -eq 'copyFile') {
                 $from = [string](Get-NovaProp $action 'from')
+                $to = [string](Get-NovaProp $action 'to')
                 if (-not $from -or -not (Test-Path -LiteralPath (Resolve-NovaAsset $from))) { $problems.Add("tweaks.json: у '$id' не найден файл '$from'") }
-                if ([string](Get-NovaProp $action 'to') -notlike '{NovaData}*') { $problems.Add("tweaks.json: у '$id' файл можно копировать только в {NovaData}") }
+                elseif (-not (Test-NovaPathInside (Resolve-NovaAsset $from) (Join-Path $script:NovaRoot 'assets'))) { $problems.Add("tweaks.json: у '$id' файл можно брать только из папки assets") }
+                if ($to -notlike '{NovaData}*' -or -not (Test-NovaPathInside (Expand-NovaText $to) (Get-NovaDataDir))) { $problems.Add("tweaks.json: у '$id' файл можно копировать только в {NovaData}") }
             } else {
                 $problems.Add("tweaks.json: у '$id' неизвестный тип действия '$type'")
             }
@@ -1107,6 +1149,9 @@ function Test-NovaDefinition {
         if ($null -eq $list) { continue }
         foreach ($property in $list.PSObject.Properties) {
             if ($property.Value -isnot [bool]) { $problems.Add("config.json: в '$section' у '$($property.Name)' должно быть true или false") }
+            if ($section -eq 'removeApps' -and $property.Value -eq $true -and (Test-NovaProtectedApp $property.Name)) {
+                $problems.Add("config.json: '$($property.Name)' — часть Windows (Store, winget, защита или вход в систему), Nova её не удаляет")
+            }
         }
     }
     $restorePoint = Get-NovaProp $Config 'createRestorePoint' $true
@@ -1182,6 +1227,25 @@ function Test-NovaAppName {
     return ($Name -match '^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}\z')
 }
 
+# Части Windows, которые Nova не удаляет никогда, даже если их вписать в removeApps (например, в чужой
+# «готовой сборке»): без них не работают Microsoft Store, winget, «Безопасность Windows», вход в систему,
+# «Пуск» и программы. Удаление приложений отмена не возвращает — поэтому здесь запрет, а не предупреждение.
+$script:ProtectedApps = @('Microsoft.WindowsStore', 'Microsoft.StorePurchaseApp', 'Microsoft.DesktopAppInstaller', 'Microsoft.SecHealthUI',
+    'Microsoft.Windows.SecHealthUI', 'Microsoft.Win32WebViewHost', 'Microsoft.Windows.ShellExperienceHost', 'Microsoft.Windows.StartMenuExperienceHost',
+    'Microsoft.Windows.CloudExperienceHost', 'Microsoft.AAD.BrokerPlugin', 'Microsoft.AccountsControl', 'Microsoft.LockApp', 'Microsoft.CredDialogHost',
+    'Microsoft.Windows.Apprep.ChxApp', 'Microsoft.Windows.AssignedAccessLockApp', 'Microsoft.Windows.OOBENetworkConnectionFlow', 'Microsoft.Windows.XGpuEjectDialog',
+    'Microsoft.XboxIdentityProvider', 'Microsoft.WindowsTerminal', 'Microsoft.HEIFImageExtension', 'Microsoft.WebMediaExtensions', 'Microsoft.WebpImageExtension',
+    'Microsoft.VP9VideoExtensions', 'Microsoft.HEVCVideoExtension', 'Microsoft.AV1VideoExtension', 'Microsoft.RawImageExtension')
+$script:ProtectedAppPrefixes = @('Microsoft.VCLibs', 'Microsoft.UI.Xaml', 'Microsoft.NET.', 'Microsoft.WindowsAppRuntime', 'Microsoft.Services.Store',
+    'Microsoft.MicrosoftEdge', 'MicrosoftWindows.Client.', 'Microsoft.Windows.CBS', 'windows.immersivecontrolpanel', 'Windows.')
+
+function Test-NovaProtectedApp {
+    param([string]$Name)
+    foreach ($app in $script:ProtectedApps) { if ($Name -ieq $app) { return $true } }
+    foreach ($prefix in $script:ProtectedAppPrefixes) { if ($Name.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { return $true } }
+    return $false
+}
+
 function Get-NovaAppPlan {
     param([Parameter(Mandatory)]$Context)
     $toRemove = @(Get-NovaEnabledNames (Get-NovaProp $Context.Config 'removeApps'))
@@ -1191,6 +1255,10 @@ function Get-NovaAppPlan {
     }
     $toRemove = @($toRemove | Where-Object { Test-NovaAppName $_ })
     $toInstall = @($toInstall | Where-Object { Test-NovaAppName $_ })
+    foreach ($kept in @($toRemove | Where-Object { Test-NovaProtectedApp $_ })) {
+        Write-Nova ('«{0}» — часть Windows, без неё ломаются Store, winget или защита. Не удаляю.' -f $kept) warn
+    }
+    $toRemove = @($toRemove | Where-Object { -not (Test-NovaProtectedApp $_) })
 
     $installed = @()
     $provisioned = @()
@@ -1213,7 +1281,7 @@ function Get-NovaAppPlan {
     $installItems = @(foreach ($id in $toInstall) {
             $isInstalled = $false
             if ($winget) {
-                $result = Invoke-NovaNative $winget @('list', '--id', $id, '--exact', '--accept-source-agreements')
+                $result = Invoke-NovaNative $winget @('list', '--id', $id, '--exact', '--source', 'winget', '--accept-source-agreements')
                 $isInstalled = ($result.Code -eq 0)
             }
             [pscustomobject]@{ Id = $id; Installed = $isInstalled }
@@ -1273,6 +1341,7 @@ function Show-NovaPlan {
                 Write-NovaPlanLine '=' $app.Name 'не установлено' 'Gray'
             }
         }
+        if ($removeCount -gt 0) { Write-Nova 'Удалённые приложения отмена не вернёт — при желании их ставят заново из Microsoft Store.' dim }
     }
     if ($null -ne $AppPlan -and @($AppPlan.Install).Count -gt 0) {
         Write-Host ''
@@ -1408,7 +1477,7 @@ function Invoke-NovaApply {
         if ($AppPlan.WingetAvailable) {
             foreach ($app in @($AppPlan.Install | Where-Object { -not $_.Installed })) {
                 Write-Nova ('устанавливаю {0}...' -f $app.Id) info
-                $run = Invoke-NovaNative $AppPlan.Winget @('install', '--id', $app.Id, '--exact', '--silent', '--accept-package-agreements', '--accept-source-agreements') -Stream
+                $run = Invoke-NovaNative $AppPlan.Winget @('install', '--id', $app.Id, '--exact', '--source', 'winget', '--silent', '--accept-package-agreements', '--accept-source-agreements') -Stream
                 if ($run.Code -eq 0) {
                     [void]$journal.Add([pscustomobject]@{ type = 'appInstalled'; name = $app.Id })
                     $result.AppsInstalled++
@@ -1933,7 +2002,11 @@ function Get-NovaHealth {
     $cbs = Get-NovaRegValue -Path 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending' -Name 'Nova'
     $wu = Get-NovaRegValue -Path 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired' -Name 'Nova'
     if ($cbs.KeyExists -or $wu.KeyExists) {
-        $checks.Add((New-NovaCheck 'Перезагрузка' 'warn' 'Windows ждёт перезагрузки после обновлений.' 'Перезагрузи компьютер и запусти Nova снова — так настройки лягут надёжнее.' 'reboot'))
+        $rebootHint = 'Перезагрузи компьютер и запусти Nova снова — так настройки лягут надёжнее.'
+        if ([bool](Get-NovaProp $toggles 'no-forced-restart' $false)) {
+            $rebootHint = 'Включено «Без перезагрузки посреди игры»: Windows ждёт, пока ты перезагрузишь сам. Сделай это сейчас — иначе обновления безопасности не начнут действовать.'
+        }
+        $checks.Add((New-NovaCheck 'Перезагрузка' 'warn' 'Windows ждёт перезагрузки после обновлений.' $rebootHint 'reboot'))
     } else {
         $checks.Add((New-NovaCheck 'Перезагрузка' 'ok' 'Не нужна.' -Id 'reboot'))
     }
@@ -2134,12 +2207,29 @@ function Read-NovaChangelog {
 }
 
 function Get-NovaRemoteChangelog {
-    $ProgressPreference = 'SilentlyContinue'
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-    $response = Invoke-WebRequest -Uri $script:NovaUpdate.ChangelogUrl -UseBasicParsing -TimeoutSec 15
-    $stream = $response.RawContentStream
-    if ($null -eq $stream -or $stream.Length -gt $script:NovaUpdate.MaxBytes) { throw 'GitHub ответил чем-то не тем.' }
-    return [Text.Encoding]::UTF8.GetString($stream.ToArray())
+    $request = [System.Net.HttpWebRequest]::Create($script:NovaUpdate.ChangelogUrl)
+    $request.Timeout = 15000
+    $request.ReadWriteTimeout = 15000
+    $request.AllowAutoRedirect = $false
+    $request.UserAgent = 'Nova'
+    $response = $request.GetResponse()
+    try {
+        if ([int]$response.StatusCode -ne 200 -or $response.ContentLength -gt $script:NovaUpdate.MaxBytes) { throw 'GitHub ответил чем-то не тем.' }
+        # Читаем не больше лимита: огромный ответ не займёт память.
+        $stream = $response.GetResponseStream()
+        $buffer = New-Object byte[] ($script:NovaUpdate.MaxBytes + 1)
+        $total = 0
+        while ($total -le $script:NovaUpdate.MaxBytes) {
+            $read = $stream.Read($buffer, $total, $buffer.Length - $total)
+            if ($read -le 0) { break }
+            $total += $read
+        }
+        if ($total -gt $script:NovaUpdate.MaxBytes) { throw 'GitHub ответил чем-то не тем.' }
+        return [Text.Encoding]::UTF8.GetString($buffer, 0, $total)
+    } finally {
+        $response.Close()
+    }
 }
 
 # Что нового с версии, которую человек видел в прошлый раз: версии новее $Seen, но не новее своей.

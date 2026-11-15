@@ -28,6 +28,21 @@ $evilProblems = @(Test-NovaDefinition -Config ([pscustomobject]@{ tweaks = [pscu
 if ($evilProblems.Count -ne 4) { throw ('Предохранитель пропустил отключение защиты: поймано {0} из 4.' -f $evilProblems.Count) }
 Write-Host 'Предохранитель не пропускает отключение защиты Windows.'
 
+# Пути в tweaks.json: «..» не выводит ни из папки assets, ни из папки данных Nova.
+$escape = @(
+    [pscustomobject]@{ id = 'esc-to'; category = 'style'; title = 'x'; actions = @([pscustomobject]@{ type = 'copyFile'; from = 'assets/oem/nova-logo.bmp'; to = '{NovaData}\..\..\Windows\evil.bmp' }) },
+    [pscustomobject]@{ id = 'esc-from'; category = 'style'; title = 'x'; actions = @([pscustomobject]@{ type = 'copyFile'; from = 'assets/../config.json'; to = '{NovaData}\x.json' }) },
+    [pscustomobject]@{ id = 'esc-wall'; category = 'style'; title = 'x'; actions = @([pscustomobject]@{ type = 'wallpaper'; file = 'assets/../config.json' }) }
+)
+$escProblems = @(Test-NovaDefinition -Config ([pscustomobject]@{ tweaks = [pscustomobject]@{} }) -Tweaks $escape | Where-Object { $_ -like '*только*' })
+if ($escProblems.Count -ne 3) { throw ('Пути с «..» в tweaks.json прошли проверку: поймано {0} из 3.' -f $escProblems.Count) }
+# Части Windows в removeApps — ошибка в config.json.
+$protectedCfg = [pscustomobject]@{ tweaks = [pscustomobject]@{}; removeApps = [pscustomobject]@{ 'Microsoft.WindowsStore' = $true; 'Microsoft.DesktopAppInstaller' = $true; 'Microsoft.VCLibs.140.00' = $true; 'Microsoft.BingNews' = $true } }
+$appProblems = @(Test-NovaDefinition -Config $protectedCfg -Tweaks @() | Where-Object { $_ -like '*часть Windows*' })
+if ($appProblems.Count -ne 3) { throw ('Удаление частей Windows в config.json не поймано: {0} из 3.' -f $appProblems.Count) }
+if (Test-NovaProtectedApp 'Microsoft.BingNews') { throw 'обычное приложение принято за часть Windows' }
+Write-Host 'Пути с «..» и удаление Store/winget/библиотек в config.json не проходят проверку.'
+
 # Версия Nova в «О системе» подставляется сама: «Nova 0.5 · твоя Windows».
 $short = ((Get-NovaVersion) -split '\.')[0..1] -join '.'
 $model = Expand-NovaText 'Nova {NovaVersion} · твоя Windows'
