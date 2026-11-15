@@ -57,6 +57,16 @@ function Invoke-NovaVoiceStartupFlow {
     if (-not $Yes) { $answer = Read-Host ('  {0}  1 — да, 0 — нет' -f $question) }
     if ($answer.Trim() -ne '1') { Write-Nova 'Ничего не меняю.' dim; return }
     if ($turnOn) {
+        # Без движка окно голоса при включении компьютера молча ждало бы ответа «скачать?» — спросим сейчас.
+        if (-not (Test-NovaVoiceEngine) -and -not $Yes) {
+            Write-Nova 'Для голоса нужен бесплатный движок распознавания Vosk и русская модель (~60 МБ).' info
+            if ((Read-Host '  Скачать сейчас? 1 — да, 0 — нет').Trim() -eq '1') {
+                Install-NovaVoiceEngine
+                Write-Nova 'Движок на месте.' ok
+            } else {
+                Write-Nova 'Хорошо. Тогда при включении компьютера окно голоса само спросит, скачать ли его.' dim
+            }
+        }
         [void](Add-NovaVoiceAutostart -Target $cmd)
         Write-Nova 'Готово: после включения компьютера Nova Голос откроется свёрнутым и сразу начнёт слушать.' ok
         Write-Nova 'В играх с голосовым чатом удобно включить pushToTalk в voice.json.' dim
