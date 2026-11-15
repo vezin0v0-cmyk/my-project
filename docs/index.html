@@ -174,6 +174,7 @@
   .release { font: 12px/1 var(--mono); color: var(--dim); margin: -10px 0 18px; }
   .release b { color: var(--accent); font-weight: 600; }
   .release a { color: var(--muted); text-underline-offset: 3px; }
+  details p a { color: var(--accent); text-underline-offset: 3px; }
 
   /* Поддержка */
   .support { display: grid; grid-template-columns: 1.2fr 1fr; gap: 14px; align-items: stretch; }
@@ -514,7 +515,15 @@
       </details>
       <details>
         <summary>Можно выбрать, что включать?</summary>
-        <p>Да. Всё в файле <code>config.json</code>: <code>true</code> — включено, <code>false</code> — выключено. Пункт 4 в меню Nova открывает этот файл. Описание каждой настройки — в <code>src/tweaks.json</code>.</p>
+        <p>Да. Всё в файле <code>config.json</code>: <code>true</code> — включено, <code>false</code> — выключено. Пункт 4 в меню Nova открывает этот файл. Описание каждой настройки — в <code>src/tweaks.json</code>. Проще — в <a href="app.html#login">кабинете</a>: отметь нужное и скачай готовый файл.</p>
+      </details>
+      <details>
+        <summary>Как сделать свои голосовые команды?</summary>
+        <p>В <a href="app.html#login">кабинете</a>, раздел «Голос»: напиши фразу, например «открой ютуб», и что сделать — открыть сайт, программу или нажать клавиши. Скачай <code>voice.json</code> и положи в папку Nova с заменой. Ненужные встроенные команды там же можно выключить.</p>
+      </details>
+      <details>
+        <summary>Как узнать, что вышла новая версия?</summary>
+        <p>В меню Nova пункт 12 — «Есть ли новая версия Nova». Nova прочитает с GitHub список изменений и покажет, что нового; сама она ничего не скачивает. Обновиться — скачать новую версию в новую папку и перенести туда свои <code>config.json</code> и <code>voice.json</code>. Всё, что изменилось, — в <a data-link="changelog" href="#">списке изменений</a>.</p>
       </details>
       <details>
         <summary>Как вернуть удалённое приложение?</summary>

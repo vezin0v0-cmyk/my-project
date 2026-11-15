@@ -105,6 +105,7 @@ function novaProblems(doc) {
       check(T + ' latin phrase refused', (await add(p, 'open youtube', 'run', 'youtube.com')).includes('русские буквы'));
       check(T + ' comma refused', (await add(p, 'открой, ютуб', 'run', 'youtube.com')).includes('русские буквы'));
       check(T + ' built-in phrase refused', (await add(p, 'пауза', 'run', 'youtube.com')).includes('уже есть'));
+      check(T + ' word unknown to the model refused', (await add(p, 'открой дискорд', 'run', 'discord://')).includes('не знает'));
       check(T + ' bad keys refused', (await add(p, 'диспетчер', 'keys', 'ctrl+???')).includes('клавиши'));
       check(T + ' quotes refused', (await add(p, 'блокнот', 'run', 'notepad.exe" -x')).includes('кавычек'));
       check(T + ' empty value refused', (await add(p, 'блокнот', 'run', '')).includes('сайт или программу'));

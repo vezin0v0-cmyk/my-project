@@ -848,6 +848,8 @@
   var VOICE_KEYS = ['ctrl', 'shift', 'alt', 'win', 'esc', 'tab', 'enter', 'space', 'printscreen', 'delete', 'home', 'end', 'up', 'down', 'left', 'right',
     'playpause', 'nexttrack', 'prevtrack', 'volumeup', 'volumedown', 'mute'];
   var VOICE_MAX = 50;
+  // Слова, которых нет в словаре голосовой модели (проверено тестом Test-Voice.ps1): фразу с ними Nova не услышит.
+  var VOICE_UNKNOWN = { 'дискорд': 'открой чат', 'спотифай': 'включи музыку', 'твич': 'открой стрим', 'валорант': 'открой игру', 'перезагрузи': 'перезагрузка компьютера', 'перезапусти': 'перезагрузка компьютера', 'скрой': 'спрячь' };
   function voiceDefaults() { return { off: {}, custom: [], speak: VOICE.speak !== false }; }
   function normPhrase(s) { return String(s || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
   function voiceTaken(phrase, customs) {
@@ -863,6 +865,8 @@
     if (!/^[а-яё]+( [а-яё]+)*$/.test(phrase)) return { error: 'Фраза — только русские буквы и пробелы, без запятых и цифр.', field: 'say' };
     if (phrase.split(' ').length > 6) return { error: 'Слишком длинная фраза: не больше 6 слов.', field: 'say' };
     if (phrase.split(' ').indexOf(wake) >= 0) return { error: '«' + wake + '» говорить не нужно — Nova ждёт его перед фразой сама.', field: 'say' };
+    var unknown = phrase.split(' ').filter(function (w) { return Object.prototype.hasOwnProperty.call(VOICE_UNKNOWN, w); })[0];
+    if (unknown) return { error: 'Слово «' + unknown + '» голосовая модель не знает — Nova его не услышит. Скажи иначе, например «' + VOICE_UNKNOWN[unknown] + '».', field: 'say' };
     if (voiceTaken(phrase, customs)) return { error: 'Такая фраза уже есть.', field: 'say' };
     if (kind === 'keys') {
       v = v.toLowerCase().replace(/\s+/g, '');
