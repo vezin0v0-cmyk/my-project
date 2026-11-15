@@ -101,24 +101,6 @@ function Test-NovaAclDrive {
     } catch { return $true }
 }
 
-# Настоящий путь открытого файла — после всех ссылок.
-function Get-NovaFinalPath {
-    param([Parameter(Mandatory)]$Handle)
-    if (-not ('NovaNative.FinalPath' -as [type])) {
-        Invoke-NovaAddType -Arguments @{ Namespace = 'NovaNative'; Name = 'FinalPath'; MemberDefinition = @'
-[DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-public static extern uint GetFinalPathNameByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle handle, System.Text.StringBuilder path, uint size, uint flags);
-'@ }
-    }
-    $sb = New-Object System.Text.StringBuilder 2048
-    $n = [NovaNative.FinalPath]::GetFinalPathNameByHandle($Handle, $sb, 2048, 0)
-    if ($n -eq 0 -or $n -ge 2048) { return '' }
-    $path = $sb.ToString()
-    if ($path.StartsWith('\\?\UNC\')) { return '\\' + $path.Substring(8) }
-    if ($path.StartsWith('\\?\')) { return $path.Substring(4) }
-    return $path
-}
-
 # Новая папка «Nova-переезд». Старую не используем: в ней могли подложить ссылки на системные файлы.
 # Откладываем её (переименовывается сама папка или ссылка, а не то, куда она ведёт) и создаём новую,
 # в которую пишут только администраторы — так её не подменят, пока Nova пишет.
@@ -138,36 +120,6 @@ function New-NovaMoveFolder {
         [void][System.IO.Directory]::CreateDirectory($dir)
     }
     return $dir
-}
-
-# Тот же ли это файл: тот же диск, та же папка «Nova-переезд», то же имя. Сравниваем по частям, потому что
-# Windows может вернуть длинное имя вместо короткого (RUNNER~1 → runneradmin) — это не подмена.
-function Test-NovaSamePlace {
-    param([string]$Real, [string]$Expected)
-    $leaf = { param($x) [System.IO.Path]::GetFileName($x) }
-    $parent = { param($x) [System.IO.Path]::GetFileName([System.IO.Path]::GetDirectoryName($x)) }
-    return ((& $leaf $Real) -ieq (& $leaf $Expected)) -and ((& $parent $Real) -ieq (& $parent $Expected)) -and ($Real.Substring(0, 2) -ieq $Expected.Substring(0, 2))
-}
-
-# Пишет только новый файл. Если путь куда-то ведёт (ссылка), созданное удаляется, а Nova останавливается.
-function Write-NovaNewFile {
-    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][byte[]]$Bytes)
-    $expected = [System.IO.Path]::GetFullPath($Path)
-    $fs = [System.IO.File]::Open($expected, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
-    $real = ''
-    try {
-        $real = Get-NovaFinalPath $fs.SafeFileHandle
-        if ($real -and -not (Test-NovaSamePlace $real $expected)) { throw 'redirected' }
-        $fs.Write($Bytes, 0, $Bytes.Length)
-    } catch {
-        $fs.Dispose()
-        if ($real -and -not (Test-NovaSamePlace $real $expected)) {
-            [System.IO.File]::Delete($real)
-            throw ('Файл {0} уводят в другое место ({1}) — Nova остановилась.' -f $expected, $real)
-        }
-        throw
-    }
-    $fs.Dispose()
 }
 
 # Сохранить: программы через winget export + копии config.json и voice.json.

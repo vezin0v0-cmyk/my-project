@@ -637,6 +637,17 @@ function Get-NovaCurrentWallpaper {
     return ''
 }
 
+# Папка для временных файлов Nova. С правами администратора — своя, куда пишут только администраторы
+# (в общий TEMP другой пользователь мог бы подложить файл), без них — обычный TEMP.
+function Get-NovaBuildDir {
+    if (-not (Test-NovaAdmin)) { return [System.IO.Path]::GetTempPath() }
+    $dir = Join-Path (Get-NovaDataDir) 'build'
+    if (-not (Test-Path -LiteralPath $dir)) { [void][System.IO.Directory]::CreateDirectory($dir) }
+    $problem = Get-NovaTreeProblem -Path $dir -Trusted (Get-NovaTrustedSid)
+    if ($problem) { throw ('Папка для сборки небезопасна: {0}' -f $problem) }
+    return $dir
+}
+
 # Add-Type в Windows PowerShell 5.1 пишет исходник и готовую DLL во временную папку и загружает DLL оттуда.
 # У Nova с правами администратора это обычно %TEMP% пользователя: туда может писать любая программа без прав
 # и подменить DLL между записью и загрузкой. Поэтому собираем через папку Nova, закрытую от всех, кроме администраторов.
@@ -644,13 +655,58 @@ function Invoke-NovaAddType {
     param([Parameter(Mandatory)][hashtable]$Arguments)
     $oldTmp = $env:TMP; $oldTemp = $env:TEMP
     if (Test-NovaAdmin) {
-        $dir = Join-Path (Get-NovaDataDir) 'build'
-        if (-not (Test-Path -LiteralPath $dir)) { [void][System.IO.Directory]::CreateDirectory($dir) }
-        $problem = Get-NovaTreeProblem -Path $dir -Trusted (Get-NovaTrustedSid)
-        if ($problem) { throw ('Папка для сборки небезопасна: {0}' -f $problem) }
+        $dir = Get-NovaBuildDir
         $env:TMP = $dir; $env:TEMP = $dir
     }
     try { Add-Type @Arguments } finally { $env:TMP = $oldTmp; $env:TEMP = $oldTemp }
+}
+
+# Настоящий путь открытого файла — после всех ссылок.
+function Get-NovaFinalPath {
+    param([Parameter(Mandatory)]$Handle)
+    if (-not ('NovaNative.FinalPath' -as [type])) {
+        Invoke-NovaAddType -Arguments @{ Namespace = 'NovaNative'; Name = 'FinalPath'; MemberDefinition = @'
+[DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+public static extern uint GetFinalPathNameByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle handle, System.Text.StringBuilder path, uint size, uint flags);
+'@ }
+    }
+    $sb = New-Object System.Text.StringBuilder 2048
+    $n = [NovaNative.FinalPath]::GetFinalPathNameByHandle($Handle, $sb, 2048, 0)
+    if ($n -eq 0 -or $n -ge 2048) { return '' }
+    $path = $sb.ToString()
+    if ($path.StartsWith('\\?\UNC\')) { return '\\' + $path.Substring(8) }
+    if ($path.StartsWith('\\?\')) { return $path.Substring(4) }
+    return $path
+}
+
+# Тот же ли это файл: тот же диск, та же папка, то же имя. Сравниваем по частям, потому что
+# Windows может вернуть длинное имя вместо короткого (RUNNER~1 → runneradmin) — это не подмена.
+function Test-NovaSamePlace {
+    param([string]$Real, [string]$Expected)
+    $leaf = { param($x) [System.IO.Path]::GetFileName($x) }
+    $parent = { param($x) [System.IO.Path]::GetFileName([System.IO.Path]::GetDirectoryName($x)) }
+    return ((& $leaf $Real) -ieq (& $leaf $Expected)) -and ((& $parent $Real) -ieq (& $parent $Expected)) -and ($Real.Substring(0, 2) -ieq $Expected.Substring(0, 2))
+}
+
+# Пишет только новый файл. Если путь куда-то ведёт (ссылка), созданное удаляется, а Nova останавливается.
+function Write-NovaNewFile {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][byte[]]$Bytes)
+    $expected = [System.IO.Path]::GetFullPath($Path)
+    $fs = [System.IO.File]::Open($expected, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+    $real = ''
+    try {
+        $real = Get-NovaFinalPath $fs.SafeFileHandle
+        if ($real -and -not (Test-NovaSamePlace $real $expected)) { throw 'redirected' }
+        $fs.Write($Bytes, 0, $Bytes.Length)
+    } catch {
+        $fs.Dispose()
+        if ($real -and -not (Test-NovaSamePlace $real $expected)) {
+            [System.IO.File]::Delete($real)
+            throw ('Файл {0} уводят в другое место ({1}) — Nova остановилась.' -f $expected, $real)
+        }
+        throw
+    }
+    $fs.Dispose()
 }
 
 # Ставит обои сразу, без перезагрузки (SystemParametersInfo).

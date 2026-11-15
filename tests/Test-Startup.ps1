@@ -111,4 +111,45 @@ try {
     Remove-Item -LiteralPath $lnk -Force -ErrorAction SilentlyContinue
 }
 if (@(Get-NovaStartupItem | Where-Object { $_.RawName -like 'NovaTest*' }).Count -ne 0) { throw 'тестовые записи не убраны' }
+# Nova Голос вместе с Windows: ярлык создаётся и убирается, подложенные ссылки не срабатывают.
+$voiceCmd = Join-Path $root 'NovaVoice.cmd'
+$vdir = Join-Path $env:TEMP ('nova-voice-auto-' + [guid]::NewGuid())
+New-Item -ItemType Directory -Path $vdir | Out-Null
+try {
+    $folder = Join-Path $vdir 'Startup'
+    New-Item -ItemType Directory -Path $folder | Out-Null
+    $made = Add-NovaVoiceAutostart -Target $voiceCmd -Folder $folder
+    if (-not (Test-NovaVoiceAutostart -Folder $folder)) { throw 'ярлык голоса не появился' }
+    $shell = New-Object -ComObject WScript.Shell
+    $link = $shell.CreateShortcut($made)
+    if ($link.TargetPath -ne $voiceCmd -or $link.WindowStyle -ne 7) { throw ('ярлык ведёт не туда: {0}, окно {1}' -f $link.TargetPath, $link.WindowStyle) }
+    [void](Add-NovaVoiceAutostart -Target $voiceCmd -Folder $folder)
+    Remove-NovaVoiceAutostart -Folder $folder
+    if (Test-NovaVoiceAutostart -Folder $folder) { throw 'ярлык голоса не убрался' }
+    Write-Host 'ok  голос вместе с Windows: ярлык на NovaVoice.cmd, окно свёрнуто, убирается'
+
+    # Папка-ссылка на месте ярлыка: Nova её не удаляет и ничего «по ней» не пишет.
+    $victim = Join-Path $vdir 'victim'
+    New-Item -ItemType Directory -Path $victim | Out-Null
+    [IO.File]::WriteAllText((Join-Path $victim 'keep.txt'), 'важное')
+    New-Item -ItemType Junction -Path (Get-NovaVoiceAutostartPath $folder) -Target $victim | Out-Null
+    $refused = 0
+    try { Remove-NovaVoiceAutostart -Folder $folder } catch { $refused++ }
+    try { [void](Add-NovaVoiceAutostart -Target $voiceCmd -Folder $folder) } catch { $refused++ }
+    if ($refused -ne 2 -or -not (Test-Path -LiteralPath (Join-Path $victim 'keep.txt'))) { throw 'ссылка на месте ярлыка сработала' }
+    [IO.Directory]::Delete((Get-NovaVoiceAutostartPath $folder))
+    Write-Host 'ok  ссылка на месте ярлыка не удаляется и не перезаписывается'
+
+    # Сама папка «Автозагрузка» подменена ссылкой на чужую: ярлык туда не попадает.
+    $moved = Join-Path $vdir 'Startup2'
+    New-Item -ItemType Junction -Path $moved -Target $victim | Out-Null
+    $stopped = $false
+    try { [void](Add-NovaVoiceAutostart -Target $voiceCmd -Folder $moved) } catch { $stopped = $true }
+    if (-not $stopped -or (Get-ChildItem -LiteralPath $victim -Filter '*.lnk')) { throw 'ярлык записан по подменённой папке' }
+    [IO.Directory]::Delete($moved)
+    Write-Host 'ok  подменённая папка «Автозагрузка» замечена, ярлык туда не записан'
+    Write-Host ('i   Nova запущена тем же пользователем, что сидит за компьютером: {0}' -f (Test-NovaDesktopUser))
+} finally {
+    Remove-Item -LiteralPath $vdir -Recurse -Force -ErrorAction SilentlyContinue
+}
 Write-Host 'ТЕСТ АВТОЗАГРУЗКИ ПРОЙДЕН'

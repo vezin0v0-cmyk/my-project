@@ -554,10 +554,38 @@ function Invoke-NovaUpdateFlow {
 function Start-NovaVoiceFlow {
     $cmd = Join-Path $projectRoot 'NovaVoice.cmd'
     if (-not (Test-Path -LiteralPath $cmd)) { throw 'Не найден NovaVoice.cmd рядом с Nova.cmd.' }
-    Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList ('"{0}"' -f $cmd)
+    $auto = Test-NovaVoiceAutostart
     Write-Host ''
-    Write-Nova 'Открываю «Nova Голос» в отдельном окне. Скажи, например: «Нова, сверни все окна».' ok
-    Write-Nova 'Команды и свои бинды — в файле voice.json. Голос работает, пока открыто его окно.' dim
+    Write-Nova 'NOVA ГОЛОС' title
+    Write-Host '  1  Открыть Nova Голос' -ForegroundColor White
+    if ($auto) {
+        Write-Host '  2  Не запускать вместе с Windows (сейчас запускается)' -ForegroundColor White
+    } else {
+        Write-Host '  2  Запускать вместе с Windows — слушать сразу после включения' -ForegroundColor White
+    }
+    Write-Host '  0  Назад' -ForegroundColor White
+    $choice = (Read-Host '  Выбери пункт').Trim()
+    if ($choice -eq '1') {
+        Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList ('"{0}"' -f $cmd)
+        Write-Host ''
+        Write-Nova 'Открываю «Nova Голос» в отдельном окне. Скажи, например: «Нова, сверни все окна» или «Нова, который час».' ok
+        Write-Nova 'Команды и свои бинды — в файле voice.json. Голос работает, пока открыто его окно.' dim
+    } elseif ($choice -eq '2' -and $auto) {
+        Remove-NovaVoiceAutostart
+        Write-Nova 'Готово: Nova Голос больше не запускается вместе с Windows.' ok
+    } elseif ($choice -eq '2') {
+        if (-not (Test-NovaDesktopUser)) {
+            Write-Nova 'Nova открыта от имени другого пользователя — ярлык попал бы в его автозагрузку, а не в твою.' warn
+            Write-Nova 'Войди в Windows под своей учётной записью администратора и включи это снова.' dim
+            return $true
+        }
+        [void](Add-NovaVoiceAutostart -Target $cmd)
+        Write-Nova 'Готово: после включения компьютера Nova Голос откроется свёрнутым и сразу начнёт слушать.' ok
+        Write-Nova 'Выключить — здесь же, в пункте 10 или в Диспетчере задач. В играх с голосовым чатом удобно включить pushToTalk в voice.json.' dim
+    } else {
+        return $false
+    }
+    return $true
 }
 
 # Освободить место: показываем, сколько займёт каждый пункт, удаляем только мусор, в конце — итог.
@@ -679,7 +707,7 @@ function Start-NovaMenu {
                 '5' { [void](Invoke-NovaMeasureFlow); Wait-NovaKey }
                 '6' { [void](Invoke-NovaCheckFlow -Interactive); Wait-NovaKey }
                 '7' { [void](Invoke-NovaFpsFlow); Wait-NovaKey }
-                '8' { Start-NovaVoiceFlow; Wait-NovaKey }
+                '8' { if (Start-NovaVoiceFlow) { Wait-NovaKey } }
                 '9' { [void](Invoke-NovaCleanFlow); Wait-NovaKey }
                 '10' { [void](Invoke-NovaStartupFlow) }
                 '11' { [void](Invoke-NovaMoveFlow); Wait-NovaKey }

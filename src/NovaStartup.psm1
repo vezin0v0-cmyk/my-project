@@ -164,4 +164,72 @@ function Set-NovaStartupItem {
     Set-NovaRegValue -Path $Item.Approved -Name $name -Kind 'Binary' -Value $bytes
 }
 
+# Nova Голос вместе с Windows: ярлык в папке «Автозагрузка» этого пользователя, окно свёрнуто.
+# Выключить можно здесь же, в пункте 10 или в Диспетчере задач — это обычная запись автозагрузки.
+$script:VoiceLink = 'Nova Голос.lnk'
+
+function Get-NovaVoiceAutostartPath {
+    param([string]$Folder = [Environment]::GetFolderPath('Startup'))
+    return (Join-Path $Folder $script:VoiceLink)
+}
+
+function Test-NovaVoiceAutostart {
+    param([string]$Folder = [Environment]::GetFolderPath('Startup'))
+    return [bool](Get-Item -LiteralPath (Get-NovaVoiceAutostartPath $Folder) -Force -ErrorAction SilentlyContinue)
+}
+
+# Убираем только обычный файл. Папку или ссылку на месте ярлыка не трогаем: с правами администратора
+# удаление «по ссылке» могло бы стереть чужое.
+function Remove-NovaVoiceAutostart {
+    param([string]$Folder = [Environment]::GetFolderPath('Startup'))
+    $path = Get-NovaVoiceAutostartPath $Folder
+    $item = Get-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    if (-not $item) { return }
+    if ($item.PSIsContainer -or ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        throw ('На месте ярлыка «{0}» лежит что-то другое — Nova его не трогает. Убери его вручную.' -f $path)
+    }
+    [System.IO.File]::Delete($path)
+}
+
+# Ярлык собираем в папке, куда пишут только администраторы, и кладём на место как новый файл:
+# подложенная на его место ссылка не сработает (Write-NovaNewFile проверяет настоящий путь).
+function Add-NovaVoiceAutostart {
+    param([Parameter(Mandatory)][string]$Target, [string]$Folder = [Environment]::GetFolderPath('Startup'))
+    if (-not (Test-Path -LiteralPath $Target -PathType Leaf)) { throw ('Не найден {0}.' -f $Target) }
+    Remove-NovaVoiceAutostart -Folder $Folder
+    $temp = Join-Path (Get-NovaBuildDir) ('voice-{0}.lnk' -f [guid]::NewGuid().ToString('N'))
+    $shell = $null
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $link = $shell.CreateShortcut($temp)
+        $link.TargetPath = $Target
+        $link.WorkingDirectory = Split-Path -Parent $Target
+        $link.WindowStyle = 7
+        $link.Description = 'Nova Голос — голосовые команды «Нова, …»'
+        $link.Save()
+        $bytes = [System.IO.File]::ReadAllBytes($temp)
+    } finally {
+        if ($shell) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($shell) }
+        if (Test-Path -LiteralPath $temp) { [System.IO.File]::Delete($temp) }
+    }
+    if (-not (Test-Path -LiteralPath $Folder)) { [void][System.IO.Directory]::CreateDirectory($Folder) }
+    $path = Get-NovaVoiceAutostartPath $Folder
+    Write-NovaNewFile -Path $path -Bytes $bytes
+    return $path
+}
+
+# Тот ли это пользователь, что сидит за компьютером. Если Nova открыли с паролем другого администратора,
+# папка «Автозагрузка» была бы его, а не твоя.
+function Test-NovaDesktopUser {
+    $me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $session = (Get-Process -Id $PID).SessionId
+    $shells = @(Get-CimInstance -ClassName Win32_Process -Filter "Name='explorer.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $session })
+    if ($shells.Count -eq 0) { return $true }
+    foreach ($process in $shells) {
+        $owner = Invoke-CimMethod -InputObject $process -MethodName GetOwnerSid -ErrorAction SilentlyContinue
+        if ($owner -and $owner.Sid -eq $me) { return $true }
+    }
+    return $false
+}
+
 Export-ModuleMember -Function *
