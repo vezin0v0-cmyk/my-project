@@ -21,8 +21,9 @@ $script:Vosk = @{
         'libwinpthread-1.dll' = '92CAEB8A4EA281C674003462A233F3B445B685B0A6F93EB11254FEDA2DDA9CDE'
     }
 }
-$script:VoiceActions = @('shutdown', 'restart', 'cancel', 'minimizeAll', 'restoreAll', 'closeWindow', 'closeAll', 'lock', 'volumeUp', 'volumeDown', 'mute', 'playPause', 'nextTrack', 'prevTrack')
+$script:VoiceActions = @('shutdown', 'restart', 'cancel', 'minimizeAll', 'restoreAll', 'closeWindow', 'closeAll', 'lock', 'volumeUp', 'volumeDown', 'mute', 'playPause', 'nextTrack', 'prevTrack', 'time', 'date', 'battery', 'hello')
 $script:Pending = $null
+$script:Speaker = $null
 
 # Папка движка — личная: другие пользователи компьютера не могут туда ничего подложить.
 # Путь нужен только латиницей (Vosk не открывает файлы по пути с русскими буквами), поэтому, если
@@ -295,6 +296,8 @@ function Read-NovaVoiceConfig {
     $delay = [int](Get-NovaProp $doc 'delaySeconds' 15)
     if ($delay -lt 5 -or $delay -gt 120) { $problems.Add('voice.json: delaySeconds — от 5 до 120 секунд') }
     $pushToTalk = [string](Get-NovaProp $doc 'pushToTalk' '')
+    $speak = Get-NovaProp $doc 'speak' $true
+    if ($speak -isnot [bool]) { $problems.Add('voice.json: speak — true (отвечать вслух) или false'); $speak = $false }
     $pushKeys = $null
     if ($pushToTalk) {
         $pushKeys = ConvertTo-NovaVoiceKeys $pushToTalk
@@ -315,7 +318,7 @@ function Read-NovaVoiceConfig {
         if ($keys -and $null -eq (ConvertTo-NovaVoiceKeys $keys)) { $problems.Add("voice.json: у «$label» непонятные клавиши '$keys'") }
         $commands.Add([pscustomobject]@{ Say = $say; Do = $do; Run = $run; Keys = $keys; Label = $say[0] })
     }
-    return [pscustomobject]@{ WakeWord = $wake; Delay = $delay; PushToTalk = $pushToTalk; PushKeys = $pushKeys; Commands = $commands.ToArray(); Problems = $problems.ToArray() }
+    return [pscustomobject]@{ WakeWord = $wake; Delay = $delay; PushToTalk = $pushToTalk; PushKeys = $pushKeys; Speak = $speak; Commands = $commands.ToArray(); Problems = $problems.ToArray() }
 }
 
 # Все фразы, которые слушает распознаватель. Фразы без «Нова» тоже в списке — чтобы распознать
@@ -392,6 +395,74 @@ function Close-NovaVoiceWindows {
     return $closed
 }
 
+# «1 час», «2 часа», «5 часов».
+function Get-NovaVoicePlural {
+    param([int]$Number, [string]$One, [string]$Few, [string]$Many)
+    $n = [math]::Abs($Number) % 100
+    $d = $n % 10
+    if ($n -ge 11 -and $n -le 14) { return $Many }
+    if ($d -eq 1) { return $One }
+    if ($d -ge 2 -and $d -le 4) { return $Few }
+    return $Many
+}
+
+function Get-NovaVoiceTimeText {
+    param([datetime]$Now = (Get-Date))
+    $text = 'Сейчас {0} {1}' -f $Now.Hour, (Get-NovaVoicePlural $Now.Hour 'час' 'часа' 'часов')
+    if ($Now.Minute -eq 0) { return ($text + ' ровно') }
+    return ('{0} {1} {2}' -f $text, $Now.Minute, (Get-NovaVoicePlural $Now.Minute 'минута' 'минуты' 'минут'))
+}
+
+function Get-NovaVoiceDateText {
+    param([datetime]$Now = (Get-Date))
+    return ('Сегодня {0}' -f $Now.ToString('dddd, d MMMM', [Globalization.CultureInfo]::GetCultureInfo('ru-RU')))
+}
+
+function Get-NovaVoiceBatteryText {
+    param($Battery)
+    if (-not $PSBoundParameters.ContainsKey('Battery')) {
+        $Battery = @(Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue) | Select-Object -First 1
+    }
+    if ($null -eq $Battery) { return 'Батареи нет — это настольный компьютер' }
+    $percent = [int]$Battery.EstimatedChargeRemaining
+    $text = 'Заряд {0} {1}' -f $percent, (Get-NovaVoicePlural $percent 'процент' 'процента' 'процентов')
+    # BatteryStatus: 2, 3, 6–9 — ноутбук подключён к сети.
+    if (@(2, 3, 6, 7, 8, 9) -contains [int]$Battery.BatteryStatus) { $text += ', от сети' }
+    return $text
+}
+
+# Ответ вслух — встроенный синтезатор речи Windows, без интернета. Только русским голосом:
+# английский прочитал бы русский текст как набор звуков. Нет русского голоса — отвечаем текстом.
+function Get-NovaVoiceSpeaker {
+    if ($null -eq $script:Speaker) {
+        $script:Speaker = $false
+        try {
+            Add-Type -AssemblyName System.Speech
+            $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
+            $voice = @($synth.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.Name -like 'ru-*' }) | Select-Object -First 1
+            if ($voice) {
+                $synth.SelectVoice($voice.VoiceInfo.Name)
+                $synth.SetOutputToDefaultAudioDevice()
+                $script:Speaker = $synth
+            } else {
+                $synth.Dispose()
+            }
+        } catch {
+            Write-Verbose ('Синтезатор речи недоступен: {0}' -f $_.Exception.Message)
+        }
+    }
+    return $script:Speaker
+}
+
+function Invoke-NovaVoiceSpeak {
+    param([string]$Text)
+    $speaker = Get-NovaVoiceSpeaker
+    if (-not $speaker) { return $false }
+    $speaker.SpeakAsyncCancelAll()
+    [void]$speaker.SpeakAsync($Text)
+    return $true
+}
+
 # Выполняет команду. С -DryRun только говорит, что сделала бы (для проверки).
 function Invoke-NovaVoiceCommand {
     param([Parameter(Mandatory)]$Command, $Config, [switch]$DryRun)
@@ -441,7 +512,16 @@ function Invoke-NovaVoiceCommand {
         'nextTrack' { if (-not $DryRun) { [NovaVoice.Win]::Tap([byte[]]@(0xB0)) }; return 'следующий трек' }
         'prevTrack' { if (-not $DryRun) { [NovaVoice.Win]::Tap([byte[]]@(0xB1)) }; return 'предыдущий трек' }
     }
-    return ''
+    # Вопросы: ответ показываем в окне и, если можно, говорим вслух.
+    $answer = switch ($Command.Do) {
+        'time' { Get-NovaVoiceTimeText }
+        'date' { Get-NovaVoiceDateText }
+        'battery' { Get-NovaVoiceBatteryText }
+        'hello' { 'Привет! Слушаю тебя' }
+        default { '' }
+    }
+    if ($answer -and -not $DryRun -and $Config.Speak) { [void](Invoke-NovaVoiceSpeak $answer) }
+    return $answer
 }
 
 function Set-NovaVoicePending {
@@ -564,6 +644,9 @@ function Start-NovaVoiceListener {
         $holding = $false
         Write-Nova ('Слушаю. Скажи, например: «{0}, сверни все окна». Закрыть — Ctrl+C или крестик окна.' -f $Config.WakeWord) ok
         if ($Config.PushToTalk) { Write-Nova ('Команды слышу, только пока зажато: {0}.' -f $Config.PushToTalk) info }
+        if ($Config.Speak -and -not (Get-NovaVoiceSpeaker)) {
+            Write-Nova 'На вопросы вроде «который час» отвечаю текстом: русский голос для ответа вслух ставится вместе с русским языком Windows.' dim
+        }
         while ($true) {
             $data = $mic.Read()
             if ($null -eq $data) {
@@ -601,6 +684,7 @@ function Start-NovaVoiceListener {
         }
     } finally {
         if ($mic) { $mic.Dispose() }
+        if ($script:Speaker) { $script:Speaker.Dispose(); $script:Speaker = $null }
         Remove-NovaVoiceRecognizer $r
     }
 }

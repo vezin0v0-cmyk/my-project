@@ -22,6 +22,10 @@ $cases = @(
     @('нова пауза', 'playPause'),
     @('нова следующий трек', 'nextTrack'),
     @('нова предыдущая песня', 'prevTrack'),
+    @('нова который час', 'time'),
+    @('нова какое сегодня число', 'date'),
+    @('нова сколько заряда', 'battery'),
+    @('нова привет', 'hello'),
     @('[unk] нова [unk]', ''),
     @('привет нова как дела', '')
 )
@@ -39,13 +43,32 @@ if (((ConvertTo-NovaVoiceKeys 'nexttrack') -join ',') -ne '176') { throw 'nexttr
 if ($null -ne (ConvertTo-NovaVoiceKeys 'ctrl+боб')) { throw 'непонятные клавиши должны отклоняться' }
 Write-Host 'ok  клавиши'
 
+# Ответы на вопросы: склонения и формат.
+$answers = @(
+    @((Get-NovaVoiceTimeText -Now ([datetime]'2026-11-15 15:00')), 'Сейчас 15 часов ровно'),
+    @((Get-NovaVoiceTimeText -Now ([datetime]'2026-11-15 21:01')), 'Сейчас 21 час 1 минута'),
+    @((Get-NovaVoiceTimeText -Now ([datetime]'2026-11-15 02:22')), 'Сейчас 2 часа 22 минуты'),
+    @((Get-NovaVoiceTimeText -Now ([datetime]'2026-11-15 11:11')), 'Сейчас 11 часов 11 минут'),
+    @((Get-NovaVoiceDateText -Now ([datetime]'2026-11-15')), 'Сегодня воскресенье, 15 ноября'),
+    @((Get-NovaVoiceBatteryText -Battery $null), 'Батареи нет — это настольный компьютер'),
+    @((Get-NovaVoiceBatteryText -Battery ([pscustomobject]@{ EstimatedChargeRemaining = 76; BatteryStatus = 1 })), 'Заряд 76 процентов'),
+    @((Get-NovaVoiceBatteryText -Battery ([pscustomobject]@{ EstimatedChargeRemaining = 21; BatteryStatus = 2 })), 'Заряд 21 процент, от сети')
+)
+foreach ($a in $answers) { if ($a[0] -ne $a[1]) { throw ('ответ «{0}», а ждали «{1}»' -f $a[0], $a[1]) } }
+$hello = $config.Commands | Where-Object { $_.Do -eq 'hello' } | Select-Object -First 1
+if ((Invoke-NovaVoiceCommand -Command $hello -Config $config -DryRun) -ne 'Привет! Слушаю тебя') { throw '«привет» отвечает не то' }
+if (-not $config.Speak) { throw 'в voice.json ответы вслух должны быть включены' }
+Write-Host 'ok  ответы: «15 часов ровно», «21 час 1 минута», «2 часа 22 минуты», дата и заряд'
+$speaker = Get-NovaVoiceSpeaker
+if ($speaker) { Write-Host ('i   русский голос для ответов: {0}' -f $speaker.Voice.Name) } else { Write-Host 'i   русского голоса в этой Windows нет — ответы будут текстом' }
+
 # Ошибки в voice.json находятся
 $bad = Join-Path $env:TEMP ('voice-bad-{0}.json' -f [guid]::NewGuid())
-$badJson = '{"wakeWord":"nova","delaySeconds":1,"commands":[{"say":["format c"],"do":"format"},{"say":["тест"],"do":"lock","run":"x.exe"},{"say":["клавиши"],"keys":"ctrl+???"}]}'
+$badJson = '{"wakeWord":"nova","delaySeconds":1,"speak":"yes","commands":[{"say":["format c"],"do":"format"},{"say":["тест"],"do":"lock","run":"x.exe"},{"say":["клавиши"],"keys":"ctrl+???"}]}'
 [System.IO.File]::WriteAllText($bad, $badJson, (New-Object System.Text.UTF8Encoding($false)))
 $badConfig = Read-NovaVoiceConfig -Path $bad
 Remove-Item -LiteralPath $bad -Force
-if ($badConfig.Problems.Count -lt 5) { $badConfig.Problems | ForEach-Object { Write-Host $_ }; throw ('нашлось только {0} ошибок в плохом voice.json' -f $badConfig.Problems.Count) }
+if ($badConfig.Problems.Count -lt 6 -or -not ($badConfig.Problems -like '*speak*')) { $badConfig.Problems | ForEach-Object { Write-Host $_ }; throw ('нашлось только {0} ошибок в плохом voice.json' -f $badConfig.Problems.Count) }
 Write-Host ('ok  в плохом voice.json найдено ошибок: {0}' -f $badConfig.Problems.Count)
 
 # pushToTalk: понятная клавиша проходит, непонятная — нет
