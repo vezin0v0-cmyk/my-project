@@ -52,6 +52,17 @@ jobs:
           ./src/Nova.ps1 -Mode Startup
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Голос вместе с Windows (окно настройки, без меню)
+        shell: powershell
+        run: |
+          $lua = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System').EnableLUA
+          if ($lua -ne 0) { Write-Host '::warning::UAC is on: voice refuses to run elevated, autostart window not checked'; exit 0 }
+          $link = Join-Path ([Environment]::GetFolderPath('Startup')) 'Nova Voice.lnk'
+          ./src/NovaVoice.ps1 -Startup -Yes
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $link)) { throw 'voice autostart was not turned on' }
+          ./src/NovaVoice.ps1 -Startup -Yes
+          if ($LASTEXITCODE -ne 0 -or (Test-Path -LiteralPath $link)) { throw 'voice autostart was not turned off' }
+
       - name: Переезд на чистую Windows (список программ с флешки не доверенный)
         shell: powershell
         run: ./tests/Test-Move.ps1
