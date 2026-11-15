@@ -2140,6 +2140,16 @@ function Get-NovaRemoteChangelog {
     return [Text.Encoding]::UTF8.GetString($stream.ToArray())
 }
 
+# Что нового с версии, которую человек видел в прошлый раз: версии новее $Seen, но не новее своей.
+# Первый запуск Nova вообще ($Seen пусто) или непонятная запись — ничего не показываем.
+function Get-NovaWhatsNew {
+    param([string]$Seen, [string]$Changelog)
+    $from = ConvertTo-NovaVersion $Seen
+    $mine = ConvertTo-NovaVersion (Get-NovaVersion)
+    if ($null -eq $from -or $null -eq $mine -or $from -ge $mine) { return @() }
+    return @(Read-NovaChangelog $Changelog | Where-Object { $null -ne $_.Version -and $_.Version -gt $from -and $_.Version -le $mine } | Sort-Object -Property Version -Descending)
+}
+
 # Есть ли версия новее. Текст можно передать самому — так это проверяется в тестах без интернета.
 function Get-NovaUpdateInfo {
     param([string]$Changelog)

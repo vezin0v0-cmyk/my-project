@@ -674,7 +674,32 @@ function Invoke-NovaUndoFlow {
     return 0
 }
 
+# Первый запуск новой версии: коротко показываем, что нового, — из CHANGELOG.md рядом, без интернета.
+# Какую версию человек уже видел, Nova помнит в своей папке данных (туда пишут только администраторы).
+function Show-NovaWhatsNew {
+    $mark = Join-Path (Get-NovaDataDir) 'version.txt'
+    $seen = ''
+    if (Test-Path -LiteralPath $mark -PathType Leaf) { $seen = ([System.IO.File]::ReadAllText($mark)).Trim() }
+    if ($seen -eq (Get-NovaVersion)) { return }
+    try { [System.IO.File]::WriteAllText($mark, (Get-NovaVersion)) } catch { Write-Verbose 'Не удалось запомнить версию.' }
+    $log = Join-Path $projectRoot 'CHANGELOG.md'
+    if (-not $seen -or -not (Test-Path -LiteralPath $log -PathType Leaf)) { return }
+    $releases = @(Get-NovaWhatsNew -Seen $seen -Changelog ([System.IO.File]::ReadAllText($log, [System.Text.Encoding]::UTF8)))
+    if ($releases.Count -eq 0) { return }
+    Show-NovaBanner -Clear
+    Write-Nova ('Nova обновилась: {0} → {1}. Что нового:' -f $seen, (Get-NovaVersion)) ok
+    foreach ($release in $releases) {
+        Write-Host ''
+        Write-Nova ('Версия {0}' -f $release.Label) title
+        $items = @($release.Items)
+        foreach ($item in @($items | Select-Object -First 8)) { Write-Nova ('  • ' + $item) info }
+        if ($items.Count -gt 8) { Write-Nova ('  …и ещё {0} — в файле CHANGELOG.md' -f ($items.Count - 8)) dim }
+    }
+    Wait-NovaKey
+}
+
 function Start-NovaMenu {
+    Show-NovaWhatsNew
     while ($true) {
         Show-NovaBanner -Clear
         Show-NovaHealthLine

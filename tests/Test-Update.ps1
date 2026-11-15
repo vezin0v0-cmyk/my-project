@@ -59,6 +59,16 @@ $older = Get-NovaUpdateInfo -Changelog "## 0.1`n- старое"
 if ($older.IsNewer) { throw 'старая версия на сервере принята за новую' }
 Write-Host 'ok  пустой, чужой или старый ответ не выдаётся за обновление'
 
+# «Что нового» при первом запуске новой версии: только версии между прошлой и своей.
+$mine = Get-NovaVersion
+$log = "## 9.9`n- будущее`n`n## $mine`n- своё`n`n## 0.2`n- старое`n`n## 0.1`n- самое старое"
+$news = @(Get-NovaWhatsNew -Seen '0.1' -Changelog $log)
+if ($news.Count -ne 2 -or $news[0].Label -ne $mine -or $news[1].Label -ne '0.2') { throw ('«что нового» с 0.1: {0}' -f (($news | ForEach-Object Label) -join ', ')) }
+foreach ($seen in @('', $mine, '99.0', 'мусор', ('0.1' + [char]27))) {
+    if (@(Get-NovaWhatsNew -Seen $seen -Changelog $log).Count -ne 0) { throw ('«что нового» показано для «{0}»' -f $seen) }
+}
+Write-Host 'ok  «что нового» после обновления: только версии между прошлой и своей; первый запуск и мусор — без новостей'
+
 # Настоящий запрос к GitHub — если сеть есть. Без сети тест не падает.
 $source = Get-NovaUpdateSource
 if ($source.ChangelogUrl -notlike 'https://raw.githubusercontent.com/*' -or $source.DownloadPage -notlike 'https://*') { throw 'адреса обновлений должны быть https' }
