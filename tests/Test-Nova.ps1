@@ -302,6 +302,22 @@ Remove-Item -LiteralPath $linkTarget -Recurse -Force
 if (-not $refused) { throw 'Nova скопировала папку со ссылкой на чужую папку.' }
 Remove-Item -LiteralPath $shared -Recurse -Force
 Write-Host 'Открытую для всех папку Nova копирует к тебе с правильными правами; папку со ссылками — не копирует.'
+
+# Папка выше папки Nova, где посторонний может удалять вложенное, — тоже проблема (подменят папку целиком).
+$outer = Join-Path $env:TEMP ('nova-outer-' + [guid]::NewGuid())
+$inner = Join-Path $outer 'Nova'
+New-Item -ItemType Directory -Path $inner -Force | Out-Null
+$aclI = Get-Acl -LiteralPath $inner
+$aclI.SetAccessRuleProtection($true, $true)
+Set-Acl -LiteralPath $inner -AclObject $aclI
+if (Get-NovaProjectProblem -Root $inner) { throw ('Обычная папка внутри TEMP почему-то считается открытой: {0}' -f (Get-NovaProjectProblem -Root $inner)) }
+$aclO = Get-Acl -LiteralPath $outer
+$aclO.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule((New-Object System.Security.Principal.SecurityIdentifier('S-1-5-11')), 'FullControl', 'None', 'None', 'Allow')))
+Set-Acl -LiteralPath $outer -AclObject $aclO
+$outerProblem = Get-NovaProjectProblem -Root $inner
+Remove-Item -LiteralPath $outer -Recurse -Force
+if ($outerProblem -notlike '*папку Nova целиком*') { throw ('Открытая папка выше папки Nova не замечена: «{0}»' -f $outerProblem) }
+Write-Host 'Папка выше папки Nova, где посторонние могут подменить её целиком, замечается.'
 Write-Host ('Папка проекта, открытая для всех, распознаётся. Эта папка в CI: {0}' -f $(if (Get-NovaProjectProblem -Root $root) { 'открыта для других' } else { 'закрыта' }))
 
 # 6. Ссылка внутри папки Nova считается проблемой.

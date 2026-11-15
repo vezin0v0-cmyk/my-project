@@ -84,7 +84,7 @@ function Assert-NovaProjectFolder {
     Write-Nova 'Папку Nova могут менять другие пользователи этого компьютера — запускать её с правами администратора небезопасно.' err
     Write-Nova ('Подробно: {0}' -f $problem) dim
     # Обычный случай — папка на D:\ или на флешке: Nova сама скопирует себя в твою папку пользователя.
-    $canCopy = ($Mode -eq 'Menu') -and ($ConfigPath -eq (Join-Path $projectRoot 'config.json')) -and ($problem -like '*менять может*')
+    $canCopy = ($Mode -eq 'Menu') -and ($ConfigPath -eq (Join-Path $projectRoot 'config.json')) -and ($problem -like '*менять может*' -or $problem -like '*может менять папки внутри*')
     try { if ([Console]::IsInputRedirected) { $canCopy = $false } } catch { $canCopy = $false }
     $target = $null
     if ($canCopy) { $target = Get-NovaSafeCopyTarget }
@@ -103,7 +103,7 @@ function Assert-NovaProjectFolder {
             exit 0
         }
     }
-    if ($problem -like '*владелец*') {
+    if ($problem -like '*владелец*' -and $problem -notlike '*папки внутри*') {
         Write-Nova 'Папку распаковал другой пользователь. Скачай и распакуй Nova под той учётной записью, из которой запускаешь.' warn
     } else {
         Write-Nova ('Перенеси папку Nova в свою папку пользователя: {0}' -f $env:USERPROFILE) warn

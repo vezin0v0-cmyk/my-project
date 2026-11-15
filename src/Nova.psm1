@@ -195,6 +195,35 @@ function Assert-NovaToolPath {
 # Папку самой Nova (где Nova.cmd и src) не должны менять другие пользователи: Nova запускается
 # с правами администратора и выполняет эти файлы. Например, C:\Nova наследует от диска C:
 # право «изменение» для всех пользователей, а флешка FAT/exFAT прав не хранит вовсе.
+# Папки выше папки Nova: если кто-то посторонний может удалять в них вложенное или менять их права,
+# он подменит папку Nova целиком (переименует и положит свою). Обычные права дисков (D:\ — «изменение»
+# для всех) этого не дают — ловим только «полный доступ», смену прав и чужого владельца.
+$script:AncestorRights = [System.Security.AccessControl.FileSystemRights]'DeleteSubdirectoriesAndFiles, ChangePermissions, TakeOwnership'
+function Get-NovaAncestorProblem {
+    param([Parameter(Mandatory)][string]$Path, [string[]]$Trusted)
+    $dir = (New-Object System.IO.DirectoryInfo($Path)).Parent
+    while ($null -ne $dir) {
+        try {
+            $acl = Get-Acl -LiteralPath $dir.FullName
+            if ($acl.Sddl -match '\(XA;') { return ('{0}: особые (условные) права доступа' -f $dir.FullName) }
+            $owner = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+            if ($Trusted -notcontains $owner) { return ('{0}: владелец {1} — может менять папки внутри' -f $dir.FullName, $acl.Owner) }
+            foreach ($rule in $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) {
+                if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) { continue }
+                # Записи «только для вложенных» к самой папке не относятся.
+                if ($rule.PropagationFlags -band [System.Security.AccessControl.PropagationFlags]::InheritOnly) { continue }
+                if ((($rule.FileSystemRights -band $script:AncestorRights) -eq 0) -and (([int64]$rule.FileSystemRights -band 0x10000000) -eq 0)) { continue }
+                if ($rule.IdentityReference.Value -eq 'S-1-3-0') { continue }
+                if ($Trusted -notcontains $rule.IdentityReference.Value) { return ('{0}: менять может {1} — в том числе папку Nova целиком' -f $dir.FullName, $rule.IdentityReference.Value) }
+            }
+        } catch {
+            return ('{0}: не удалось проверить права ({1})' -f $dir.FullName, $_.Exception.Message)
+        }
+        $dir = $dir.Parent
+    }
+    return ''
+}
+
 function Get-NovaProjectProblem {
     param([Parameter(Mandatory)][string]$Root, [string]$ConfigPath)
     $trusted = Get-NovaTrustedSid
@@ -209,7 +238,7 @@ function Get-NovaProjectProblem {
         $problem = Get-NovaPathProblem -Path $path -Trusted $trusted
         if ($problem) { return $problem }
     }
-    return ''
+    return (Get-NovaAncestorProblem -Path $Root -Trusted $trusted)
 }
 
 # Копирует папку Nova в надёжное место (свою папку пользователя), когда исходную могут менять другие.
