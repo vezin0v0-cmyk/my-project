@@ -849,7 +849,16 @@
     'playpause', 'nexttrack', 'prevtrack', 'volumeup', 'volumedown', 'mute'];
   var VOICE_MAX = 50;
   // Слова, которых нет в словаре голосовой модели (проверено тестом Test-Voice.ps1): фразу с ними Nova не услышит.
-  var VOICE_UNKNOWN = { 'дискорд': 'открой чат', 'спотифай': 'включи музыку', 'твич': 'открой стрим', 'валорант': 'открой игру', 'перезагрузи': 'перезагрузка компьютера', 'перезапусти': 'перезагрузка компьютера', 'скрой': 'спрячь' };
+  var VOICE_UNKNOWN = {
+    'дискорд': 'Скажи иначе, например «открой чат».', 'спотифай': 'Скажи иначе, например «открой музыку».',
+    'твич': 'Скажи иначе, например «открой стрим».', 'валорант': 'Скажи иначе, например «открой игру».',
+    'перезагрузи': 'Для перезагрузки уже есть встроенная команда «перезагрузка компьютера».',
+    'перезапусти': 'Для перезагрузки уже есть встроенная команда «перезагрузка компьютера».',
+    'скрой': 'Скажи «спрячь» — его модель знает.'
+  };
+  // Окончания адресов сайтов: «youtube.com» → https://youtube.com. Файлы вроде setup.msi или game.url не трогаем.
+  var WEB_ENDS = ['com', 'ru', 'net', 'org', 'io', 'tv', 'gg', 'me', 'app', 'dev', 'su', 'by', 'kz', 'ua', 'uz', 'info', 'co', 'uk', 'de', 'fm',
+    'ly', 'be', 'to', 'xyz', 'site', 'online', 'pro', 'store', 'games', 'live', 'chat', 'link', 'cc', 'eu', 'us', 'fr', 'it', 'jp'];
   function voiceDefaults() { return { off: {}, custom: [], speak: VOICE.speak !== false }; }
   function normPhrase(s) { return String(s || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
   function voiceTaken(phrase, customs) {
@@ -866,7 +875,7 @@
     if (phrase.split(' ').length > 6) return { error: 'Слишком длинная фраза: не больше 6 слов.', field: 'say' };
     if (phrase.split(' ').indexOf(wake) >= 0) return { error: '«' + wake + '» говорить не нужно — Nova ждёт его перед фразой сама.', field: 'say' };
     var unknown = phrase.split(' ').filter(function (w) { return Object.prototype.hasOwnProperty.call(VOICE_UNKNOWN, w); })[0];
-    if (unknown) return { error: 'Слово «' + unknown + '» голосовая модель не знает — Nova его не услышит. Скажи иначе, например «' + VOICE_UNKNOWN[unknown] + '».', field: 'say' };
+    if (unknown) return { error: 'Слово «' + unknown + '» голосовая модель не знает — Nova его не услышит. ' + VOICE_UNKNOWN[unknown], field: 'say' };
     if (voiceTaken(phrase, customs)) return { error: 'Такая фраза уже есть.', field: 'say' };
     if (kind === 'keys') {
       v = v.toLowerCase().replace(/\s+/g, '');
@@ -877,8 +886,9 @@
     if (kind !== 'run') return { error: 'Выбери, что сделать.', field: 'kind' };
     if (!v) return { error: 'Напиши сайт или программу.', field: 'value' };
     if (/[\u0000-\u001f\u007f"]/.test(v)) return { error: 'Без кавычек и невидимых символов.', field: 'value' };
-    // «youtube.com» без https:// Windows не откроет — дописываем сами. Файлы .exe и .cmd не трогаем.
-    if (/^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(v) && !/\.(exe|cmd|bat|lnk|msc)$/i.test(v)) v = 'https://' + v;
+    // «youtube.com» без https:// Windows не откроет — дописываем сами, но только к адресам сайтов.
+    var site = /^([a-z0-9-]+\.)+([a-z]{2,})(\/\S*)?$/i.exec(v);
+    if (site && WEB_ENDS.indexOf(site[2].toLowerCase()) >= 0) v = 'https://' + v;
     return { say: phrase, kind: 'run', value: v };
   }
   function loadVoice() {

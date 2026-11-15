@@ -114,14 +114,16 @@ function novaProblems(doc) {
       check(T + ' site added', (await add(p, '  Открой   Ютуб ', 'run', 'youtube.com')) === '');
       check(T + ' keys added', (await add(p, 'диспетчер', 'keys', 'Ctrl + Shift + Esc')) === '');
       check(T + ' program added', (await add(p, 'блокнот', 'run', 'notepad.exe')) === '');
+      check(T + ' installer added', (await add(p, 'установщик', 'run', 'setup.msi')) === '');
+      check(T + ' site path added', (await add(p, 'мой канал', 'run', 'www.youtube.com/@nova')) === '');
       check(T + ' duplicate custom refused', (await add(p, 'открой ютуб', 'run', 'vk.com')).includes('уже есть'));
       // HTML в значении показывается как текст
       check(T + ' html value added as text', (await add(p, 'проверка', 'run', '<img src=x onerror=window.__xss=1>')) === '');
       await p.waitForTimeout(200);
       check(T + ' no html injected', !(await p.evaluate(() => window.__xss)) && (await p.$$('#voice img')).length === 0);
-      check(T + ' custom rows', (await p.$$('#v-custom .vcmd')).length === 4);
+      check(T + ' custom rows', (await p.$$('#v-custom .vcmd')).length === 6);
       await p.click('#v-custom .vcmd:has-text("проверка") button');
-      check(T + ' custom deleted', (await p.$$('#v-custom .vcmd')).length === 3);
+      check(T + ' custom deleted', (await p.$$('#v-custom .vcmd')).length === 5);
 
       await p.click('label.check:has(#v-speak) i');
       const doc = JSON.parse(await shown(p));
@@ -133,8 +135,12 @@ function novaProblems(doc) {
       check(T + ' keys normalized', tm && tm.keys === 'ctrl+shift+esc', tm);
       const np = doc.commands.find(c => c.say[0] === 'блокнот');
       check(T + ' exe left as is', np && np.run === 'notepad.exe', np);
+      const msi = doc.commands.find(c => c.say[0] === 'установщик');
+      check(T + ' msi not turned into a site', msi && msi.run === 'setup.msi', msi);
+      const ch = doc.commands.find(c => c.say[0] === 'мой канал');
+      check(T + ' site with path gets https', ch && ch.run === 'https://www.youtube.com/@nova', ch);
       check(T + ' speak off', doc.speak === false);
-      check(T + ' count', doc.commands.length === DEFAULT.commands.length - 1 + 3, doc.commands.length);
+      check(T + ' count', doc.commands.length === DEFAULT.commands.length - 1 + 5, doc.commands.length);
       check(T + ' keeps wake word and info', doc.wakeWord === DEFAULT.wakeWord && doc._info === DEFAULT._info && doc.delaySeconds === DEFAULT.delaySeconds);
       check(T + ' Nova would accept it', novaProblems(doc).length === 0, novaProblems(doc));
 
@@ -151,7 +157,7 @@ function novaProblems(doc) {
       await p.reload();
       await p.waitForSelector('#dash:not([hidden])', { timeout: 5000 });
       await p.waitForTimeout(400);
-      check(T + ' kept after reload', (await p.$$('#v-custom .vcmd')).length === 3 && !(await p.$eval('#v-speak', c => c.checked)));
+      check(T + ' kept after reload', (await p.$$('#v-custom .vcmd')).length === 5 && !(await p.$eval('#v-speak', c => c.checked)));
       check(T + ' toggle kept', !(await p.$eval('#v-list input[data-vkey="выключи компьютер"]', c => c.checked)));
 
       // подделанное хранилище: неправильные команды не загружаются

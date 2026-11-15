@@ -111,46 +111,59 @@ try {
     Remove-Item -LiteralPath $lnk -Force -ErrorAction SilentlyContinue
 }
 if (@(Get-NovaStartupItem | Where-Object { $_.RawName -like 'NovaTest*' }).Count -ne 0) { throw 'тестовые записи не убраны' }
-# Nova Голос вместе с Windows: ярлык создаётся и убирается, подложенные ссылки не срабатывают.
+# Nova Голос вместе с Windows: ярлык создаётся и убирается, отметка Диспетчера задач и старая папка учитываются.
 $voiceCmd = Join-Path $root 'NovaVoice.cmd'
 $vdir = Join-Path $env:TEMP ('nova-voice-auto-' + [guid]::NewGuid())
+$vkey = 'HKCU\Software\NovaTest\StartupApproved'
 New-Item -ItemType Directory -Path $vdir | Out-Null
 try {
     $folder = Join-Path $vdir 'Startup'
     New-Item -ItemType Directory -Path $folder | Out-Null
-    $made = Add-NovaVoiceAutostart -Target $voiceCmd -Folder $folder
-    if (-not (Test-NovaVoiceAutostart -Folder $folder)) { throw 'ярлык голоса не появился' }
+    $state = { (Get-NovaVoiceAutostart -Target $voiceCmd -Folder $folder -ApprovedKey $vkey).State }
+    if ((& $state) -ne 'none') { throw 'в пустой папке ярлык голоса найден' }
+    $made = Add-NovaVoiceAutostart -Target $voiceCmd -Folder $folder -ApprovedKey $vkey
     $shell = New-Object -ComObject WScript.Shell
     $link = $shell.CreateShortcut($made)
     if ($link.TargetPath -ne $voiceCmd -or $link.WindowStyle -ne 7) { throw ('ярлык {0} ведёт не туда: «{1}», окно {2}' -f $made, $link.TargetPath, $link.WindowStyle) }
-    if ((Get-NovaShortcutTarget $made) -ne $voiceCmd) { throw 'список автозагрузки не видит, куда ведёт ярлык голоса' }
-    [void](Add-NovaVoiceAutostart -Target $voiceCmd -Folder $folder)
-    Remove-NovaVoiceAutostart -Folder $folder
-    if (Test-NovaVoiceAutostart -Folder $folder) { throw 'ярлык голоса не убрался' }
-    Write-Host 'ok  голос вместе с Windows: ярлык на NovaVoice.cmd, окно свёрнуто, убирается'
+    if ((& $state) -ne 'on') { throw ('после включения состояние {0}' -f (& $state)) }
+    Write-Host 'ok  голос вместе с Windows: ярлык на NovaVoice.cmd, окно свёрнуто'
 
-    # Папка-ссылка на месте ярлыка: Nova её не удаляет и ничего «по ней» не пишет.
+    # Выключили в Диспетчере задач: Nova это видит, а повторное включение снимает отметку.
+    Set-NovaRegValue -Path $vkey -Name 'Nova Voice.lnk' -Kind 'Binary' -Value ([byte[]](@(3) + @(0) * 11))
+    if ((& $state) -ne 'disabled') { throw 'выключение в Диспетчере задач не замечено' }
+    [void](Add-NovaVoiceAutostart -Target $voiceCmd -Folder $folder -ApprovedKey $vkey)
+    if ((& $state) -ne 'on' -or (Get-NovaRegValue -Path $vkey -Name 'Nova Voice.lnk').Exists) { throw 'старая отметка «выключено» пережила новое включение' }
+    Write-Host 'ok  выключенный в Диспетчере задач голос виден как выключенный и включается заново'
+
+    # После обновления Nova в другую папку ярлык ведёт на старую копию — это видно.
+    [void](Add-NovaVoiceAutostart -Target (Join-Path $env:SystemRoot 'System32\notepad.exe') -Folder $folder -ApprovedKey $vkey)
+    $other = Get-NovaVoiceAutostart -Target $voiceCmd -Folder $folder -ApprovedKey $vkey
+    if ($other.State -ne 'other' -or $other.Target -notlike '*notepad.exe') { throw ('ярлык на другую папку не замечен: {0}' -f $other.State) }
+    Write-Host 'ok  ярлык на старую папку Nova замечен'
+
+    Set-NovaRegValue -Path $vkey -Name 'Nova Voice.lnk' -Kind 'Binary' -Value ([byte[]](@(3) + @(0) * 11))
+    Remove-NovaVoiceAutostart -Folder $folder -ApprovedKey $vkey
+    if ((& $state) -ne 'none' -or (Get-NovaRegValue -Path $vkey -Name 'Nova Voice.lnk').Exists) { throw 'ярлык или отметка не убраны' }
+    Write-Host 'ok  выключение убирает и ярлык, и отметку Диспетчера задач'
+
+    # Папка на месте ярлыка не удаляется.
     $victim = Join-Path $vdir 'victim'
     New-Item -ItemType Directory -Path $victim | Out-Null
     [IO.File]::WriteAllText((Join-Path $victim 'keep.txt'), 'важное')
     New-Item -ItemType Junction -Path (Get-NovaVoiceAutostartPath $folder) -Target $victim | Out-Null
-    $refused = 0
-    try { Remove-NovaVoiceAutostart -Folder $folder } catch { $refused++ }
-    try { [void](Add-NovaVoiceAutostart -Target $voiceCmd -Folder $folder) } catch { $refused++ }
-    if ($refused -ne 2 -or -not (Test-Path -LiteralPath (Join-Path $victim 'keep.txt'))) { throw 'ссылка на месте ярлыка сработала' }
+    $refused = $false
+    try { Remove-NovaVoiceAutostart -Folder $folder -ApprovedKey $vkey } catch { $refused = $true }
+    if (-not $refused -or -not (Test-Path -LiteralPath (Join-Path $victim 'keep.txt'))) { throw 'папка на месте ярлыка удалена' }
     [IO.Directory]::Delete((Get-NovaVoiceAutostartPath $folder))
-    Write-Host 'ok  ссылка на месте ярлыка не удаляется и не перезаписывается'
+    Write-Host 'ok  папку на месте ярлыка Nova не трогает'
 
-    # Сама папка «Автозагрузка» подменена ссылкой на чужую: ярлык туда не попадает.
-    $moved = Join-Path $vdir 'Startup2'
-    New-Item -ItemType Junction -Path $moved -Target $victim | Out-Null
-    $stopped = $false
-    try { [void](Add-NovaVoiceAutostart -Target $voiceCmd -Folder $moved) } catch { $stopped = $true }
-    if (-not $stopped -or (Get-ChildItem -LiteralPath $victim -Filter '*.lnk')) { throw 'ярлык записан по подменённой папке' }
-    [IO.Directory]::Delete($moved)
-    Write-Host 'ok  подменённая папка «Автозагрузка» замечена, ярлык туда не записан'
+    # Окно настройки открывается без прав администратора: файл на месте, ASCII.
+    $setup = Join-Path $root 'src\NovaVoiceStartup.cmd'
+    if (-not (Test-Path -LiteralPath $setup)) { throw 'нет src\NovaVoiceStartup.cmd' }
+    if (@([IO.File]::ReadAllBytes($setup) | Where-Object { $_ -gt 127 }).Count -gt 0) { throw 'NovaVoiceStartup.cmd должен быть в ASCII' }
     Write-Host ('i   Nova запущена тем же пользователем, что сидит за компьютером: {0}' -f (Test-NovaDesktopUser))
 } finally {
     Remove-Item -LiteralPath $vdir -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-NovaRegValue -Path $vkey -Name 'Nova Voice.lnk'
 }
 Write-Host 'ТЕСТ АВТОЗАГРУЗКИ ПРОЙДЕН'

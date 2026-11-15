@@ -165,57 +165,68 @@ function Set-NovaStartupItem {
 }
 
 # Nova Голос вместе с Windows: ярлык в папке «Автозагрузка» этого пользователя, окно свёрнуто.
-# Выключить можно здесь же, в пункте 10 или в Диспетчере задач — это обычная запись автозагрузки.
+# Ярлык создаёт и убирает само окно Nova Голос — без прав администратора (src\NovaVoiceStartup.cmd):
+# папка «Автозагрузка» принадлежит пользователю, и Nova с правами администратора в неё не пишет.
+# Выключить можно там же, в пункте 10 или в Диспетчере задач — это обычная запись автозагрузки.
 # Имя латиницей: ярлыки с русским именем Windows Script Host на английской Windows не читает.
 $script:VoiceLink = 'Nova Voice.lnk'
+$script:VoiceApproved = 'HKCU\{0}\StartupFolder' -f $script:Approved
 
 function Get-NovaVoiceAutostartPath {
     param([string]$Folder = [Environment]::GetFolderPath('Startup'))
     return (Join-Path $Folder $script:VoiceLink)
 }
 
-function Test-NovaVoiceAutostart {
-    param([string]$Folder = [Environment]::GetFolderPath('Startup'))
-    return [bool](Get-Item -LiteralPath (Get-NovaVoiceAutostartPath $Folder) -Force -ErrorAction SilentlyContinue)
+# none — ярлыка нет; on — запускается; disabled — выключен в Диспетчере задач или в пункте 10;
+# other — ярлык ведёт на другую копию Nova (например, старую папку после обновления).
+function Get-NovaVoiceAutostart {
+    param(
+        [Parameter(Mandatory)][string]$Target,
+        [string]$Folder = [Environment]::GetFolderPath('Startup'),
+        [string]$ApprovedKey = $script:VoiceApproved
+    )
+    $path = Get-NovaVoiceAutostartPath $Folder
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return [pscustomobject]@{ State = 'none'; Target = '' } }
+    $real = Get-NovaShortcutTarget $path
+    if ($real -ine $Target) { return [pscustomobject]@{ State = 'other'; Target = (Get-NovaCleanText $real 200) } }
+    $approved = Get-NovaRegValue -Path $ApprovedKey -Name $script:VoiceLink
+    if ($approved.Exists -and -not (Test-NovaStartupEnabled $approved.Value)) { return [pscustomobject]@{ State = 'disabled'; Target = $real } }
+    return [pscustomobject]@{ State = 'on'; Target = $real }
 }
 
-# Убираем только обычный файл. Папку или ссылку на месте ярлыка не трогаем: с правами администратора
-# удаление «по ссылке» могло бы стереть чужое.
 function Remove-NovaVoiceAutostart {
-    param([string]$Folder = [Environment]::GetFolderPath('Startup'))
+    param([string]$Folder = [Environment]::GetFolderPath('Startup'), [string]$ApprovedKey = $script:VoiceApproved)
     $path = Get-NovaVoiceAutostartPath $Folder
     $item = Get-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
-    if (-not $item) { return }
-    if ($item.PSIsContainer -or ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
-        throw ('На месте ярлыка «{0}» лежит что-то другое — Nova его не трогает. Убери его вручную.' -f $path)
+    if ($item) {
+        if ($item.PSIsContainer) { throw ('На месте ярлыка «{0}» лежит папка — убери её вручную.' -f $path) }
+        Remove-Item -LiteralPath $path -Force
     }
-    [System.IO.File]::Delete($path)
+    # Отметка «выключено» от Диспетчера задач иначе пережила бы новый ярлык с тем же именем.
+    Remove-NovaRegValue -Path $ApprovedKey -Name $script:VoiceLink
 }
 
-# Ярлык собираем в папке, куда пишут только администраторы, и кладём на место как новый файл:
-# подложенная на его место ссылка не сработает (Write-NovaNewFile проверяет настоящий путь).
 function Add-NovaVoiceAutostart {
-    param([Parameter(Mandatory)][string]$Target, [string]$Folder = [Environment]::GetFolderPath('Startup'))
+    param(
+        [Parameter(Mandatory)][string]$Target,
+        [string]$Folder = [Environment]::GetFolderPath('Startup'),
+        [string]$ApprovedKey = $script:VoiceApproved
+    )
     if (-not (Test-Path -LiteralPath $Target -PathType Leaf)) { throw ('Не найден {0}.' -f $Target) }
-    Remove-NovaVoiceAutostart -Folder $Folder
-    $temp = Join-Path (Get-NovaBuildDir) ('voice-{0}.lnk' -f [guid]::NewGuid().ToString('N'))
-    $shell = $null
+    Remove-NovaVoiceAutostart -Folder $Folder -ApprovedKey $ApprovedKey
+    if (-not (Test-Path -LiteralPath $Folder)) { [void][System.IO.Directory]::CreateDirectory($Folder) }
+    $path = Get-NovaVoiceAutostartPath $Folder
+    $shell = New-Object -ComObject WScript.Shell
     try {
-        $shell = New-Object -ComObject WScript.Shell
-        $link = $shell.CreateShortcut($temp)
+        $link = $shell.CreateShortcut($path)
         $link.TargetPath = $Target
         $link.WorkingDirectory = Split-Path -Parent $Target
         $link.WindowStyle = 7
         $link.Description = 'Nova Голос — голосовые команды «Нова, …»'
         $link.Save()
-        $bytes = [System.IO.File]::ReadAllBytes($temp)
     } finally {
-        if ($shell) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($shell) }
-        if (Test-Path -LiteralPath $temp) { [System.IO.File]::Delete($temp) }
+        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($shell)
     }
-    if (-not (Test-Path -LiteralPath $Folder)) { [void][System.IO.Directory]::CreateDirectory($Folder) }
-    $path = Get-NovaVoiceAutostartPath $Folder
-    Write-NovaNewFile -Path $path -Bytes $bytes
     return $path
 }
 

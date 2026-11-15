@@ -2096,7 +2096,7 @@ function Get-NovaUpdateSource { return [pscustomobject]$script:NovaUpdate }
 # «0.5» и «0.5.0» — одна и та же версия. Всё, что не похоже на номер версии, — $null.
 function ConvertTo-NovaVersion {
     param([string]$Text)
-    if ($Text -notmatch '^\d{1,4}\.\d{1,4}(\.\d{1,4})?\z') { return $null }
+    if ($Text -notmatch '^[0-9]{1,4}\.[0-9]{1,4}(\.[0-9]{1,4})?\z') { return $null }
     $parts = @($Text -split '\.')
     while ($parts.Count -lt 3) { $parts += '0' }
     return [version]($parts -join '.')
@@ -2117,7 +2117,7 @@ function Read-NovaChangelog {
     $releases = New-Object System.Collections.Generic.List[object]
     $current = $null
     foreach ($line in ([string]$Text -split '\r?\n')) {
-        if ($line -match '^## +(\d{1,4}\.\d{1,4}(?:\.\d{1,4})?)(?:\s|\z)') {
+        if ($line -match '^## +([0-9]{1,4}\.[0-9]{1,4}(?:\.[0-9]{1,4})?)(?:\s|\z)') {
             $current = [pscustomobject]@{ Version = (ConvertTo-NovaVersion $Matches[1]); Label = $Matches[1]; Items = New-Object System.Collections.Generic.List[string] }
             $releases.Add($current)
             continue

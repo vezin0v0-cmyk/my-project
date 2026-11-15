@@ -7,11 +7,13 @@
 .EXAMPLE
     .\NovaVoice.ps1                          # слушать микрофон
     .\NovaVoice.ps1 -WavFile test.wav        # распознать запись (проверка без микрофона)
+    .\NovaVoice.ps1 -Startup                 # запускать ли Nova Голос вместе с Windows
 #>
 [CmdletBinding()]
 param(
     [string]$ConfigPath,
     [string]$WavFile,
+    [switch]$Startup,
     [switch]$Yes
 )
 
@@ -24,6 +26,45 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 if (-not $ConfigPath) { $ConfigPath = Join-Path $projectRoot 'voice.json' }
 Import-Module (Join-Path $PSScriptRoot 'Nova.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaVoice.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'NovaStartup.psm1') -Force -DisableNameChecking
+
+# Запускать ли Nova Голос вместе с Windows. Работает без прав администратора: ярлык — в своей «Автозагрузке».
+function Invoke-NovaVoiceStartupFlow {
+    $cmd = Join-Path $projectRoot 'NovaVoice.cmd'
+    $state = Get-NovaVoiceAutostart -Target $cmd
+    Write-Host ''
+    $turnOn = $true
+    switch ($state.State) {
+        'on' {
+            Write-Nova 'Сейчас Nova Голос запускается вместе с Windows.' ok
+            $question = 'Выключить?'
+            $turnOn = $false
+        }
+        'disabled' {
+            Write-Nova 'Ярлык есть, но запуск выключен — в Диспетчере задач или в пункте 10 Nova.' warn
+            $question = 'Включить снова?'
+        }
+        'other' {
+            Write-Nova ('Ярлык ведёт на другую папку Nova: {0}' -f $state.Target) warn
+            $question = 'Запускать голос из этой папки?'
+        }
+        default {
+            Write-Nova 'Сейчас Nova Голос сам не запускается.' info
+            $question = 'Запускать вместе с Windows, чтобы Нова слушала сразу после включения?'
+        }
+    }
+    $answer = '1'
+    if (-not $Yes) { $answer = Read-Host ('  {0}  1 — да, 0 — нет' -f $question) }
+    if ($answer.Trim() -ne '1') { Write-Nova 'Ничего не меняю.' dim; return }
+    if ($turnOn) {
+        [void](Add-NovaVoiceAutostart -Target $cmd)
+        Write-Nova 'Готово: после включения компьютера Nova Голос откроется свёрнутым и сразу начнёт слушать.' ok
+        Write-Nova 'В играх с голосовым чатом удобно включить pushToTalk в voice.json.' dim
+    } else {
+        Remove-NovaVoiceAutostart
+        Write-Nova 'Готово: Nova Голос больше не запускается вместе с Windows.' ok
+    }
+}
 
 try { $Host.UI.RawUI.WindowTitle = 'Nova Голос' } catch { Write-Verbose 'Заголовок окна не меняется.' }
 Write-Host ''
@@ -49,6 +90,10 @@ try {
             throw 'Nova Голос запущен с правами администратора.'
         }
         Write-Nova 'Контроль учётных записей выключен — голос работает с правами администратора, как и все программы на этом ПК.' warn
+    }
+    if ($Startup) {
+        Invoke-NovaVoiceStartupFlow
+        exit 0
     }
     if (-not (Test-NovaVoiceEngine)) {
         Write-Nova 'Нужно один раз скачать бесплатный движок распознавания Vosk и русскую модель (~60 МБ).' info

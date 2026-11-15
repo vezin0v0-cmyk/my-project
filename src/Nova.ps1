@@ -540,6 +540,7 @@ function Invoke-NovaUpdateFlow {
     Write-Host ''
     Write-Nova 'Как обновиться: скачай новую версию с сайта, распакуй в новую папку и перенеси туда свои config.json и voice.json.' info
     Write-Nova ('Отмена прежних запусков не пропадёт: она хранится в {0}, а не в папке Nova.' -f (Get-NovaDataDir).TrimEnd('\')) dim
+    Write-Nova 'Если Nova Голос запускался вместе с Windows — в новой папке включи это снова: пункт 8 → 2.' dim
     if ($Mode -eq 'Menu' -and (Confirm-NovaAction 'Открыть сайт Nova, чтобы скачать?')) {
         # Через Проводник — браузер откроется без прав администратора.
         Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList $source.DownloadPage
@@ -553,35 +554,35 @@ function Invoke-NovaUpdateFlow {
 # без прав администратора, как обычная программа.
 function Start-NovaVoiceFlow {
     $cmd = Join-Path $projectRoot 'NovaVoice.cmd'
-    if (-not (Test-Path -LiteralPath $cmd)) { throw 'Не найден NovaVoice.cmd рядом с Nova.cmd.' }
-    $auto = Test-NovaVoiceAutostart
+    $setup = Join-Path $PSScriptRoot 'NovaVoiceStartup.cmd'
+    if (-not (Test-Path -LiteralPath $cmd) -or -not (Test-Path -LiteralPath $setup)) { throw 'Не найдены файлы Nova Голос — скачай Nova заново.' }
+    # Состояние показываем, только если Nova открыта тем же пользователем, что сидит за компьютером.
+    $status = ''
+    if (Test-NovaDesktopUser) {
+        switch ((Get-NovaVoiceAutostart -Target $cmd).State) {
+            'on' { $status = ' (сейчас включено)' }
+            'disabled' { $status = ' (сейчас выключено в Диспетчере задач)' }
+            'other' { $status = ' (сейчас ведёт на другую папку Nova)' }
+            default { $status = ' (сейчас выключено)' }
+        }
+    }
     Write-Host ''
     Write-Nova 'NOVA ГОЛОС' title
     Write-Host '  1  Открыть Nova Голос' -ForegroundColor White
-    if ($auto) {
-        Write-Host '  2  Не запускать вместе с Windows (сейчас запускается)' -ForegroundColor White
-    } else {
-        Write-Host '  2  Запускать вместе с Windows — слушать сразу после включения' -ForegroundColor White
-    }
+    Write-Host ('  2  Запускать вместе с Windows{0}' -f $status) -ForegroundColor White
     Write-Host '  0  Назад' -ForegroundColor White
     $choice = (Read-Host '  Выбери пункт').Trim()
+    # Оба окна открываются через Проводник — без прав администратора, от имени того, кто сидит за компьютером.
+    $explorer = Join-Path $env:SystemRoot 'explorer.exe'
     if ($choice -eq '1') {
-        Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList ('"{0}"' -f $cmd)
+        Start-Process -FilePath $explorer -ArgumentList ('"{0}"' -f $cmd)
         Write-Host ''
         Write-Nova 'Открываю «Nova Голос» в отдельном окне. Скажи, например: «Нова, сверни все окна» или «Нова, который час».' ok
         Write-Nova 'Команды и свои бинды — в файле voice.json. Голос работает, пока открыто его окно.' dim
-    } elseif ($choice -eq '2' -and $auto) {
-        Remove-NovaVoiceAutostart
-        Write-Nova 'Готово: Nova Голос больше не запускается вместе с Windows.' ok
     } elseif ($choice -eq '2') {
-        if (-not (Test-NovaDesktopUser)) {
-            Write-Nova 'Nova открыта от имени другого пользователя — ярлык попал бы в его автозагрузку, а не в твою.' warn
-            Write-Nova 'Войди в Windows под своей учётной записью администратора и включи это снова.' dim
-            return $true
-        }
-        [void](Add-NovaVoiceAutostart -Target $cmd)
-        Write-Nova 'Готово: после включения компьютера Nova Голос откроется свёрнутым и сразу начнёт слушать.' ok
-        Write-Nova 'Выключить — здесь же, в пункте 10 или в Диспетчере задач. В играх с голосовым чатом удобно включить pushToTalk в voice.json.' dim
+        Start-Process -FilePath $explorer -ArgumentList ('"{0}"' -f $setup)
+        Write-Host ''
+        Write-Nova 'Открываю окно настройки — ответь там 1 или 0. Выключить потом можно там же, в пункте 10 или в Диспетчере задач.' ok
     } else {
         return $false
     }
