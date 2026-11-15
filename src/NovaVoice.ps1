@@ -114,6 +114,13 @@ try {
         $alwaysAdmin = ($lua.Exists -and [int]$lua.Value -eq 0) -or ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -like '*-500')
         if (-not $alwaysAdmin) {
             Write-Nova 'Голосовые команды не нужно запускать от имени администратора — так безопаснее.' warn
+            # Перезапускаем обычным окном через Проводник — от имени того, кто сидит за компьютером.
+            $relaunch = Join-Path (Split-Path -Parent $PSScriptRoot) 'NovaVoice.cmd'
+            if ($Startup) { $relaunch = Join-Path $PSScriptRoot 'NovaVoiceStartup.cmd' }
+            if ((Test-Path -LiteralPath $relaunch) -and (Start-NovaAsUser $relaunch)) {
+                Write-Nova 'Открываю Nova Голос обычным окном — это окно можно закрыть.' ok
+                exit 0
+            }
             Write-Nova 'Открой NovaVoice.cmd обычным двойным кликом (или пункт 8 в меню Nova).' info
             throw 'Nova Голос запущен с правами администратора.'
         }

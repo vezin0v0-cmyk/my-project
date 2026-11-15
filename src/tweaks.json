@@ -5,9 +5,9 @@
       "id": "telemetry-off",
       "category": "privacy",
       "title": "Минимум телеметрии",
-      "description": "Ставит минимальный уровень сбора данных и отключает службу телеметрии DiagTrack. На Home и Pro минимум — «обязательные данные», полный ноль бывает только на Enterprise.",
+      "description": "Ставит минимальный уровень сбора данных («только обязательные») и отключает службу телеметрии DiagTrack. Это тот же переключатель, что в «Параметры → Конфиденциальность → Диагностика и отзывы», — он остаётся твоим. На Home и Pro минимум — «обязательные данные», полный ноль бывает только на Enterprise.",
       "actions": [
-        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "name": "AllowTelemetry", "kind": "DWord", "value": 0 },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\DataCollection", "name": "AllowTelemetry", "kind": "DWord", "value": 1 },
         { "type": "service", "name": "DiagTrack", "startup": "Disabled" }
       ]
     },
@@ -33,7 +33,7 @@
       "id": "activity-history-off",
       "category": "privacy",
       "title": "Не собирать историю действий",
-      "description": "Windows перестаёт записывать, какие программы и файлы ты открывал, и отправлять это в облако.",
+      "description": "Windows перестаёт записывать, какие программы и файлы ты открывал, и отправлять это в облако. Переключатель «Журнал действий» в Параметрах станет серым («управляет организация»), пока не нажмёшь «Отменить» в Nova. В Windows 11 журнал почти ни на что не влияет, поэтому пункт по желанию.",
       "actions": [
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System", "name": "EnableActivityFeed", "kind": "DWord", "value": 0 },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System", "name": "PublishUserActivities", "kind": "DWord", "value": 0 },
@@ -66,7 +66,7 @@
       "id": "web-search-off",
       "category": "privacy",
       "title": "Без Bing в поиске «Пуска»",
-      "description": "Поиск в «Пуске» ищет только на компьютере и не отправляет запросы в интернет.",
+      "description": "Поиск в «Пуске» ищет только на компьютере и не отправляет запросы в интернет. Заодно в Проводнике перестанут всплывать подсказки прошлых поисков.",
       "restartExplorer": true,
       "actions": [
         { "type": "registry", "path": "HKCU\\Software\\Policies\\Microsoft\\Windows\\Explorer", "name": "DisableSearchBoxSuggestions", "kind": "DWord", "value": 1 },
@@ -77,11 +77,9 @@
       "id": "copilot-off",
       "category": "privacy",
       "title": "Отключить Copilot",
-      "description": "Выключает встроенный Copilot и убирает его кнопку. В новых версиях Copilot — отдельное приложение: его удаляет пункт Microsoft.Copilot в списке removeApps.",
+      "description": "Убирает кнопку Copilot с панели задач. В новых версиях Windows Copilot — обычное приложение: его удаляет пункт Microsoft.Copilot в списке removeApps, а поставить обратно можно из Microsoft Store.",
       "restartExplorer": true,
       "actions": [
-        { "type": "registry", "path": "HKCU\\Software\\Policies\\Microsoft\\Windows\\WindowsCopilot", "name": "TurnOffWindowsCopilot", "kind": "DWord", "value": 1 },
-        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsCopilot", "name": "TurnOffWindowsCopilot", "kind": "DWord", "value": 1 },
         { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "name": "ShowCopilotButton", "kind": "DWord", "value": 0 }
       ]
     },
@@ -89,7 +87,7 @@
       "id": "recall-off",
       "category": "privacy",
       "title": "Отключить Recall",
-      "description": "Recall постоянно делает снимки экрана для поиска с ИИ. Настройка запрещает эту функцию.",
+      "description": "Recall и так выключен, пока ты сам не включишь его в «Параметры → Конфиденциальность → Recall и снимки». Этот пункт запрещает его совсем: Windows удалит Recall вместе с уже сохранёнными снимками экрана, а переключатель станет серым («управляет организация»), пока не нажмёшь «Отменить» в Nova. Включай, если хочешь гарантию, что снимки не появятся.",
       "minBuild": 26100,
       "actions": [
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsAI", "name": "DisableAIDataAnalysis", "kind": "DWord", "value": 1 },
@@ -109,16 +107,16 @@
       "id": "update-sharing-off",
       "category": "privacy",
       "title": "Не раздавать обновления другим ПК",
-      "description": "Обновления качаются только с серверов Microsoft, а твой интернет не тратится на раздачу чужим компьютерам.",
+      "description": "Обновления качаются только с серверов Microsoft, а твой компьютер не раздаёт их другим. Это тот же переключатель, что в «Параметры → Центр обновления Windows → Дополнительные параметры → Оптимизация доставки», — он остаётся твоим.",
       "actions": [
-        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeliveryOptimization", "name": "DODownloadMode", "kind": "DWord", "value": 0 }
+        { "type": "registry", "path": "HKU\\S-1-5-20\\Software\\Microsoft\\Windows\\CurrentVersion\\DeliveryOptimization\\Settings", "name": "DownloadMode", "kind": "DWord", "value": 0 }
       ]
     },
     {
       "id": "telemetry-tasks-off",
       "category": "privacy",
       "title": "Отключить скрытые задачи сбора данных",
-      "description": "Windows по расписанию запускает задачи, которые собирают данные о программах, дисках и использовании. Отключаем их и службу отправки (dmwappushservice).",
+      "description": "Windows по расписанию запускает задачи, которые собирают данные о программах, дисках и использовании. Отключаем их и службу dmwappushservice. Если компьютер подключён к управлению на работе или в учёбе (Intune, «Доступ к учётной записи места работы») — не включай: этой службе там нужна.",
       "actions": [
         { "type": "scheduledTask", "path": "\\Microsoft\\Windows\\Application Experience\\", "name": "Microsoft Compatibility Appraiser" },
         { "type": "scheduledTask", "path": "\\Microsoft\\Windows\\Application Experience\\", "name": "ProgramDataUpdater" },
@@ -145,7 +143,7 @@
       "id": "sync-off",
       "category": "privacy",
       "title": "Не синхронизировать настройки с Microsoft",
-      "description": "Тема, пароли браузера Edge, язык и другие настройки не отправляются в облако Microsoft и не переносятся на другие устройства. Буфер обмена тоже не уходит в облако.",
+      "description": "Тема, пароли браузера Edge, язык и другие настройки не отправляются в облако Microsoft и не переносятся на другие устройства. Буфер обмена тоже не уходит в облако. Переключатели «Запомнить мои настройки» и синхронизация буфера станут серыми («управляет организация»), пока не нажмёшь «Отменить» в Nova. Пункт по желанию: если пользуешься несколькими компьютерами, синхронизация удобна.",
       "actions": [
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync", "name": "DisableSettingSync", "kind": "DWord", "value": 2 },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync", "name": "DisableSettingSyncUserOverride", "kind": "DWord", "value": 1 },
@@ -271,7 +269,7 @@
       "id": "widgets-off",
       "category": "interface",
       "title": "Без виджетов и новостей",
-      "description": "Убирает виджеты (Windows 11) и «Новости и интересы» (Windows 10) с панели задач.",
+      "description": "Убирает виджеты (Windows 11) и «Новости и интересы» (Windows 10) с панели задач. По-другому Windows их надёжно выключить не даёт, поэтому переключатель «Мини-приложения» станет серым («управляет организация»). Захочешь виджеты обратно — «Отменить» в Nova или выключи этот пункт.",
       "restartExplorer": true,
       "actions": [
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Dsh", "name": "AllowNewsAndInterests", "kind": "DWord", "value": 0 },
@@ -302,13 +300,11 @@
       "id": "context-menu-cleanup",
       "category": "interface",
       "title": "Убрать лишнее из правой кнопки",
-      "description": "Убирает редко нужные пункты: «Поделиться», «Предоставить доступ», «Добавить в библиотеку», «Восстановить прежнюю версию» и «Спросить Copilot».",
+      "description": "Убирает редко нужные пункты: «Поделиться», «Добавить в библиотеку» и «Спросить Copilot». «Предоставить доступ» и «Восстановить прежнюю версию» Nova оставляет: без них не открыть общий доступ к папке и не вернуть старую версию файла.",
       "restartExplorer": true,
       "actions": [
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Blocked", "name": "{e2bf9676-5f8f-435c-97eb-11607a5bedf7}", "kind": "String", "value": "" },
-        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Blocked", "name": "{f81e9010-6ea4-11ce-a7ff-00aa003ca9f6}", "kind": "String", "value": "" },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Blocked", "name": "{3dad6c5d-2167-4cae-9914-f99e41c12cfa}", "kind": "String", "value": "" },
-        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Blocked", "name": "{596AB062-B4D2-4215-9F74-E9109B0A8153}", "kind": "String", "value": "" },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Blocked", "name": "{CB3B0003-8088-4EDE-8769-8B354AB2FF8C}", "kind": "String", "value": "" }
       ]
     },
@@ -369,7 +365,10 @@
       "id": "nova-about",
       "category": "style",
       "title": "Nova в «О системе»",
-      "description": "В «Параметры → Система → О системе» появятся название и версия Nova, а в «Поддержке» — ссылка на проект. Если там были данные производителя ПК, они вернутся при отмене.",
+      "description": "В «Параметры → Система → О системе» появятся название и версия Nova, а в «Поддержке» — ссылка на проект. Если там уже есть сведения производителя компьютера (Lenovo, ASUS и т. п.), Nova их не заменяет.",
+      "keepIfSet": [
+        { "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Manufacturer" }
+      ],
       "actions": [
         { "type": "copyFile", "from": "assets/oem/nova-logo.bmp", "to": "{NovaData}\\oem\\nova-logo.bmp" },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Manufacturer", "kind": "String", "value": "Nova" },
@@ -440,7 +439,7 @@
       "id": "hibernation-off",
       "category": "performance",
       "title": "Отключить гибернацию",
-      "description": "Освобождает на диске C: столько места, сколько у тебя оперативной памяти (файл hiberfil.sys). Вместе с ней отключается «быстрый запуск».",
+      "description": "Освобождает на диске C: столько места, сколько у тебя оперативной памяти (файл hiberfil.sys). Вместе с ней отключается «быстрый запуск». На ноутбуке учти: при почти севшей батарее он не уснёт с сохранением открытых программ, а выключится.",
       "actions": [
         { "type": "hibernate", "state": "off" }
       ]
@@ -449,7 +448,7 @@
       "id": "background-apps-off",
       "category": "performance",
       "title": "Запретить приложениям из Store работать в фоне",
-      "description": "Экономит память и батарею. Некоторые приложения из Store могут перестать присылать уведомления.",
+      "description": "Экономит память и батарею. Некоторые приложения из Store могут перестать присылать уведомления. Переключатели фоновой работы приложений в Параметрах станут серыми («управляет организация»), пока не нажмёшь «Отменить» в Nova.",
       "actions": [
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy", "name": "LetAppsRunInBackground", "kind": "DWord", "value": 2 }
       ]
@@ -467,9 +466,9 @@
       "id": "windowed-games-optimization",
       "category": "performance",
       "title": "Оптимизация игр в окне",
-      "description": "Игры в окне и без рамки работают почти как в полноэкранном режиме: меньше задержка и плавнее картинка.",
+      "description": "Игры в окне и без рамки работают почти как в полноэкранном режиме: меньше задержка и плавнее картинка. Это тот же переключатель, что в «Параметры → Система → Дисплей → Графика»; другие настройки графики (например, Auto HDR) Nova не трогает.",
       "actions": [
-        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences", "name": "DirectXUserGlobalSettings", "kind": "String", "value": "SwapEffectUpgradeEnable=1;" }
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences", "name": "DirectXUserGlobalSettings", "kind": "String", "pair": "SwapEffectUpgradeEnable", "value": "1" }
       ]
     },
     {
@@ -540,7 +539,7 @@
       "id": "printing-off",
       "category": "system",
       "title": "Отключить печать",
-      "description": "Если у тебя нет принтера — служба печати не нужна. Включится обратно при отмене.",
+      "description": "Если у тебя нет принтера — служба печати не нужна. Учти: без неё не работает и «Печать в PDF» (Microsoft Print to PDF). Включится обратно при отмене.",
       "actions": [
         { "type": "service", "name": "Spooler", "startup": "Disabled" }
       ]
@@ -559,7 +558,7 @@
       "id": "xbox-services-off",
       "category": "system",
       "title": "Отключить службы Xbox",
-      "description": "Если не играешь через Xbox и Game Pass. Игры из Steam и Epic Games это не затронет.",
+      "description": "Если не играешь в игры Microsoft — Game Pass, Minecraft, Forza, Halo и другие, даже купленные в Steam: они входят через Xbox и хранят там сохранения. Остальные игры из Steam и Epic Games это не затронет.",
       "actions": [
         { "type": "service", "name": "XblAuthManager", "startup": "Disabled" },
         { "type": "service", "name": "XblGameSave", "startup": "Disabled" },
@@ -581,7 +580,7 @@
       "id": "no-forced-restart",
       "category": "system",
       "title": "Без перезагрузки посреди игры",
-      "description": "Windows не перезагрузит компьютер сама, пока ты в системе, — например, посреди игры. Обновления скачиваются и ставятся как обычно, но начинают действовать только после перезагрузки: перезагружай компьютер сам хотя бы раз в несколько дней. Проверка системы в Nova напомнит, если Windows ждёт перезагрузки.",
+      "description": "Windows не перезагрузит компьютер сама, пока ты в системе, — например, посреди игры. Обновления скачиваются и ставятся как обычно, но начинают действовать только после перезагрузки: перезагружай компьютер сам хотя бы раз в несколько дней. Проверка системы в Nova напомнит, если Windows ждёт перезагрузки. Часто хватает и без этого пункта: задай «Период активности» в «Параметры → Центр обновления Windows → Дополнительные параметры» — в эти часы Windows сама не перезагружается.",
       "actions": [
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU", "name": "NoAutoRebootWithLoggedOnUsers", "kind": "DWord", "value": 1 }
       ]
@@ -614,7 +613,7 @@
       "id": "onedrive-remove",
       "category": "system",
       "title": "Удалить OneDrive (если он не настроен)",
-      "description": "Если ты не входил в OneDrive, он просто висит в фоне и предлагает сохранять файлы в облако. Nova удалит его. Если ты в OneDrive вошёл — Nova его не тронет, чтобы не потерять файлы. Вернуть можно из Microsoft Store.",
+      "description": "Если ты не входил в OneDrive, он просто висит в фоне и предлагает сохранять файлы в облако. Nova удалит его. Если ты в OneDrive вошёл — Nova его не тронет, чтобы не потерять файлы. Вернуть можно из Microsoft Store или командой winget install Microsoft.OneDrive.",
       "actions": [
         { "type": "oneDrive" }
       ]

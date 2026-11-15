@@ -212,6 +212,57 @@ function Get-NovaProjectProblem {
     return ''
 }
 
+# Копирует папку Nova в надёжное место (свою папку пользователя), когда исходную могут менять другие.
+# Ссылки (junction, symlink) не проходит и не копирует: встретили — отказ. .git и node_modules для работы не нужны.
+# Файлы копируются без своих прав: в новой папке у них права этой папки — только ты и администраторы.
+function Copy-NovaProject {
+    param([Parameter(Mandatory)][string]$From, [Parameter(Mandatory)][string]$To)
+    if (Test-Path -LiteralPath $To) { throw ('Папка уже есть: {0}' -f $To) }
+    $source = New-Object System.IO.DirectoryInfo($From)
+    if ($source.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { throw ('{0}: это ссылка на другое место — копировать не буду' -f $From) }
+    $items = New-Object System.Collections.Generic.List[System.IO.FileSystemInfo]
+    $stack = New-Object System.Collections.Generic.Stack[System.IO.DirectoryInfo]
+    $stack.Push($source)
+    while ($stack.Count -gt 0) {
+        $dir = $stack.Pop()
+        foreach ($item in $dir.GetFileSystemInfos()) {
+            if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { throw ('{0}: это ссылка на другое место — копировать не буду' -f $item.FullName) }
+            if ($item -is [System.IO.DirectoryInfo]) {
+                if ($dir.FullName -eq $source.FullName -and @('.git', 'node_modules') -contains $item.Name) { continue }
+                $stack.Push($item)
+            }
+            $items.Add($item)
+        }
+    }
+    [void][System.IO.Directory]::CreateDirectory($To)
+    $cut = $source.FullName.TrimEnd('\').Length + 1
+    foreach ($item in $items) {
+        $dest = Join-Path $To $item.FullName.Substring($cut)
+        if ($item -is [System.IO.DirectoryInfo]) {
+            [void][System.IO.Directory]::CreateDirectory($dest)
+        } else {
+            [System.IO.File]::Copy($item.FullName, $dest, $false)
+            # «Только чтение» из архива мешал бы потом править config.json.
+            [System.IO.File]::SetAttributes($dest, ([System.IO.File]::GetAttributes($dest) -band (-bnot [System.IO.FileAttributes]::ReadOnly)))
+        }
+    }
+}
+
+# Свободное имя для копии Nova в папке пользователя: Nova, Nova-2, ..., Nova-9.
+function Get-NovaSafeCopyTarget {
+    $profileDir = [Environment]::GetFolderPath('UserProfile')
+    if (-not $profileDir) { return $null }
+    foreach ($name in @('Nova') + @(2..9 | ForEach-Object { 'Nova-{0}' -f $_ })) {
+        $path = Join-Path $profileDir $name
+        if (-not (Test-Path -LiteralPath $path)) { return $path }
+    }
+    return $null
+}
+
+# Страница «Установщика приложений» (в нём winget) в Microsoft Store.
+$script:WingetStorePage = 'ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1'
+function Get-NovaWingetStorePage { return $script:WingetStorePage }
+
 # Подставляет значения в текст настроек:
 # {NovaData} — C:\ProgramData\Nova, {NovaRoot} — папка проекта,
 # {WindowsName} — «Windows 11» или «Windows 10», {DisplayVersion} — версия Windows, например 24H2,
@@ -303,6 +354,7 @@ function Split-NovaRegPath {
     switch ($hiveName) {
         'HKLM' { $hive = [Microsoft.Win32.RegistryHive]::LocalMachine }
         'HKCU' { $hive = [Microsoft.Win32.RegistryHive]::CurrentUser }
+        'HKU' { $hive = [Microsoft.Win32.RegistryHive]::Users }
         default { throw "Неизвестный раздел реестра: $hiveName (нужен HKLM или HKCU)" }
     }
     return [pscustomobject]@{ Hive = $hive; HiveName = $hiveName; SubKey = $Path.Substring($index + 1).TrimEnd('\') }
@@ -346,6 +398,44 @@ function Get-NovaRegValue {
     } finally {
         $base.Close()
     }
+}
+
+# Windows хранит часть настроек одной строкой «Ключ=значение;Ключ2=значение2;» (например, графика DirectX:
+# оптимизация игр в окне, Auto HDR). Nova меняет только свой ключ и не стирает остальные.
+function Get-NovaPairValue {
+    param([string]$Text, [string]$Key)
+    foreach ($part in ([string]$Text).Split(';')) {
+        $eq = $part.IndexOf('=')
+        if ($eq -gt 0 -and $part.Substring(0, $eq).Trim() -ieq $Key) { return $part.Substring($eq + 1) }
+    }
+    return $null
+}
+
+# $Value = $null — убрать ключ из строки.
+function Set-NovaPairValue {
+    param([string]$Text, [string]$Key, $Value)
+    $parts = New-Object System.Collections.Generic.List[string]
+    $done = $false
+    foreach ($part in ([string]$Text).Split(';')) {
+        if (-not $part.Trim()) { continue }
+        $eq = $part.IndexOf('=')
+        if ($eq -gt 0 -and $part.Substring(0, $eq).Trim() -ieq $Key) {
+            if (-not $done -and $null -ne $Value) { $parts.Add(('{0}={1}' -f $Key, $Value)) }
+            $done = $true
+            continue
+        }
+        $parts.Add($part)
+    }
+    if (-not $done -and $null -ne $Value) { $parts.Add(('{0}={1}' -f $Key, $Value)) }
+    if ($parts.Count -eq 0) { return '' }
+    return (($parts -join ';') + ';')
+}
+
+# Текущая строка «ключ=значение;» (пусто, если значения нет или оно не строка).
+function Get-NovaPairText {
+    param($State)
+    if ($State.Exists -and $State.Kind -eq 'String') { return [string]$State.Value }
+    return ''
 }
 
 # Приводит значение из JSON к типу, который ждёт реестр.
@@ -829,6 +919,14 @@ function Get-NovaActionState {
     switch ($Action.type) {
         'registry' {
             $state = Get-NovaRegValue -Path $Action.path -Name $Action.name
+            $pair = [string](Get-NovaProp $Action 'pair' '')
+            if ($pair) {
+                $now = Get-NovaPairValue (Get-NovaPairText $state) $pair
+                $shown = 'нет'
+                if ($null -ne $now) { $shown = '{0}={1}' -f $pair, $now }
+                $same = ($state.Kind -eq 'String') -and ($now -ceq [string]$Action.value)
+                return New-NovaState (-not $same) $shown ('{0}={1}' -f $pair, $Action.value) ''
+            }
             $target = Get-NovaRegTarget $Action
             $same = $state.Exists -and ($state.Kind -eq $Action.kind) -and (Test-NovaRegValueEqual $state.Value $target $Action.kind)
             return New-NovaState (-not $same) (Format-NovaRegValue $state) (Format-NovaData $target $Action.kind) ''
@@ -930,7 +1028,27 @@ function Invoke-NovaAction {
         }
         'registry' {
             $before = Get-NovaRegValue -Path $Action.path -Name $Action.name
-            Set-NovaRegValue -Path $Action.path -Name $Action.name -Value (Get-NovaRegTarget $Action) -Kind $Action.kind -Journal $Journal -Tweak $Tweak
+            $pair = [string](Get-NovaProp $Action 'pair' '')
+            if ($pair) {
+                $text = Get-NovaPairText $before
+                $old = Get-NovaPairValue $text $pair
+                Set-NovaRegValue -Path $Action.path -Name $Action.name -Value (Set-NovaPairValue $text $pair ([string]$Action.value)) -Kind 'String' -Journal $Journal -Tweak $Tweak
+                [void]$Journal.Add([pscustomobject]@{
+                        type    = 'registry'
+                        tweak   = $Tweak
+                        path    = $Action.path
+                        name    = $Action.name
+                        existed = $before.Exists
+                        kind    = $before.Kind
+                        value   = (ConvertTo-NovaJournalValue $before.Value $before.Kind)
+                        pair    = $pair
+                        pairOld = $old
+                        set     = [string]$Action.value
+                    })
+                return
+            }
+            $target = Get-NovaRegTarget $Action
+            Set-NovaRegValue -Path $Action.path -Name $Action.name -Value $target -Kind $Action.kind -Journal $Journal -Tweak $Tweak
             [void]$Journal.Add([pscustomobject]@{
                     type    = 'registry'
                     tweak   = $Tweak
@@ -939,13 +1057,16 @@ function Invoke-NovaAction {
                     existed = $before.Exists
                     kind    = $before.Kind
                     value   = (ConvertTo-NovaJournalValue $before.Value $before.Kind)
+                    # Что поставила Nova: если потом это поменяли (ты сам или Windows), отмена такое не трогает.
+                    set     = (ConvertTo-NovaJournalValue $target $Action.kind)
+                    setKind = [string]$Action.kind
                 })
             return
         }
         'service' {
             $before = Get-NovaServiceStartup $Action.name
             if ($null -eq $before) { return }
-            [void]$Journal.Add([pscustomobject]@{ type = 'service'; tweak = $Tweak; name = $Action.name; startup = $before; delayed = (Get-NovaServiceDelayed $Action.name) })
+            [void]$Journal.Add([pscustomobject]@{ type = 'service'; tweak = $Tweak; name = $Action.name; startup = $before; delayed = (Get-NovaServiceDelayed $Action.name); set = [string]$Action.startup })
             Set-Service -Name $Action.name -StartupType $Action.startup
             if ($Action.startup -eq 'Disabled') { Stop-Service -Name $Action.name -Force -ErrorAction SilentlyContinue }
             return
@@ -973,6 +1094,27 @@ function Undo-NovaEntry {
     param($Entry, $Allowed)
     switch ($Entry.type) {
         'registry' {
+            $now = Get-NovaRegValue -Path $Entry.path -Name $Entry.name
+            $pair = [string](Get-NovaProp $Entry 'pair' '')
+            if ($pair) {
+                $text = Get-NovaPairText $now
+                if ((Get-NovaPairValue $text $pair) -cne [string]$Entry.set) {
+                    Write-Nova ('{0} в {1}\{2} оставлено как есть: после Nova его уже поменяли' -f $pair, $Entry.path, $Entry.name) dim
+                    return
+                }
+                $restored = Set-NovaPairValue $text $pair (Get-NovaProp $Entry 'pairOld' $null)
+                if (-not $restored -and -not $Entry.existed) {
+                    Remove-NovaRegValue -Path $Entry.path -Name $Entry.name
+                } else {
+                    Set-NovaRegValue -Path $Entry.path -Name $Entry.name -Value $restored -Kind 'String'
+                }
+                return
+            }
+            $setKind = [string](Get-NovaProp $Entry 'setKind' '')
+            if ($setKind -and -not ($now.Exists -and $now.Kind -eq $setKind -and (Test-NovaRegValueEqual $now.Value $Entry.set $setKind))) {
+                Write-Nova ('{0}\{1} оставлено как есть: после Nova его уже поменяли' -f $Entry.path, $Entry.name) dim
+                return
+            }
             if ($Entry.existed) {
                 Set-NovaRegValue -Path $Entry.path -Name $Entry.name -Value $Entry.value -Kind $Entry.kind
             } else {
@@ -989,6 +1131,11 @@ function Undo-NovaEntry {
             return
         }
         'service' {
+            $set = [string](Get-NovaProp $Entry 'set' '')
+            if ($set -and (Get-NovaServiceStartup $Entry.name) -ne $set) {
+                Write-Nova ('служба {0} оставлена как есть: после Nova её уже поменяли' -f $Entry.name) dim
+                return
+            }
             if ($script:ServiceStartups -contains $Entry.startup) {
                 Set-Service -Name $Entry.name -StartupType $Entry.startup
                 if ($Entry.startup -eq 'Automatic' -and [bool](Get-NovaProp $Entry 'delayed' $false) -and -not (Get-NovaServiceDelayed $Entry.name)) {
@@ -1102,12 +1249,23 @@ function Test-NovaDefinition {
         if (-not (Get-NovaProp $tweak 'title')) { $problems.Add("tweaks.json: у '$id' нет названия (title)") }
         $actions = @(Get-NovaProp $tweak 'actions' @())
         if ($actions.Count -eq 0) { $problems.Add("tweaks.json: у '$id' нет действий (actions)") }
+        foreach ($keep in @(Get-NovaProp $tweak 'keepIfSet' @())) {
+            $mine = @($actions | Where-Object { $_.type -eq 'registry' -and $_.path -eq (Get-NovaProp $keep 'path') -and $_.name -eq (Get-NovaProp $keep 'name') })
+            if ($mine.Count -ne 1) { $problems.Add("tweaks.json: у '$id' keepIfSet указывает на значение, которого нет в действиях") }
+        }
         foreach ($action in $actions) {
             $type = [string](Get-NovaProp $action 'type')
             $protected = Get-NovaProtectedReason $action
             if ($protected -and $script:SecurityExceptions -notcontains $id) { $problems.Add("tweaks.json: '$id' трогает защиту Windows ($protected) — Nova так не делает") }
             if ($type -eq 'registry') {
-                if ([string](Get-NovaProp $action 'path') -notmatch '^(HKLM|HKCU)\\.+') { $problems.Add("tweaks.json: у '$id' неверный путь реестра") }
+                # HKU — только служебный профиль NetworkService (S-1-5-20): там Параметры хранят «Оптимизацию доставки».
+                if ([string](Get-NovaProp $action 'path') -notmatch '^(HKLM|HKCU|HKU\\S-1-5-20)\\.+') { $problems.Add("tweaks.json: у '$id' неверный путь реестра") }
+                $pair = Get-NovaProp $action 'pair'
+                if ($null -ne $pair) {
+                    if ([string]$pair -notmatch '^[A-Za-z][A-Za-z0-9]{0,63}\z' -or (Get-NovaProp $action 'kind') -ne 'String' -or [string](Get-NovaProp $action 'value') -match '[;=]') {
+                        $problems.Add("tweaks.json: у '$id' неверная пара «ключ=значение» (pair)")
+                    }
+                }
                 if (-not (Get-NovaProp $action 'name')) { $problems.Add("tweaks.json: у '$id' не указано имя значения (name)") }
                 if ($script:RegistryKinds -notcontains (Get-NovaProp $action 'kind')) { $problems.Add("tweaks.json: у '$id' неверный тип значения (kind)") }
                 if ($null -eq $action.PSObject.Properties['value']) { $problems.Add("tweaks.json: у '$id' не указано значение (value)") }
@@ -1184,6 +1342,25 @@ function Get-NovaContext {
 
 #region План
 
+# keepIfSet: если у значения уже есть своё (не Nova) содержимое — например, сведения производителя ПК, —
+# настройку целиком пропускаем, чтобы не заменить чужое.
+function Get-NovaKeepReason {
+    param($Tweak)
+    foreach ($keep in @(Get-NovaProp $Tweak 'keepIfSet' @())) {
+        $action = @($Tweak.actions | Where-Object { $_.type -eq 'registry' -and $_.path -eq $keep.path -and $_.name -eq $keep.name }) | Select-Object -First 1
+        if ($null -eq $action) { continue }
+        try {
+            $state = Get-NovaRegValue -Path $keep.path -Name $keep.name
+        } catch {
+            continue
+        }
+        if ($state.Exists -and [string]$state.Value -and -not (Test-NovaRegValueEqual $state.Value (Get-NovaRegTarget $action) $action.kind)) {
+            return ('уже есть своё: {0} — не заменяю' -f ([string]$state.Value -replace '[\p{Cc}\p{Cf}]', ''))
+        }
+    }
+    return ''
+}
+
 function Get-NovaPlan {
     param([Parameter(Mandatory)]$Context)
     $build = $Context.System.Build
@@ -1193,6 +1370,11 @@ function Get-NovaPlan {
         $minBuild = [int](Get-NovaProp $tweak 'minBuild' 0)
         $maxBuild = [int](Get-NovaProp $tweak 'maxBuild' 0)
         $applicable = ($build -ge $minBuild) -and (($maxBuild -eq 0) -or ($build -le $maxBuild))
+        $skipped = ''
+        if ($enabled -and $applicable) {
+            $skipped = Get-NovaKeepReason $tweak
+            if ($skipped) { $applicable = $false }
+        }
         $actions = @()
         if ($enabled -and $applicable) {
             $actions = @(foreach ($action in @($tweak.actions)) {
@@ -1211,6 +1393,7 @@ function Get-NovaPlan {
             Category        = $tweak.category
             Enabled         = $enabled
             Applicable      = $applicable
+            Skipped         = $skipped
             NeedsChange     = $needsChange
             RestartExplorer = [bool](Get-NovaProp $tweak 'restartExplorer' $false)
             Actions         = $actions
@@ -1267,7 +1450,8 @@ function Get-NovaAppPlan {
     $installed = @()
     $provisioned = @()
     if ($toRemove.Count -gt 0) {
-        try { $installed = @(Get-AppxPackage -AllUsers -ErrorAction Stop) } catch { Write-Nova "Не удалось получить список приложений: $($_.Exception.Message)" warn }
+        # Только у текущей учётной записи: у других людей на этом компьютере их приложения остаются.
+        try { $installed = @(Get-AppxPackage -ErrorAction Stop) } catch { Write-Nova "Не удалось получить список приложений: $($_.Exception.Message)" warn }
         try { $provisioned = @(Get-AppxProvisionedPackage -Online -ErrorAction Stop) } catch { $provisioned = @() }
     }
     $removeItems = @(foreach ($name in $toRemove) {
@@ -1314,7 +1498,9 @@ function Show-NovaPlan {
             if (-not $item.Enabled) {
                 Write-NovaPlanLine ' ' $item.Title 'выключено в config.json' 'DarkGray'
             } elseif (-not $item.Applicable) {
-                Write-NovaPlanLine ' ' $item.Title 'не для этой версии Windows' 'DarkGray'
+                $why = 'не для этой версии Windows'
+                if (Get-NovaProp $item 'Skipped' '') { $why = $item.Skipped }
+                Write-NovaPlanLine ' ' $item.Title $why 'DarkGray'
             } elseif ($item.NeedsChange) {
                 $tweakCount++
                 Write-NovaPlanLine '+' $item.Title 'будет изменено' 'Green'
@@ -1345,7 +1531,10 @@ function Show-NovaPlan {
                 Write-NovaPlanLine '=' $app.Name 'не установлено' 'Gray'
             }
         }
-        if ($removeCount -gt 0) { Write-Nova 'Удалённые приложения отмена не вернёт — при желании их ставят заново из Microsoft Store.' dim }
+        if ($removeCount -gt 0) {
+            Write-Nova 'Удаляются только у тебя: у других учётных записей на этом компьютере приложения останутся.' dim
+            Write-Nova 'Удалённые приложения отмена не вернёт — при желании их ставят заново из Microsoft Store.' dim
+        }
     }
     if ($null -ne $AppPlan -and @($AppPlan.Install).Count -gt 0) {
         Write-Host ''
@@ -1394,28 +1583,16 @@ function Save-NovaJournal {
     [System.IO.File]::WriteAllText($Path, $json, (New-Object System.Text.UTF8Encoding($false)))
 }
 
-# Удаляет приложение из Store. Сначала у всех пользователей; если Windows не даёт
-# (бывает, когда приложение числится за удалённым или системным профилем) — у текущего.
-# Отдельно убирает его из образа, чтобы оно не появилось у новых пользователей.
+# Удаляет приложение из Store у текущей учётной записи. У других людей на этом компьютере оно остаётся —
+# их приложения решают они сами. Отдельно убирает его из образа, чтобы оно не ставилось новым учётным записям.
 function Remove-NovaApp {
     param([Parameter(Mandatory)]$App, [int]$Build)
     $errors = New-Object System.Collections.Generic.List[string]
     foreach ($package in $App.Packages) {
-        $done = $false
-        if ($Build -ge 17763) {
-            try {
-                Remove-AppxPackage -Package $package.PackageFullName -AllUsers -ErrorAction Stop
-                $done = $true
-            } catch {
-                $errors.Add($_.Exception.Message.Trim())
-            }
-        }
-        if (-not $done) {
-            try {
-                Remove-AppxPackage -Package $package.PackageFullName -ErrorAction Stop
-            } catch {
-                $errors.Add($_.Exception.Message.Trim())
-            }
+        try {
+            Remove-AppxPackage -Package $package.PackageFullName -ErrorAction Stop
+        } catch {
+            $errors.Add($_.Exception.Message.Trim())
         }
     }
     foreach ($package in $App.Provisioned) {
@@ -1594,7 +1771,13 @@ $script:RetiredRegistry = @(
     @('HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', 'DoNotShowFeedbackNotifications'),
     @('HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Error Reporting', 'Disabled'),
     @('HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR', 'AllowGameDVR'),
-    @('HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent', 'DisableWindowsConsumerFeatures')
+    @('HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent', 'DisableWindowsConsumerFeatures'),
+    @('HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', 'AllowTelemetry'),
+    @('HKCU\Software\Policies\Microsoft\Windows\WindowsCopilot', 'TurnOffWindowsCopilot'),
+    @('HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot', 'TurnOffWindowsCopilot'),
+    @('HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization', 'DODownloadMode'),
+    @('HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked', '{f81e9010-6ea4-11ce-a7ff-00aa003ca9f6}'),
+    @('HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked', '{596AB062-B4D2-4215-9F74-E9109B0A8153}')
 )
 
 # Что вообще может менять Nova: всё из tweaks.json плюс обои. Отмена трогает только это,
@@ -1641,6 +1824,15 @@ function Test-NovaJournalEntry {
                 $id = ('{0}|{1}' -f (Get-NovaRegPathKey $Entry.path), $Entry.name).ToLowerInvariant()
                 if (-not $Allowed.registry.ContainsKey($id)) { return 'этого значения нет в настройках Nova' }
                 if ($Entry.existed -and $script:RegistryKinds -notcontains [string]$Entry.kind) { return 'неизвестный тип значения' }
+                $setKind = [string](Get-NovaProp $Entry 'setKind' '')
+                if ($setKind -and $script:RegistryKinds -notcontains $setKind) { return 'неизвестный тип значения' }
+                $pair = Get-NovaProp $Entry 'pair'
+                if ($null -ne $pair) {
+                    if ([string]$pair -notmatch '^[A-Za-z][A-Za-z0-9]{0,63}\z') { return 'неверная пара «ключ=значение»' }
+                    foreach ($part in @((Get-NovaProp $Entry 'set'), (Get-NovaProp $Entry 'pairOld'))) {
+                        if ($null -ne $part -and [string]$part -match '[;=\p{Cc}]') { return 'неверная пара «ключ=значение»' }
+                    }
+                }
                 return ''
             }
             'keyCreated' {
@@ -2036,9 +2228,9 @@ function Get-NovaHealth {
         $freeGB = [math]::Round([double]$drive.FreeSpace / 1GB, 1)
         $diskName = 'Диск ' + $env:SystemDrive
         if ($freeGB -lt 2) {
-            $checks.Add((New-NovaCheck $diskName 'stop' ('Свободно всего {0} ГБ.' -f $freeGB) 'Освободи место: «Параметры → Система → Память → Временные файлы». Нужно хотя бы 2 ГБ.' 'disk'))
+            $checks.Add((New-NovaCheck $diskName 'stop' ('Свободно всего {0} ГБ.' -f $freeGB) 'Освободи место: пункт 9 в меню Nova или «Параметры → Система → Память → Временные файлы». Нужно хотя бы 2 ГБ.' 'disk'))
         } elseif ($freeGB -lt 10) {
-            $checks.Add((New-NovaCheck $diskName 'warn' ('Свободно {0} ГБ — маловато.' -f $freeGB) 'Точке восстановления и обновлениям нужно место. Почисти временные файлы.' 'disk'))
+            $checks.Add((New-NovaCheck $diskName 'warn' ('Свободно {0} ГБ — маловато.' -f $freeGB) 'Точке восстановления и обновлениям нужно место. Почисти временные файлы — пункт 9 в меню Nova.' 'disk'))
         } else {
             $checks.Add((New-NovaCheck $diskName 'ok' ('Свободно {0} ГБ.' -f $freeGB) -Id 'disk'))
         }
@@ -2126,7 +2318,7 @@ function Get-NovaHealth {
     if ($installApps) { $wanted = @($installApps.PSObject.Properties | Where-Object { $_.Value -eq $true }) }
     if ($wanted.Count -gt 0) {
         if (-not (Get-NovaWingetPath)) {
-            $checks.Add((New-NovaCheck 'Программы' 'warn' 'winget не найден — программы из списка installApps не установятся.' 'Обнови «Установщик приложений» (App Installer) в Microsoft Store.' 'winget'))
+            $checks.Add((New-NovaCheck 'Программы' 'warn' 'winget не найден — программы из списка installApps не установятся.' 'Обнови «Установщик приложений» (App Installer) в Microsoft Store — в проверке системы из меню (пункт 6) Nova предложит открыть его страницу.' 'winget'))
         } elseif (-not [System.Net.NetworkInformation.NetworkInterface]::GetIsNetworkAvailable()) {
             $checks.Add((New-NovaCheck 'Программы' 'warn' 'Нет подключения к сети — программы из installApps не скачаются.' 'Подключись к интернету перед применением.' 'winget'))
         } else {

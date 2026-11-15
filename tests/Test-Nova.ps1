@@ -52,6 +52,57 @@ $alien = [pscustomobject]@{ type = 'registry'; tweak = 'x'; path = 'HKLM\SOFTWAR
 if (-not (Test-NovaJournalEntry -Entry $alien -Allowed $allowedNow)) { throw 'отмена приняла запись, которой у Nova никогда не было' }
 Write-Host 'Отмена старых запусков снимает прежние «замки», а чужие записи по-прежнему не принимает.'
 
+# HKU — только служебный профиль NetworkService; другие профили и «ключ=значение» с «;» не проходят проверку.
+$hku = @(
+    [pscustomobject]@{ id = 'hku-system'; category = 'system'; title = 'x'; actions = @([pscustomobject]@{ type = 'registry'; path = 'HKU\S-1-5-18\Software\x'; name = 'y'; kind = 'DWord'; value = 1 }) },
+    [pscustomobject]@{ id = 'hku-default'; category = 'system'; title = 'x'; actions = @([pscustomobject]@{ type = 'registry'; path = 'HKU\.DEFAULT\Software\x'; name = 'y'; kind = 'DWord'; value = 1 }) },
+    [pscustomobject]@{ id = 'pair-bad'; category = 'system'; title = 'x'; actions = @([pscustomobject]@{ type = 'registry'; path = 'HKCU\Software\x'; name = 'y'; kind = 'String'; pair = 'A'; value = '1;B=2' }) },
+    [pscustomobject]@{ id = 'keep-bad'; category = 'system'; title = 'x'; keepIfSet = @([pscustomobject]@{ path = 'HKCU\Software\x'; name = 'other' }); actions = @([pscustomobject]@{ type = 'registry'; path = 'HKCU\Software\x'; name = 'y'; kind = 'DWord'; value = 1 }) }
+)
+$hkuProblems = @(Test-NovaDefinition -Config ([pscustomobject]@{ tweaks = [pscustomobject]@{} }) -Tweaks $hku)
+if ($hkuProblems.Count -ne 4) { throw ('Чужие профили HKU, плохая пара или keepIfSet прошли проверку: {0}' -f ($hkuProblems -join ' / ')) }
+Write-Host 'HKU разрешён только для служебного профиля NetworkService; плохие пары и keepIfSet ловятся.'
+
+# «Ключ=значение;»: свой ключ меняется, чужие остаются.
+$pairCases = @(
+    @('', 'SwapEffectUpgradeEnable', '1', 'SwapEffectUpgradeEnable=1;'),
+    @('AutoHDREnable=1;', 'SwapEffectUpgradeEnable', '1', 'AutoHDREnable=1;SwapEffectUpgradeEnable=1;'),
+    @('SwapEffectUpgradeEnable=0;AutoHDREnable=1;', 'SwapEffectUpgradeEnable', '1', 'SwapEffectUpgradeEnable=1;AutoHDREnable=1;'),
+    @('AutoHDREnable=1;SwapEffectUpgradeEnable=1;', 'SwapEffectUpgradeEnable', $null, 'AutoHDREnable=1;'),
+    @('SwapEffectUpgradeEnable=1;', 'SwapEffectUpgradeEnable', $null, '')
+)
+foreach ($case in $pairCases) {
+    $got = Set-NovaPairValue $case[0] $case[1] $case[2]
+    if ($got -cne $case[3]) { throw ('«ключ=значение»: из «{0}» получилось «{1}», ждали «{2}»' -f $case[0], $got, $case[3]) }
+}
+if ((Get-NovaPairValue 'A=1;SwapEffectUpgradeEnable=0;' 'SwapEffectUpgradeEnable') -cne '0') { throw '«ключ=значение»: не прочитался ключ' }
+Write-Host '«Ключ=значение;» меняет только свой ключ.'
+
+# Отмена не трогает то, что после Nova поменяли (ты сам или Windows).
+$probe = 'HKCU\Software\NovaUndoTest'
+Set-NovaRegValue -Path $probe -Name 'Mine' -Value 5 -Kind 'DWord'
+$entry = [pscustomobject]@{ type = 'registry'; path = $probe; name = 'Mine'; existed = $true; kind = 'DWord'; value = 1; set = 2; setKind = 'DWord' }
+Undo-NovaEntry -Entry $entry
+if ((Get-NovaRegValue -Path $probe -Name 'Mine').Value -ne 5) { throw 'Отмена затёрла значение, которое поменяли после Nova.' }
+Set-NovaRegValue -Path $probe -Name 'Mine' -Value 2 -Kind 'DWord'
+Undo-NovaEntry -Entry $entry
+if ((Get-NovaRegValue -Path $probe -Name 'Mine').Value -ne 1) { throw 'Отмена не вернула значение, которое никто не трогал.' }
+Set-NovaRegValue -Path $probe -Name 'Gpu' -Value 'A=1;SwapEffectUpgradeEnable=0;' -Kind 'String'
+$pairEntry = [pscustomobject]@{ type = 'registry'; path = $probe; name = 'Gpu'; existed = $true; kind = 'String'; value = 'A=1;'; pair = 'SwapEffectUpgradeEnable'; pairOld = $null; set = '1' }
+Undo-NovaEntry -Entry $pairEntry
+if ((Get-NovaRegValue -Path $probe -Name 'Gpu').Value -cne 'A=1;SwapEffectUpgradeEnable=0;') { throw 'Отмена затёрла ключ, который поменяли после Nova.' }
+Set-NovaRegValue -Path $probe -Name 'Gpu' -Value 'A=1;SwapEffectUpgradeEnable=1;B=2;' -Kind 'String'
+Undo-NovaEntry -Entry $pairEntry
+if ((Get-NovaRegValue -Path $probe -Name 'Gpu').Value -cne 'A=1;B=2;') { throw 'Отмена «ключ=значение» стёрла чужие ключи.' }
+# keepIfSet: сведения производителя не заменяются, свои — обновляются.
+$keepTweak = [pscustomobject]@{ id = 'k'; keepIfSet = @([pscustomobject]@{ path = $probe; name = 'Maker' }); actions = @([pscustomobject]@{ type = 'registry'; path = $probe; name = 'Maker'; kind = 'String'; value = 'Nova' }) }
+Set-NovaRegValue -Path $probe -Name 'Maker' -Value 'LENOVO' -Kind 'String'
+if (-not (Get-NovaKeepReason $keepTweak)) { throw 'Nova заменила бы сведения производителя.' }
+Set-NovaRegValue -Path $probe -Name 'Maker' -Value 'Nova' -Kind 'String'
+if (Get-NovaKeepReason $keepTweak) { throw 'Nova не обновила бы свои же сведения.' }
+Remove-Item -LiteralPath 'HKCU:\Software\NovaUndoTest' -Recurse -Force
+Write-Host 'Отмена не трогает то, что поменяли после Nova; сведения производителя Nova не заменяет.'
+
 # Версия Nova в «О системе» подставляется сама: «Nova 0.5 · твоя Windows».
 $short = ((Get-NovaVersion) -split '\.')[0..1] -join '.'
 $model = Expand-NovaText 'Nova {NovaVersion} · твоя Windows'
@@ -106,6 +157,10 @@ function Get-Snapshot {
     return $snapshot
 }
 
+# Чужая настройка графики в той же строке, что и «оптимизация игр в окне»: Nova её не стирает.
+$gpuKey = 'HKCU\Software\Microsoft\DirectX\UserGpuPreferences'
+Set-NovaRegValue -Path $gpuKey -Name 'DirectXUserGlobalSettings' -Value 'AutoHDREnable=1;' -Kind 'String'
+
 $before = Get-Snapshot
 Write-Host ('Запомнено параметров: {0}' -f $before.Count)
 
@@ -128,6 +183,9 @@ if ($left.Count -gt 0) {
     throw 'Часть настроек не применилась.'
 }
 Write-Host 'Все настройки применились.'
+$gpuNow = [string](Get-NovaRegValue -Path $gpuKey -Name 'DirectXUserGlobalSettings').Value
+if ($gpuNow -cne 'AutoHDREnable=1;SwapEffectUpgradeEnable=1;') { throw ('Оптимизация игр в окне стёрла чужую настройку графики: «{0}»' -f $gpuNow) }
+Write-Host 'Оптимизация игр в окне дописалась к Auto HDR, не стерев его.'
 
 $undo = Invoke-NovaUndo -BackupPath $result.BackupPath
 Write-Host ('Отменено записей: {0}, ошибок: {1}' -f $undo.Restored, $undo.Failed)
@@ -222,7 +280,28 @@ $aclS = Get-Acl -LiteralPath $shared
 $aclS.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule((New-Object System.Security.Principal.SecurityIdentifier('S-1-5-11')), 'Modify', 'ContainerInherit, ObjectInherit', 'None', 'Allow')))
 Set-Acl -LiteralPath $shared -AclObject $aclS
 if (-not (Get-NovaProjectProblem -Root $shared)) { throw 'Папка, которую могут менять все пользователи, не распознана.' }
+# Такую папку Nova предлагает скопировать к себе: копия получает права новой папки, .git не копируется.
+New-Item -ItemType Directory -Path (Join-Path $shared '.git') | Out-Null
+Set-Content -LiteralPath (Join-Path $shared '.git\config') -Value 'x'
+Set-Content -LiteralPath (Join-Path $shared 'config.json') -Value '{}'
+$copy = Join-Path ([Environment]::GetFolderPath('UserProfile')) ('nova-copy-test-' + [guid]::NewGuid())
+Copy-NovaProject -From $shared -To $copy
+$copyProblem = Get-NovaProjectProblem -Root $copy
+if ($copyProblem) { throw ('Копия Nova в папке пользователя не защищена: {0}' -f $copyProblem) }
+if (-not (Test-Path -LiteralPath (Join-Path $copy 'src\Nova.ps1')) -or (Test-Path -LiteralPath (Join-Path $copy '.git'))) { throw 'Копия Nova собрана неверно.' }
+Remove-Item -LiteralPath $copy -Recurse -Force
+# Ссылка внутри — копировать отказывается (не идёт по ней в чужую папку).
+$linkTarget = Join-Path $env:TEMP ('nova-link-target-' + [guid]::NewGuid())
+New-Item -ItemType Directory -Path $linkTarget | Out-Null
+cmd.exe /c mklink /J "$shared\src\evil" "$linkTarget" | Out-Null
+$refused = $false
+try { Copy-NovaProject -From $shared -To $copy } catch { $refused = $true }
+cmd.exe /c rmdir "$shared\src\evil" | Out-Null
+if (Test-Path -LiteralPath $copy) { Remove-Item -LiteralPath $copy -Recurse -Force }
+Remove-Item -LiteralPath $linkTarget -Recurse -Force
+if (-not $refused) { throw 'Nova скопировала папку со ссылкой на чужую папку.' }
 Remove-Item -LiteralPath $shared -Recurse -Force
+Write-Host 'Открытую для всех папку Nova копирует к тебе с правильными правами; папку со ссылками — не копирует.'
 Write-Host ('Папка проекта, открытая для всех, распознаётся. Эта папка в CI: {0}' -f $(if (Get-NovaProjectProblem -Root $root) { 'открыта для других' } else { 'закрыта' }))
 
 # 6. Ссылка внутри папки Nova считается проблемой.

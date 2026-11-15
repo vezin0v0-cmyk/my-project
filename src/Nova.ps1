@@ -83,6 +83,26 @@ function Assert-NovaProjectFolder {
     Write-Host ''
     Write-Nova 'Папку Nova могут менять другие пользователи этого компьютера — запускать её с правами администратора небезопасно.' err
     Write-Nova ('Подробно: {0}' -f $problem) dim
+    # Обычный случай — папка на D:\ или на флешке: Nova сама скопирует себя в твою папку пользователя.
+    $canCopy = ($Mode -eq 'Menu') -and ($ConfigPath -eq (Join-Path $projectRoot 'config.json')) -and ($problem -like '*менять может*')
+    try { if ([Console]::IsInputRedirected) { $canCopy = $false } } catch { $canCopy = $false }
+    $target = $null
+    if ($canCopy) { $target = Get-NovaSafeCopyTarget }
+    if ($target) {
+        Write-Host ''
+        Write-Nova ('Могу скопировать Nova в твою папку: {0}' -f $target) info
+        Write-Nova 'Там её не изменит никто, кроме тебя и администраторов. Твои config.json и voice.json переедут вместе с ней.' dim
+        Write-Nova 'Если на этом компьютере есть чужие учётные записи и папку могли подменить — лучше скачай Nova заново.' dim
+        if (Confirm-NovaAction 'Скопировать и открыть Nova оттуда?') {
+            Copy-NovaProject -From $projectRoot -To $target
+            $left = Get-NovaProjectProblem -Root $target
+            if ($left) { throw ('Копия тоже не защищена: {0}' -f $left) }
+            Write-Nova ('Готово. Теперь запускай Nova.cmd из {0} — старую папку можно удалить.' -f $target) ok
+            $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+            Start-Process -FilePath $ps -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f (Join-Path $target 'src\Nova.ps1')))
+            exit 0
+        }
+    }
     if ($problem -like '*владелец*') {
         Write-Nova 'Папку распаковал другой пользователь. Скачай и распакуй Nova под той учётной записью, из которой запускаешь.' warn
     } else {
@@ -150,10 +170,12 @@ function Invoke-NovaCheckFlow {
                 Invoke-NovaHzFix $check.Fix
             }
         }
+        # winget нет (он нужен для программ, библиотек для игр и переезда) — предлагаем открыть его страницу в Store.
+        if (-not (Get-NovaWingetPath)) { [void](Request-NovaWinget 'программы из списка, библиотеки для игр и переезд работают через него') }
         # Библиотеки для игр — с серверов Microsoft через winget, только из официального источника.
         foreach ($check in $game) {
             if (-not $check.PSObject.Properties['Fix'] -or -not $check.Fix -or $check.Fix.Kind -ne 'runtimes') { continue }
-            if (-not (Get-NovaWingetPath)) { Write-Nova 'winget не найден — поставить библиотеки сама Nova не сможет. Обнови «Установщик приложений» в Microsoft Store.' warn; continue }
+            if (-not (Get-NovaWingetPath)) { continue }
             if (-not (Confirm-NovaAction ('Поставить {0}? Скачается с серверов Microsoft.' -f ($check.Fix.Names -join ', ')))) { continue }
             $apps = @($check.Fix.Ids | ForEach-Object { [pscustomobject]@{ Id = $_; Source = 'winget' } })
             $res = Install-NovaMoveApps -Apps $apps -OnStep { param($app) Write-Nova ('Ставлю {0}...' -f $app.Id) dim }
@@ -451,6 +473,17 @@ function Invoke-NovaStartupFlow {
     }
 }
 
+# winget нет: объясняем и предлагаем открыть его страницу в Microsoft Store. $true — winget есть.
+function Request-NovaWinget {
+    param([string]$Why)
+    if (Get-NovaWingetPath) { return $true }
+    Write-Nova ('winget не найден — {0}. Он входит в «Установщик приложений» (App Installer) из Microsoft Store.' -f $Why) warn
+    if (Confirm-NovaAction 'Открыть его страницу в Microsoft Store? После установки выбери этот пункт снова.') {
+        if (-not (Start-NovaAsUser (Get-NovaWingetStorePage))) { Write-Nova 'Проводник не запущен — открой Microsoft Store сам и найди «Установщик приложений».' warn }
+    }
+    return $false
+}
+
 # Переезд на чистую Windows: сохранить свои программы перед переустановкой и вернуть после.
 function Invoke-NovaMoveFlow {
     Write-Host ''
@@ -461,6 +494,7 @@ function Invoke-NovaMoveFlow {
     Write-Host '  2  Вернуть программы из сохранённого списка (после переустановки)' -ForegroundColor White
     Write-Host '  0  Назад' -ForegroundColor White
     $choice = (Read-Host '  Выбери пункт').Trim()
+    if (@('1', '2') -contains $choice -and -not (Request-NovaWinget 'без него Nova не составит и не вернёт список программ')) { return 1 }
     if ($choice -eq '1') {
         $targets = @(Get-NovaMoveTarget)
         if ($targets.Count -eq 0) { Write-Nova 'Некуда сохранить: не нашла ни флешки, ни рабочего стола.' warn; return 1 }
