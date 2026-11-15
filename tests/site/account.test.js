@@ -89,18 +89,18 @@ async function handle(route) {
   const email = (body.email || '').toLowerCase();
   const u = users[email];
   if (ep === '/signup') {
-    const nu = users[email] = { id: '7f1c2a90-0000-4000-8000-00000000000' + (Object.keys(users).length + 1), email, password: body.password, meta: Object.assign({}, body.data), confirmed: false, code: '482913' };
+    const nu = users[email] = { id: '7f1c2a90-0000-4000-8000-00000000000' + (Object.keys(users).length + 1), email, password: body.password, meta: Object.assign({}, body.data), confirmed: false, code: '48291357' };
     return reply(route, 200, userObj(nu));
   }
   if (ep === '/recover') {
     // Настоящий сервер не говорит, есть ли такой аккаунт: ответ одинаковый.
-    if (u) { u.recovery = '771204'; mails.push({ email, kind: 'recovery' }); }
+    if (u) { u.recovery = '77120468'; mails.push({ email, kind: 'recovery' }); }
     return reply(route, 200, {});
   }
   if (ep === '/verify') {
     if (body.type === 'recovery') {
       if (!u || body.token !== u.recovery) return err(route, 403, 'otp_expired', 'Token has expired or is invalid');
-      u.recovery = null; return reply(route, 200, session(u, 'otp'));
+      u.recovery = null; return reply(route, 200, session(u, 'recovery'));
     }
     if (!u || body.token !== u.code) return err(route, 403, 'otp_expired', 'Token has expired or is invalid');
     u.confirmed = true; return reply(route, 200, session(u, 'otp'));
@@ -113,6 +113,14 @@ async function handle(route) {
     const me = byId(claims(req).sub);
     if (!me) return err(route, 401, 'bad_jwt', 'invalid JWT');
     if (body.password) {
+      // Как Supabase с «Require current password»: вне восстановления по коду нужен текущий пароль.
+      const c = claims(req);
+      const recovery = (c.amr || []).some(a => a.method === 'recovery');
+      if (!recovery) {
+        if (!body.current_password) return err(route, 400, 'current_password_required', 'Current password required when setting new password.');
+        if (body.current_password !== me.password) return err(route, 400, 'current_password_mismatch', 'Current password required when setting new password.');
+      }
+      calls.push('PUT /user ' + (recovery ? 'recovery' : 'with-current'));
       if (body.password === me.password) return err(route, 422, 'same_password', 'New password should be different from the old password.');
       me.password = body.password;
       mails.push({ email: me.email, kind: 'password-changed' });
@@ -154,7 +162,7 @@ async function register(p) {
   check(p.__tag + ' terms link to privacy page', (await p.getAttribute('#terms-label a', 'href')) === 'privacy.html');
   await p.click('#form-register [type=submit]');
   await p.waitForSelector('#view-verify:not([hidden])', { timeout: 6000 });
-  let code = '482913';
+  let code = '48291357';
   if (MODE === 'demo') {
     await p.waitForSelector('.toast .code', { timeout: 6000 });
     code = (await p.textContent('.toast .code')).replace(/\s/g, '');
@@ -193,11 +201,11 @@ async function forgotFlow(p, T) {
   await p.waitForTimeout(700);
   check(T + ' verify title says new password', (await p.textContent('#v-title')).includes('нового пароля'));
   check(T + ' back link goes to forgot', (await p.getAttribute('#v-back', 'href')) === '#forgot');
-  let code = '771204';
+  let code = '77120468';
   if (MODE === 'real') {
     check(T + ' recovery mail sent', mails.some(m => m.kind === 'recovery' && m.email === 'vadim@mail.ru'));
     check(T + ' toast does not confirm account exists', (await toasts(p)).includes('Если аккаунт с почтой'), await toasts(p));
-    await typeCode(p, '000000');
+    await typeCode(p, '00000000');
     await p.waitForFunction(() => document.querySelector('#otp-err').textContent.length > 0, null, { timeout: 6000 });
     check(T + ' wrong recovery code rejected', (await p.textContent('#otp-err')).includes('Код не подошёл'), await p.textContent('#otp-err'));
     await p.waitForTimeout(800);

@@ -166,9 +166,10 @@
     background: rgba(255,201,64,.1); border: 1px solid rgba(255,201,64,.35); transition: color .4s, background .4s, border-color .4s; }
   .badge-ic svg.i { width: 22px; height: 22px; }
   .card.success .badge-ic { color: var(--ok); background: rgba(61,220,132,.1); border-color: rgba(61,220,132,.4); }
-  .otp { position: relative; display: flex; justify-content: center; align-items: center; gap: 9px; height: 70px; margin: 6px 0 8px; transition: height .55s cubic-bezier(.6,0,.2,1); }
+  .v-note { margin: -4px 0 12px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,201,64,.35); background: rgba(255,201,64,.08); color: var(--text); font-size: 13.5px; line-height: 1.45; text-align: left; }
+  .otp { position: relative; display: flex; justify-content: center; align-items: center; gap: 7px; height: 70px; margin: 6px 0 8px; transition: height .55s cubic-bezier(.6,0,.2,1); }
   .otp.tall { height: 176px; }
-  .otp input { width: 50px; min-width: 0; flex: 0 1 auto; height: 62px; padding: 0; border-radius: 14px; text-align: center; font: 700 24px/1 var(--mono); background: rgba(0,0,0,.42);
+  .otp input { width: 44px; min-width: 0; flex: 0 1 auto; height: 60px; padding: 0; border-radius: 14px; text-align: center; font: 700 24px/1 var(--mono); background: rgba(0,0,0,.42);
     border: 1px solid rgba(255,255,255,.12); outline: none; caret-color: var(--gold);
     transition: transform .7s cubic-bezier(.6,0,.2,1), opacity .45s, border-color .2s, box-shadow .2s, background .3s; }
   .otp input:focus { border-color: var(--gold); box-shadow: 0 0 0 4px rgba(255,201,64,.14); }
@@ -430,8 +431,8 @@
     .stats { gap: 12px; }
     .stat { padding: 14px; }
     .stat .num { font-size: 26px; }
-    .otp { gap: 7px; }
-    .otp input { width: 44px; height: 56px; font-size: 22px; border-radius: 12px; }
+    .otp { gap: 5px; }
+    .otp input { width: 36px; height: 52px; font-size: 20px; border-radius: 11px; }
     .dtop .actions { width: 100%; }
     .dtop .actions > * { flex: 1; }
     .brand { left: 18px; }
@@ -568,7 +569,8 @@
       <div class="view center" id="view-verify" hidden>
         <div class="badge-ic" id="v-badge"><svg class="i"><use href="#i-key"/></svg></div>
         <h1 id="v-title">Подтверди <span class="gold-text">почту</span></h1>
-        <p class="sub" id="v-sub">Мы отправили 6-значный код на <b id="v-email"></b></p>
+        <p class="sub" id="v-sub">Мы отправили 8-значный код на <b id="v-email"></b></p>
+        <p class="v-note" id="v-note" role="status" hidden></p>
         <div class="otp" id="otp">
           <input inputmode="numeric" autocomplete="one-time-code" aria-label="Цифра 1" pattern="[0-9]*">
           <input inputmode="numeric" aria-label="Цифра 2" pattern="[0-9]*">
@@ -576,6 +578,8 @@
           <input inputmode="numeric" aria-label="Цифра 4" pattern="[0-9]*">
           <input inputmode="numeric" aria-label="Цифра 5" pattern="[0-9]*">
           <input inputmode="numeric" aria-label="Цифра 6" pattern="[0-9]*">
+          <input inputmode="numeric" aria-label="Цифра 7" pattern="[0-9]*">
+          <input inputmode="numeric" aria-label="Цифра 8" pattern="[0-9]*">
           <div class="done" id="done"><svg class="i"><use href="#i-check"/></svg></div>
         </div>
         <p class="otp-err" id="otp-err" aria-live="polite"></p>
@@ -1148,6 +1152,7 @@
     if (code === 'email_not_confirmed' || /email not confirmed/i.test(msg)) return { unconfirmed: true, text: 'Почта ещё не подтверждена' };
     if (code === 'otp_expired' || /token has expired|otp.*(expired|invalid)|invalid.*(token|otp)/i.test(msg)) return { text: 'Код не подошёл или устарел. Проверь последнее письмо или запроси новый код.' };
     if (code === 'same_password' || /different from the old password/i.test(msg)) return { field: 'password', text: 'Новый пароль должен отличаться от старого' };
+    if (code === 'current_password_mismatch' || code === 'current_password_required' || /current password required/i.test(msg)) return { field: 'current', text: 'Текущий пароль неверный' };
     if (code === 'reauthentication_needed' || /requires reauthentication/i.test(msg)) return { text: 'Для смены пароля войди в кабинет заново.' };
     if (code === 'weak_password' || /password should/i.test(msg)) return { field: 'password', text: 'Пароль слишком простой: нужны латинские буквы и цифры, от 8 символов' };
     if (code === 'email_address_invalid' || /email address .*invalid/i.test(msg)) return { field: 'email', text: 'Такая почта не подходит. Проверь адрес.' };
@@ -1232,6 +1237,26 @@
     writeJSON('session', 'nova.pending', p);
   }
 
+  // Пароль из формы регистрации — только в памяти, до ввода кода. Нужен, чтобы проверить аккаунт, который
+  // существовал неподтверждённым ещё до тебя: его мог завести кто-то другой со своим паролем.
+  var signupSecret = null;
+  // Сервер не меняет пароль неподтверждённого аккаунта при повторной регистрации. Если почту заранее
+  // «занял» кто-то другой, после кода из письма аккаунт достался бы с его паролем. Поэтому сверяем пароль,
+  // а если он чужой или сверить нечем — сразу задаём свой по коду для нового пароля.
+  function securePreExisting(name, email) {
+    var pass = signupSecret;
+    signupSecret = null;
+    return call(function (a) { return a.updateUser({ data: { name: name } }); }).catch(function () { return null; })
+      .then(function () {
+        if (!pass) return 'reset';
+        return call(function (a) { return a.updateUser({ password: pass, current_password: pass }); })
+          .then(function () { return 'ok'; }, function (err) {
+            var code = String((err && err.code) || ''), msg = String((err && err.message) || '');
+            return (code === 'same_password' || /different from the old password/i.test(msg)) ? 'ok' : 'reset';
+          });
+      });
+  }
+
   var regForm = $('#form-register');
   function strength(p) {
     var s = 0;
@@ -1287,11 +1312,18 @@
       .then(function (data) {
         stop();
         var u = data && data.user;
-        // Если почта уже подтверждена кем-то, Supabase не говорит об этом прямо, а возвращает пустой список identities.
+        // Почта уже подтверждена: Supabase не говорит об этом прямо (пустой список identities), и мы тоже —
+        // иначе по форме можно было бы проверять, кто зарегистрирован. Письма в этом случае не будет.
         if (u && Array.isArray(u.identities) && u.identities.length === 0) {
-          setErr(f.email, 'Эта почта уже зарегистрирована. Войди в аккаунт.');
+          finish();
+          setPending({ name: name, email: email });
+          go('verify');
+          toast({ title: 'Проверь почту', text: 'Если эта почта ещё не зарегистрирована, код уже в пути. Уже есть аккаунт — войди или нажми «Забыли пароль?».', icon: 'mail', ms: 9000 });
           return;
         }
+        // Аккаунт с этой почтой был и раньше (неподтверждённый) — после кода проверим, чей у него пароль.
+        var preExisting = !!(u && u.created_at && Date.now() - Date.parse(u.created_at) > 120000);
+        signupSecret = preExisting ? pass : null;
         finish();
         if (data.session) {
           // В Supabase выключено подтверждение почты — аккаунт готов сразу.
@@ -1300,7 +1332,7 @@
           go('dashboard');
           return;
         }
-        setPending({ name: name, email: email });
+        setPending({ name: name, email: email, check: preExisting || undefined });
         go('verify');
       })
       .catch(function (err) {
@@ -1340,8 +1372,10 @@
     return '';
   }
   // Новый пароль, а потом выход на всех других устройствах: там мог оказаться чужой.
-  function changePassword(pv) {
-    return call(function (a) { return a.updateUser({ password: pv }); }).then(function (data) {
+  // current — текущий пароль: его проверяет сервер (Secure password change). В потоке «Забыли пароль?»
+  // его нет, и сервер его там не требует: сессия после кода из письма — восстановление.
+  function changePassword(pv, current) {
+    return call(function (a) { return a.updateUser(current ? { password: pv, current_password: current } : { password: pv }); }).then(function (data) {
       if (data && data.user) signIn(userFrom(data.user), remembered());
       return call(function (a) { return a.signOut({ scope: 'others' }); }).catch(function () { /* пароль уже сменён */ });
     });
@@ -1369,6 +1403,12 @@
     var stop = spin(btn, 'Отправляем…');
     sendRecovery(email).then(function () { stop(); next(); }, function (err) {
       stop();
+      // «Слишком часто» сервер отвечает только для существующих аккаунтов — показываем то же, что и при успехе.
+      if (err && (err.status === 429 || /rate.limit|only request this after/i.test(String(err.code || '') + ' ' + String(err.message || '')))) {
+        next();
+        toast({ title: 'Код уже в почте', text: 'Если такая почта зарегистрирована, код отправлен. Нет письма — подожди минуту и нажми «Отправить снова».', icon: 'mail' });
+        return;
+      }
       var info = authError(err);
       if (info.field === 'email') setErr(forgotForm.email, info.text); else errToast(info);
     });
@@ -1397,6 +1437,7 @@
       stop();
       if (err && err.leak) { setErr(npForm.password, err.leak); return; }
       var info = authError(err);
+      if (info.field === 'current') { errToast({ text: 'Новый пароль без старого задают только по коду из письма: «Забыли пароль?». Сменить пароль можно в профиле.' }); return; }
       if (info.field === 'password') setErr(npForm.password, info.text); else errToast(info);
     });
   });
@@ -1413,6 +1454,9 @@
     $('#v-title').innerHTML = isRecovery() ? 'Код для <span class="gold-text">нового пароля</span>' : 'Подтверди <span class="gold-text">почту</span>';
     $('#v-back').setAttribute('href', isRecovery() ? '#forgot' : '#register');
     $('#v-sub').firstChild.textContent = 'Мы отправили ' + N + '-значный код на ';
+    var note = $('#v-note');
+    note.hidden = !(state.pending && state.pending.reason === 'preexisting');
+    note.textContent = note.hidden ? '' : 'Эту почту уже регистрировали раньше — возможно, не ты. Чтобы аккаунт был только твоим, введи код из нового письма и придумай пароль.';
     $('#v-badge').innerHTML = use('key');
     $('#view-verify').classList.remove('verifying');
     otp.className = 'otp';
@@ -1588,6 +1632,8 @@
 
   function success(realUser) {
     var recovery = isRecovery();
+    var mustCheck = REAL && !recovery && !!(state.pending && state.pending.check);
+    var pendingName = state.pending && state.pending.name;
     var user = realUser || { name: state.pending.name, email: state.pending.email };
     otp.classList.remove('spin');
     digits.forEach(function (d) {
@@ -1624,10 +1670,28 @@
       }
       setTimeout(function () {
         if (recovery) { verifying = false; go('newpass'); return; }
-        verifyBtn.className = 'btn-gold wide';
-        verifyBtn.innerHTML = '<span>Перейти в кабинет</span>' + use('arrow');
-        verifyBtn.onclick = function () { go('dashboard'); };
-        verifying = false;
+        function ready() {
+          verifyBtn.className = 'btn-gold wide';
+          verifyBtn.disabled = false;
+          verifyBtn.innerHTML = '<span>Перейти в кабинет</span>' + use('arrow');
+          verifyBtn.onclick = function () { go('dashboard'); };
+          verifying = false;
+        }
+        if (!mustCheck) { ready(); return; }
+        verifyBtn.disabled = true;
+        verifyBtn.innerHTML = '<span class="spinner"></span><span>Проверяю аккаунт…</span>';
+        securePreExisting(pendingName, user.email).then(function (verdict) {
+          if (verdict === 'ok') { ready(); return; }
+          return sendRecovery(user.email).then(function () {
+            verifyBtn.disabled = false;
+            setPending({ name: pendingName, email: user.email, kind: 'recovery', reason: 'preexisting' });
+            verifying = false;
+            // Мы уже на экране кода: go() его не перерисует — сбрасываем вручную под новый код.
+            card.classList.remove('success');
+            enterVerify();
+            toast({ title: 'Задай пароль ещё раз', text: 'Эту почту уже регистрировали раньше — возможно, не ты. Чтобы аккаунт был только твоим, мы отправили код: введи его и придумай пароль.', icon: 'shield', ms: 10000 });
+          });
+        }).catch(function (e) { ready(); errToast(authError(e)); });
       }, reduce ? 0 : 1500);
     }, reduce ? 0 : 500);
   }
@@ -1861,12 +1925,13 @@
       var stop = spin(this, 'Меняю…');
       leakCheck(nw.value)
         .then(function (leak) { if (leak) throw { leak: leak }; return reauth(cur.value); })
-        .then(function () { return REAL ? changePassword(nw.value) : wait(300); })
+        .then(function () { return REAL ? changePassword(nw.value, cur.value) : wait(300); })
         .then(function () { stop(); close(); log('Пароль изменён'); passwordChangedToast(); }, function (err) {
           stop();
           if (err && err.leak) { setErr(nw, err.leak); nw.focus(); return; }
           if (err && err.wrongPassword) { setErr(cur, 'Текущий пароль неверный'); cur.focus(); return; }
           var info = authError(err);
+          if (info.field === 'current') { setErr(cur, info.text); cur.focus(); return; }
           if (info.field === 'password') setErr(nw, info.text); else errToast(info);
         });
     });
@@ -2038,6 +2103,8 @@
       return c.auth.getSession().then(function (r) {
         var sess = r && r.data && r.data.session;
         if (!sess) throw new Error('JWT expired');
+        // В другой вкладке могли войти в другой аккаунт — тогда не записываем в него этот профиль.
+        if (u.id && sess.user.id !== u.id) throw new Error('JWT expired');
         return { c: c, uid: sess.user.id };
       });
     }).then(function (ctx) {

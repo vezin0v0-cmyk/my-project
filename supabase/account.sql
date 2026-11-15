@@ -3,8 +3,10 @@
 --
 -- Кто может вызвать: только вошедший пользователь, и только для себя (id берётся из его токена).
 -- Гость с публичным ключом сайта вызвать функцию не может.
--- Защита от украденной сессии: удалить можно только в первые 10 минут после ввода пароля или кода
--- из письма. Сайт перед удалением просит пароль ещё раз, поэтому у владельца это всегда так.
+-- Защита от украденной сессии: удалить можно только в первые 10 минут после ввода ПАРОЛЯ (не кода из
+-- приложения-аутентификатора: его с украденной сессией можно «подключить» самому) и только из живой
+-- сессии (выход на всех устройствах сразу отзывает украденную). Сайт перед удалением просит пароль ещё
+-- раз, поэтому у владельца это всегда так.
 -- Фото профиля сайт удаляет сам до вызова: Supabase не разрешает удалять файлы хранилища из SQL.
 
 create or replace function public.delete_my_account()
@@ -21,13 +23,24 @@ begin
     raise exception 'not authenticated' using errcode = '28000';
   end if;
 
-  -- amr — когда и как человек последний раз подтвердил, что это он (пароль, код из письма).
+  -- amr — когда и как человек последний раз подтвердил, что это он. Считаем только пароль.
   -- Обновление токена это время не меняет, поэтому старую сессию «освежить» не получится.
-  select coalesce(bool_or((e ->> 'timestamp')::bigint > extract(epoch from now())::bigint - 600), false)
+  select coalesce(bool_or(e ->> 'method' = 'password'
+                          and (e ->> 'timestamp')::bigint > extract(epoch from now())::bigint - 600), false)
     into fresh
     from jsonb_array_elements(coalesce(auth.jwt() -> 'amr', '[]'::jsonb)) as e;
   if not fresh then
     raise exception 'reauthentication required' using errcode = '28000';
+  end if;
+
+  -- Токен живёт час и после выхода; сама сессия должна существовать (не отозвана «выйти везде»).
+  if not exists (
+    select 1 from auth.sessions s
+     where s.id = nullif(auth.jwt() ->> 'session_id', '')::uuid
+       and s.user_id = uid
+       and (s.not_after is null or s.not_after > now())
+  ) then
+    raise exception 'session revoked' using errcode = '28000';
   end if;
 
   delete from auth.users where id = uid;

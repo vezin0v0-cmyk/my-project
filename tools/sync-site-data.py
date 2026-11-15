@@ -45,6 +45,7 @@ def numbers() -> list:
     return [
         (index, r'(<b id="stat-tweaks">)\d+(</b>)', rf"\g<1>{len(tweaks)}\g<2>"),
         (index, r'(<b id="stat-apps">)\d+(</b>)', rf"\g<1>{len(config['removeApps'])}\g<2>"),
+        (index, r'(<span id="cnt-apps">)\d+( в списке</span>)', rf"\g<1>{len(config['removeApps'])}\g<2>"),
         *[(index, rf'(<span id="cnt-{cat}">)[^<]*(</span>)', rf"\g<1>{settings(per_cat.get(cat, 0))}\g<2>")
           for cat in ("privacy", "interface", "performance")],
         (index, r'(<small id="site-version">v)[\d.]+(</small>)', rf"\g<1>{short}\g<2>"),
@@ -66,8 +67,8 @@ def build_data() -> str:
         "voice": voice,
     }
     blob = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
-    # "</" внутри <script> мог бы закрыть тег раньше времени.
-    return blob.replace("</", "<\\/")
+    # «<» внутри <script> мог бы закрыть тег («</script>») или переключить разбор («<!--»): пишем его как \u003c.
+    return blob.replace("<", "\\u003c")
 
 
 def main() -> int:

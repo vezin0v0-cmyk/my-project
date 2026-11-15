@@ -36,7 +36,7 @@ const mails = [];       // { email, code }
 const calls = [];
 let codeSeq = 0;
 let offline = false;
-const CODES = ['482913', '615204', '790388', '133742', '908172'];
+const CODES = ['48291357', '61520446', '79038812', '13374209', '90817265'];
 function b64url(o) { return Buffer.from(JSON.stringify(o)).toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_'); }
 function userObj(u, withIdentities = true) {
   return {
@@ -45,12 +45,12 @@ function userObj(u, withIdentities = true) {
     app_metadata: { provider: 'email', providers: ['email'] },
     user_metadata: { name: u.name, email: u.email, email_verified: !!u.confirmed },
     identities: withIdentities ? [{ id: u.id, user_id: u.id, provider: 'email', identity_data: { email: u.email, sub: u.id } }] : [],
-    created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+    created_at: u.createdAt || new Date().toISOString(), updated_at: new Date().toISOString()
   };
 }
-function session(u) {
+function session(u, method) {
   const now = Math.floor(Date.now() / 1000);
-  const jwt = b64url({ alg: 'HS256', typ: 'JWT' }) + '.' + b64url({ sub: u.id, email: u.email, aud: 'authenticated', role: 'authenticated', exp: now + 3600, iat: now, session_id: 's-' + u.id }) + '.c2ln';
+  const jwt = b64url({ alg: 'HS256', typ: 'JWT' }) + '.' + b64url({ sub: u.id, email: u.email, aud: 'authenticated', role: 'authenticated', exp: now + 3600, iat: now, session_id: 's-' + u.id, amr: [{ method: method || 'otp', timestamp: now }] }) + '.c2ln';
   return { access_token: jwt, token_type: 'bearer', expires_in: 3600, expires_at: now + 3600, refresh_token: 'rt-' + u.id, user: userObj(u) };
 }
 function sendMail(u) { u.code = CODES[codeSeq++ % CODES.length]; u.sentAt = Date.now(); mails.push({ email: u.email, code: u.code }); }
@@ -81,6 +81,15 @@ async function handle(route) {
     sendMail(nu);
     return reply(route, 200, userObj(nu));
   }
+  if (ep === '/recover') {
+    if (u) { u.recovery = '55443322'; mails.push({ email, code: u.recovery, kind: 'recovery' }); }
+    return reply(route, 200, {});
+  }
+  if (ep === '/verify' && body.type === 'recovery') {
+    if (!u || body.token !== u.recovery) return err(route, 403, 'otp_expired', 'Token has expired or is invalid');
+    u.recovery = null;
+    return reply(route, 200, session(u, 'recovery'));
+  }
   if (ep === '/verify') {
     if (!u || body.token !== u.code || body.type !== 'email') return err(route, 403, 'otp_expired', 'Token has expired or is invalid');
     u.confirmed = true; u.code = null;
@@ -99,8 +108,22 @@ async function handle(route) {
   }
   if (ep === '/logout') return reply(route, 204);
   if (ep === '/user') {
-    const id = ((req.headers()['authorization'] || '').split('.')[1]);
-    return reply(route, 200, userObj(Object.values(users)[0]));
+    let c = {};
+    try { c = JSON.parse(Buffer.from(((req.headers()['authorization'] || '').split('.')[1] || ''), 'base64').toString()); } catch (e) {}
+    const me = Object.values(users).find(x => x.id === c.sub) || Object.values(users)[0];
+    if (req.method() === 'PUT') {
+      if (body.password) {
+        const recovery = (c.amr || []).some(a => a.method === 'recovery');
+        if (!recovery) {
+          if (!body.current_password) return err(route, 400, 'current_password_required', 'Current password required when setting new password.');
+          if (body.current_password !== me.password) return err(route, 400, 'current_password_mismatch', 'Current password required when setting new password.');
+        }
+        if (body.password === me.password) return err(route, 422, 'same_password', 'New password should be different from the old password.');
+        me.password = body.password;
+      }
+      if (body.data && body.data.name) me.name = body.data.name;
+    }
+    return reply(route, 200, userObj(me));
   }
   return err(route, 404, 'not_found', 'not found ' + ep);
 }
@@ -161,13 +184,13 @@ async function flow(ctxOpts, tag, base) {
   const toastText = await p.textContent('.toast');
   check(tag + ' mail toast without code', toastText.includes('Письмо отправлено') && !/\d{6}/.test(toastText), toastText);
   check(tag + ' no demo code toast', (await p.$('.toast .code')) === null);
-  check(tag + ' subtitle says 6 digits', (await p.textContent('#v-sub')).includes('6-значный'));
+  check(tag + ' subtitle says 8 digits', (await p.textContent('#v-sub')).includes('8-значный'));
   check(tag + ' resend timer ~59s', /00:5\d/.test(await p.textContent('#resend')), await p.textContent('#resend'));
   await p.screenshot({ path: `${OUT}/${tag}-1-verify.png` });
 
   // неверный код
   await p.click('#otp input:nth-of-type(1)');
-  await p.keyboard.type('111111');
+  await p.keyboard.type('11111111');
   await p.waitForTimeout(2800);
   const e1 = await p.textContent('#otp-err');
   check(tag + ' wrong code -> russian error', e1.includes('Код не подошёл или устарел'), e1);
@@ -234,11 +257,16 @@ async function flow(ctxOpts, tag, base) {
   await p.click('#terms-label i');
   await p.click('#form-register [type=submit]');
   await p.waitForTimeout(900);
+  // Ответ не выдаёт, что почта занята: экран кода и нейтральная подсказка, письма нет.
+  const dupToast = await p.$$eval('.toast', els => els.map(e => e.textContent).join('|'));
+  check(tag + ' duplicate email: neutral answer', dupToast.includes('Если эта почта ещё не зарегистрирована') && await p.isVisible('#view-verify'), dupToast);
   const regErr = await p.textContent('#form-register .field:nth-of-type(2) .err');
-  check(tag + ' duplicate email message', regErr.includes('уже зарегистрирована'), regErr);
-  check(tag + ' duplicate stays on register', await p.isVisible('#view-register'));
+  check(tag + ' duplicate email not revealed in form', !regErr.includes('уже зарегистрирована'), regErr);
 
   // вход: неверный пароль, потом верный
+  await p.evaluate(() => { location.hash = '#register'; });
+  await p.waitForSelector('#view-register:not([hidden])');
+  await p.waitForTimeout(1300);
   await p.click('#view-register a[href="#login"]');
   await p.waitForSelector('#view-login:not([hidden])');
   await p.waitForTimeout(1300);
@@ -270,7 +298,7 @@ async function flow(ctxOpts, tag, base) {
   await p.waitForSelector('#view-login:not([hidden])', { timeout: 5000 });
 
   // аккаунт без подтверждённой почты: вход ведёт на ввод кода
-  users['petya@mail.ru'] = { id: 'u9', email: 'petya@mail.ru', password: 'Petya2026!x', name: 'Петя', confirmed: false, code: '000111', sentAt: Date.now() - 120000 };
+  users['petya@mail.ru'] = { id: 'u9', email: 'petya@mail.ru', password: 'Petya2026!x', name: 'Петя', confirmed: false, code: '00011122', sentAt: Date.now() - 120000 };
   await p.waitForTimeout(800);
   await p.fill('#l-email', 'petya@mail.ru');
   await p.fill('#l-pass', 'Petya2026!x');
@@ -286,6 +314,61 @@ async function flow(ctxOpts, tag, base) {
   await p.waitForTimeout(2600);
   check(tag + ' petya verified', await p.$eval('#card', el => el.classList.contains('success')));
   check(tag + ' petya name from server', (await p.textContent('#v-email')).includes('Петя'));
+
+  // Захват через «предрегистрацию»: кто-то заранее завёл неподтверждённый аккаунт на чужую почту со своим паролем.
+  // Хозяйка почты регистрируется сама и вводит код — сайт должен заставить задать свой пароль.
+  users['olga@mail.ru'] = { id: 'u7', email: 'olga@mail.ru', password: 'Attacker2026x', name: 'Взломщик', confirmed: false, code: null, sentAt: Date.now() - 120000, createdAt: new Date(Date.now() - 86400000).toISOString() };
+  await p.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+  await p.goto(base + '/app.html#register');
+  await p.waitForSelector('#view-register:not([hidden])');
+  await p.waitForTimeout(1300);
+  await p.fill('#r-name', 'Ольга');
+  await p.fill('#r-email', 'olga@mail.ru');
+  await p.fill('#r-pass', 'Olga2026pass');
+  await p.fill('#r-pass2', 'Olga2026pass');
+  if (!(await p.$eval('#form-register [name=terms]', c => c.checked))) await p.click('#terms-label i');
+  await p.click('#form-register [type=submit]');
+  await p.waitForSelector('#view-verify:not([hidden])', { timeout: 6000 });
+  await p.waitForTimeout(500);
+  await p.click('#otp input:nth-of-type(1)');
+  await p.keyboard.type(users['olga@mail.ru'].code);
+  await p.waitForSelector('#v-note:not([hidden])', { timeout: 12000 }).catch(() => {});
+  const takeNote = await p.textContent('#v-note');
+  check(tag + ' pre-registered account: forced to set own password', takeNote.includes('уже регистрировали') && await p.isVisible('#view-verify'), takeNote);
+  check(tag + ' pre-registered account: attacker name replaced', users['olga@mail.ru'].name === 'Ольга', users['olga@mail.ru'].name);
+  const rec = mails.filter(m => m.email === 'olga@mail.ru' && m.kind === 'recovery').pop();
+  check(tag + ' pre-registered account: recovery code sent', !!rec);
+  await p.waitForSelector('#view-verify:not([hidden])', { timeout: 5000 });
+  await p.waitForTimeout(900);
+  await p.click('#otp input:nth-of-type(1)');
+  await p.keyboard.type(rec ? rec.code : '00000000');
+  await p.waitForSelector('#view-newpass:not([hidden])', { timeout: 9000 });
+  await p.waitForTimeout(500);
+  await p.fill('#form-newpass [name=password]', 'Olga2026new');
+  await p.fill('#form-newpass [name=password2]', 'Olga2026new');
+  await p.click('#form-newpass [type=submit]');
+  await p.waitForSelector('#dash:not([hidden])', { timeout: 8000 });
+  check(tag + ' pre-registered account: attacker password replaced', users['olga@mail.ru'].password === 'Olga2026new', users['olga@mail.ru'].password);
+
+  // Свой же старый неподтверждённый аккаунт с тем же паролем — без лишних шагов.
+  users['ivan@mail.ru'] = { id: 'u8', email: 'ivan@mail.ru', password: 'Ivan2026pass', name: 'Иван', confirmed: false, code: null, sentAt: Date.now() - 120000, createdAt: new Date(Date.now() - 86400000).toISOString() };
+  const mailsBefore = mails.length;
+  await p.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+  await p.goto(base + '/app.html#register');
+  await p.waitForSelector('#view-register:not([hidden])');
+  await p.waitForTimeout(1300);
+  await p.fill('#r-name', 'Иван');
+  await p.fill('#r-email', 'ivan@mail.ru');
+  await p.fill('#r-pass', 'Ivan2026pass');
+  await p.fill('#r-pass2', 'Ivan2026pass');
+  if (!(await p.$eval('#form-register [name=terms]', c => c.checked))) await p.click('#terms-label i');
+  await p.click('#form-register [type=submit]');
+  await p.waitForSelector('#view-verify:not([hidden])', { timeout: 6000 });
+  await p.waitForTimeout(500);
+  await p.click('#otp input:nth-of-type(1)');
+  await p.keyboard.type(users['ivan@mail.ru'].code);
+  await p.waitForSelector('#verify-btn:has-text("Перейти в кабинет")', { timeout: 9000 });
+  check(tag + ' own old account with same password: no reset', mails.filter((m, i) => i >= mailsBefore && m.kind === 'recovery').length === 0);
 
   const overflow = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   check(tag + ' no horizontal overflow (' + overflow + ')', overflow <= 0);

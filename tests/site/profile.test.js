@@ -91,7 +91,7 @@ async function handle(route) {
   const email = (body.email || '').toLowerCase();
   const u = users[email];
   if (ep === '/signup') {
-    const nu = users[email] = { id: '7f1c2a90-0000-4000-8000-00000000000' + (Object.keys(users).length + 1), email, password: body.password, meta: Object.assign({}, body.data), confirmed: false, code: '482913' };
+    const nu = users[email] = { id: '7f1c2a90-0000-4000-8000-00000000000' + (Object.keys(users).length + 1), email, password: body.password, meta: Object.assign({}, body.data), confirmed: false, code: '48291357' };
     mails.push({ email, code: nu.code });
     return reply(route, 200, userObj(nu));
   }
@@ -143,7 +143,7 @@ async function register(p) {
   await p.click('#terms-label i');
   await p.click('#form-register [type=submit]');
   await p.waitForSelector('#view-verify:not([hidden])', { timeout: 6000 });
-  let code = '482913';
+  let code = '48291357';
   if (MODE === 'demo') {
     await p.waitForSelector('.toast .code', { timeout: 6000 });
     code = (await p.textContent('.toast .code')).replace(/\s/g, '');
