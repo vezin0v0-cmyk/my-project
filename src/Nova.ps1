@@ -16,10 +16,11 @@
     .\Nova.ps1 -Mode Fps          # замер FPS в игре: до и после Nova
     .\Nova.ps1 -Mode Clean        # освободить место на диске
     .\Nova.ps1 -Mode Startup      # что запускается вместе с Windows
+    .\Nova.ps1 -Mode Update       # есть ли новая версия Nova
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Menu', 'Preview', 'Apply', 'Undo', 'Measure', 'Check', 'Fps', 'Clean', 'Startup')]
+    [ValidateSet('Menu', 'Preview', 'Apply', 'Undo', 'Measure', 'Check', 'Fps', 'Clean', 'Startup', 'Update')]
     [string]$Mode = 'Menu',
     [string]$ConfigPath,
     [switch]$Yes,
@@ -511,6 +512,43 @@ function Invoke-NovaMoveFlow {
     return 0
 }
 
+# Новая версия: в интернет Nova идёт только здесь и только по просьбе — за одним файлом CHANGELOG.md.
+# Сама ничего не скачивает и не ставит: показывает, что нового, и открывает сайт.
+function Invoke-NovaUpdateFlow {
+    $source = Get-NovaUpdateSource
+    Write-Nova 'Смотрю на GitHub, есть ли новая версия. Скачивается только список изменений — о тебе ничего не отправляется.' info
+    try {
+        $info = Get-NovaUpdateInfo
+    } catch {
+        Write-Nova ('Не получилось проверить: {0}' -f $_.Exception.Message) warn
+        Write-Nova ('Проверь интернет или загляни на сайт Nova: {0}' -f $source.DownloadPage) dim
+        return 2
+    }
+    if (-not $info.IsNewer) {
+        Write-Nova ('У тебя последняя версия — Nova {0}.' -f $info.Current) ok
+        return 0
+    }
+    Write-Host ''
+    Write-Nova ('Вышла Nova {0}, у тебя {1}. Что нового:' -f $info.Latest, $info.Current) ok
+    foreach ($release in $info.Releases) {
+        Write-Host ''
+        Write-Nova ('Версия {0}' -f $release.Label) title
+        $items = @($release.Items)
+        foreach ($item in @($items | Select-Object -First 8)) { Write-Nova ('  • ' + $item) info }
+        if ($items.Count -gt 8) { Write-Nova ('  …и ещё {0}' -f ($items.Count - 8)) dim }
+    }
+    Write-Host ''
+    Write-Nova 'Как обновиться: скачай новую версию с сайта, распакуй в новую папку и перенеси туда свои config.json и voice.json.' info
+    Write-Nova ('Отмена прежних запусков не пропадёт: она хранится в {0}, а не в папке Nova.' -f (Get-NovaDataDir).TrimEnd('\')) dim
+    if ($Mode -eq 'Menu' -and (Confirm-NovaAction 'Открыть сайт Nova, чтобы скачать?')) {
+        # Через Проводник — браузер откроется без прав администратора.
+        Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList $source.DownloadPage
+    } else {
+        Write-Nova ('Скачать: {0}' -f $source.DownloadPage) dim
+    }
+    return 0
+}
+
 # Голосовые команды открываются в своём окне через Проводник — так они работают
 # без прав администратора, как обычная программа.
 function Start-NovaVoiceFlow {
@@ -623,6 +661,7 @@ function Start-NovaMenu {
         Write-Host '  9  Освободить место на диске' -ForegroundColor White
         Write-Host ' 10  Автозагрузка: что запускается вместе с Windows' -ForegroundColor White
         Write-Host ' 11  Переезд на чистую Windows: сохранить и вернуть свои программы' -ForegroundColor White
+        Write-Host ' 12  Есть ли новая версия Nova' -ForegroundColor White
         Write-Host '  0  Выход' -ForegroundColor White
         Write-Host ''
         $choice = (Read-Host '  Выбери пункт').Trim()
@@ -644,6 +683,7 @@ function Start-NovaMenu {
                 '9' { [void](Invoke-NovaCleanFlow); Wait-NovaKey }
                 '10' { [void](Invoke-NovaStartupFlow) }
                 '11' { [void](Invoke-NovaMoveFlow); Wait-NovaKey }
+                '12' { [void](Invoke-NovaUpdateFlow); Wait-NovaKey }
                 '0' { return }
             }
         } catch {
@@ -687,6 +727,7 @@ try {
         'Fps' { Show-NovaBanner; $exitCode = Invoke-NovaFpsFlow }
         'Clean' { Show-NovaBanner; $exitCode = Invoke-NovaCleanFlow }
         'Startup' { Show-NovaBanner; $exitCode = Invoke-NovaStartupFlow }
+        'Update' { Show-NovaBanner; $exitCode = Invoke-NovaUpdateFlow }
     }
 } catch {
     Write-Nova ('Ошибка: {0}' -f $_.Exception.Message) err

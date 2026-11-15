@@ -4,8 +4,9 @@
     python tools/sync-site-data.py          # обновить данные на сайте
     python tools/sync-site-data.py --check  # только проверить, что сайт не отстал (для CI)
 
-Источник правды — src/tweaks.json и config.json. Сайт берёт из них названия,
-описания и значения по умолчанию, чтобы конструктор всегда совпадал с программой.
+Источник правды — src/tweaks.json, config.json и версия в src/Nova.psm1. Сайт берёт
+из них названия, описания и значения по умолчанию, чтобы конструктор всегда совпадал
+с программой, а на главной — число настроек и приложений и номер версии.
 """
 import json
 import re
@@ -15,6 +16,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PAGES = [ROOT / "docs" / "app.html", ROOT / "docs" / "mockup.html"]
 PATTERN = re.compile(r"/\*DATA-START\*/.*?/\*DATA-END\*/", re.S)
+
+
+def nova_version() -> str:
+    text = (ROOT / "src" / "Nova.psm1").read_text(encoding="utf-8-sig")
+    found = re.search(r"\$script:NovaVersion = '(\d+\.\d+\.\d+)'", text)
+    if not found:
+        raise SystemExit("Не нашёл $script:NovaVersion в src/Nova.psm1")
+    return found.group(1)
+
+
+def numbers() -> list:
+    """Числа и версия на главной и в макете: (страница, шаблон, на что заменить)."""
+    tweaks = json.loads((ROOT / "src" / "tweaks.json").read_text(encoding="utf-8"))["tweaks"]
+    config = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+    full = nova_version()
+    short = ".".join(full.split(".")[:2])
+    index = ROOT / "docs" / "index.html"
+    return [
+        (index, r'(<b id="stat-tweaks">)\d+(</b>)', rf"\g<1>{len(tweaks)}\g<2>"),
+        (index, r'(<b id="stat-apps">)\d+(</b>)', rf"\g<1>{len(config['removeApps'])}\g<2>"),
+        (index, r'(<small id="site-version">v)[\d.]+(</small>)', rf"\g<1>{short}\g<2>"),
+        (index, r"(  Nova )\d+\.\d+\.\d+( — твоя Windows)", rf"\g<1>{full}\g<2>"),
+        (ROOT / "docs" / "mockup.html", r"(Nova )\d+\.\d+\.\d+( · у тебя последняя версия)", rf"\g<1>{full}\g<2>"),
+    ]
 
 
 def build_data() -> str:
@@ -39,22 +64,32 @@ def main() -> int:
     data = build_data()
     check = "--check" in sys.argv
     stale = []
+    pages = {path: path.read_text(encoding="utf-8") for path in PAGES}
+    updated = dict(pages)
     for path in PAGES:
-        name = path.relative_to(ROOT).as_posix()
-        page = path.read_text(encoding="utf-8")
-        if not PATTERN.search(page):
-            print(f"Не нашёл метки DATA-START/DATA-END в {name}")
+        if not PATTERN.search(updated[path]):
+            print(f"Не нашёл метки DATA-START/DATA-END в {path.relative_to(ROOT).as_posix()}")
             return 2
-        updated = PATTERN.sub(lambda _: "/*DATA-START*/" + data + "/*DATA-END*/", page, count=1)
-        if updated == page:
+        updated[path] = PATTERN.sub(lambda _: "/*DATA-START*/" + data + "/*DATA-END*/", updated[path], count=1)
+    for path, pattern, value in numbers():
+        if path not in updated:
+            pages[path] = updated[path] = path.read_text(encoding="utf-8")
+        new, count = re.subn(pattern, value, updated[path], count=1)
+        if count != 1:
+            print(f"Не нашёл в {path.relative_to(ROOT).as_posix()}: {pattern}")
+            return 2
+        updated[path] = new
+    for path, page in updated.items():
+        if page == pages[path]:
             continue
+        name = path.relative_to(ROOT).as_posix()
         stale.append(name)
         if not check:
-            path.write_text(updated, encoding="utf-8", newline="\n")
+            path.write_text(page, encoding="utf-8", newline="\n")
             print(f"{name} обновлён.")
     if check:
         if stale:
-            print("Отстали от src/tweaks.json или config.json: " + ", ".join(stale) + ". Запусти: python tools/sync-site-data.py")
+            print("Отстали от src/tweaks.json, config.json или версии Nova: " + ", ".join(stale) + ". Запусти: python tools/sync-site-data.py")
             return 1
         print("Данные сайта совпадают с программой.")
         return 0

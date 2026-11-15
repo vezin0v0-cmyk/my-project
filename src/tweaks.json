@@ -366,7 +366,7 @@
       "actions": [
         { "type": "copyFile", "from": "assets/oem/nova-logo.bmp", "to": "{NovaData}\\oem\\nova-logo.bmp" },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Manufacturer", "kind": "String", "value": "Nova" },
-        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Model", "kind": "String", "value": "Nova 0.4 · твоя Windows" },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Model", "kind": "String", "value": "Nova {NovaVersion} · твоя Windows" },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "SupportURL", "kind": "String", "value": "https://github.com/vezin0v0-cmyk/my-project" },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OEMInformation", "name": "Logo", "kind": "String", "value": "{NovaData}\\oem\\nova-logo.bmp" }
       ]

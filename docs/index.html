@@ -17,6 +17,20 @@
 <title>Nova — твоя Windows, настроенная под тебя</title>
 <meta name="description" content="Nova — бесплатный инструмент с открытым кодом: убирает рекламу, слежку и мусор из Windows 10/11, включает тёмную тему и игровые настройки. Всё отменяется в один клик.">
 <meta name="theme-color" content="#07080b">
+<link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="img/icon-180.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Nova">
+<meta property="og:locale" content="ru_RU">
+<meta property="og:title" content="Nova — твоя Windows, настроенная под тебя">
+<meta property="og:description" content="Бесплатно и с открытым кодом: убирает рекламу, слежку и мусор из Windows 10/11, готовит систему к играм, слушается голоса. Всё отменяется в один клик.">
+<meta property="og:url" content="https://vezin0v0-cmyk.github.io/my-project/docs/">
+<meta property="og:image" content="https://vezin0v0-cmyk.github.io/my-project/docs/img/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Nova — твоя Windows. Без лишнего.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://vezin0v0-cmyk.github.io/my-project/docs/">
 <style>
   :root {
     --bg: #07080b;
@@ -156,6 +170,10 @@
   .list li::before { content: "✓"; position: absolute; left: 2px; color: var(--ok); font-family: var(--mono); }
   .list.no li::before { content: "×"; color: var(--bad); }
   .list b { color: var(--text); font-weight: 600; }
+  .list.new li::before { content: "+"; color: var(--accent); }
+  .release { font: 12px/1 var(--mono); color: var(--dim); margin: -10px 0 18px; }
+  .release b { color: var(--accent); font-weight: 600; }
+  .release a { color: var(--muted); text-underline-offset: 3px; }
 
   /* Поддержка */
   .support { display: grid; grid-template-columns: 1.2fr 1fr; gap: 14px; align-items: stretch; }
@@ -211,9 +229,10 @@
 
 <header class="top">
   <div class="wrap">
-    <a class="logo" href="#"><span class="logo-dot"></span>NOVA <small>v0.4</small></a>
+    <a class="logo" href="#"><span class="logo-dot"></span>NOVA <small id="site-version">v0.5</small></a>
     <nav class="nav">
       <a href="#features">Возможности</a>
+      <a href="#new">Новое</a>
       <a href="#demo">Как выглядит</a>
       <a href="#install">Установка</a>
       <a href="#faq">Вопросы</a>
@@ -236,7 +255,7 @@
         </div>
         <div class="stats">
           <div class="stat"><b id="stat-tweaks">54</b><span>настроек</span></div>
-          <div class="stat"><b>27</b><span>лишних приложений</span></div>
+          <div class="stat"><b id="stat-apps">40</b><span>лишних приложений</span></div>
           <div class="stat"><b>1</b><span>клик — отмена</span></div>
           <div class="stat"><b>0 ₽</b><span>навсегда</span></div>
         </div>
@@ -355,9 +374,39 @@
     </div>
   </section>
 
+  <section id="new">
+    <div class="wrap">
+      <div class="section-head"><span class="num">02</span><h2>Что нового</h2></div>
+      <p class="release"><b>v0.5</b> · 15 ноября 2026 · <a data-link="changelog" href="#">весь список изменений ↗</a></p>
+      <div class="two">
+        <div class="panel reveal">
+          <div class="panel-head"><b>в программе</b></div>
+          <ul class="list new">
+            <li><b>Готовность к играм</b> (пункт 6): драйвер видеокарты, частота монитора (стоит 60 Гц вместо 144 — Nova включит нужную), память, диск, TPM 2.0 и Secure Boot для Valorant и FACEIT.</li>
+            <li><b>Замер FPS</b> (пункт 7): играешь минуту до Nova и минуту после — и видишь честную разницу.</li>
+            <li><b>Голос «Нова, …»</b> (пункт 8) без интернета, а теперь и музыка: «Нова, пауза», «следующий трек».</li>
+            <li><b>Освободить место</b> (пункт 9): сначала покажет, сколько займёт каждый пункт, удаляет только мусор.</li>
+            <li><b>Автозагрузка</b> (пункт 10): что запускается вместе с Windows и кто это выпустил — выключается одной цифрой.</li>
+            <li><b>Переезд</b> (пункт 11): перед переустановкой сохрани список программ на флешку — на чистой Windows Nova поставит их обратно.</li>
+          </ul>
+        </div>
+        <div class="panel reveal">
+          <div class="panel-head"><b>сайт и безопасность</b></div>
+          <ul class="list new">
+            <li><b>Проверка системы при запуске</b>: Nova предупредит, если антивирус или брандмауэр уже кто-то выключил.</li>
+            <li><b>Кабинет</b>: вход по коду из письма, профиль, «Забыли пароль?», смена пароля и удаление аккаунта.</li>
+            <li><b>Пароль проверяется по базе утечек</b> — наружу уходят только 5 символов его отпечатка, сам пароль никуда не уходит.</li>
+            <li><b>Четыре проверки «глазами взломщика»</b>: закрыты подмены файлов, ссылок и программ — всё найденное исправлено и проверяется тестами.</li>
+            <li><b>Инструкция «Чистая Windows + Nova»</b> — по шагам, от флешки до игр.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="demo">
     <div class="wrap">
-      <div class="section-head"><span class="num">02</span><h2>Как это выглядит</h2></div>
+      <div class="section-head"><span class="num">03</span><h2>Как это выглядит</h2></div>
       <p class="sub">Сначала Nova показывает, что изменит, и только потом спрашивает разрешения.</p>
       <div class="panel terminal reveal">
         <div class="panel-head"><b>powershell — nova</b><button class="replay" id="replay" type="button">↻ повторить</button></div>
@@ -368,7 +417,7 @@
 
   <section id="install">
     <div class="wrap">
-      <div class="section-head"><span class="num">03</span><h2>Установка за минуту</h2></div>
+      <div class="section-head"><span class="num">04</span><h2>Установка за минуту</h2></div>
       <div class="steps">
         <div class="panel step reveal">
           <h3>Скачай</h3>
@@ -388,7 +437,7 @@
 
   <section id="safe">
     <div class="wrap">
-      <div class="section-head"><span class="num">04</span><h2>Честно и безопасно</h2></div>
+      <div class="section-head"><span class="num">05</span><h2>Честно и безопасно</h2></div>
       <div class="two">
         <div class="panel reveal">
           <div class="panel-head"><b>что nova делает</b></div>
@@ -418,7 +467,7 @@
 
   <section id="support">
     <div class="wrap">
-      <div class="section-head"><span class="num">05</span><h2>Поддержать проект</h2></div>
+      <div class="section-head"><span class="num">06</span><h2>Поддержать проект</h2></div>
       <div class="support">
         <div class="panel reveal">
           <div class="panel-head"><b>donate</b><span>спасибо ♥</span></div>
@@ -441,7 +490,7 @@
 
   <section id="faq">
     <div class="wrap">
-      <div class="section-head"><span class="num">06</span><h2>Вопросы</h2></div>
+      <div class="section-head"><span class="num">07</span><h2>Вопросы</h2></div>
       <details>
         <summary>Это пиратская Windows?</summary>
         <p>Нет. Nova не содержит Windows и не активирует её. Это набор настроек, который ты запускаешь на своей обычной, лицензионной Windows 10 или 11.</p>
@@ -491,6 +540,7 @@
   var SITE = {
     repo: 'https://github.com/vezin0v0-cmyk/my-project',
     download: 'https://github.com/vezin0v0-cmyk/my-project/archive/refs/heads/claude/hello-973j4n.zip',
+    changelog: 'https://github.com/vezin0v0-cmyk/my-project/blob/claude/hello-973j4n/CHANGELOG.md',
     donate: [
       { name: 'Boosty', url: '' },
       { name: 'DonationAlerts', url: '' }
@@ -701,7 +751,7 @@
     var LINES = [
       ['t-dim', 'PS C:\\Nova> .\\Nova.cmd'],
       ['', ''],
-      ['t-acc', '  Nova 0.4.0 — твоя Windows, настроенная под тебя'],
+      ['t-acc', '  Nova 0.5.0 — твоя Windows, настроенная под тебя'],
       ['t-dim', '  Система: Windows 11 24H2, сборка 26100 (Professional)'],
       ['', ''],
       ['t-title', '  ПРИВАТНОСТЬ'],

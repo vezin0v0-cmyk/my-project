@@ -1,4 +1,5 @@
-// Рисует обои и логотип Nova из tools/assets/wallpaper.html.
+// Рисует обои и логотип Nova из tools/assets/wallpaper.html,
+// а для сайта — значок и карточку-превью ссылок из tools/assets/og-card.html.
 // Нужны Node.js, Playwright и ffmpeg:  node tools/make-assets.js
 const { chromium } = require('playwright');
 const { execFileSync } = require('child_process');
@@ -25,10 +26,23 @@ async function render(browser, query, width, height, file) {
   const tmpLogo = path.join(OUT, 'oem', 'tmp.png');
   await render(browser, 'w=3840&h=2160', 3840, 2160, tmpWall);
   await render(browser, 'mode=logo&w=120&h=120', 120, 120, tmpLogo);
+  // Сайт: значок 180x180 для iPhone и карточка 1200x630 для Telegram/ВК.
+  const version = (fs.readFileSync(path.join(ROOT, 'src', 'Nova.psm1'), 'utf8').match(/NovaVersion = '(\d+\.\d+)/) || [])[1];
+  const img = path.join(ROOT, 'docs', 'img');
+  const icon = await browser.newPage({ viewport: { width: 180, height: 180 }, deviceScaleFactor: 1 });
+  await icon.goto('file://' + path.join(img, 'favicon.svg'));
+  await icon.evaluate(() => { document.documentElement.style.background = '#07080b'; });
+  await icon.screenshot({ path: path.join(img, 'icon-180.png') });
+  await icon.close();
+  const card = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 1 });
+  await card.goto('file://' + path.join(__dirname, 'assets', 'og-card.html') + '?v=' + (version || ''));
+  await card.waitForFunction(() => document.title === 'ready');
+  await card.screenshot({ path: path.join(img, 'og.jpg'), type: 'jpeg', quality: 88 });
+  await card.close();
   await browser.close();
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', tmpWall, '-q:v', '3', path.join(OUT, 'wallpaper', 'nova-dark.jpg')]);
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', tmpLogo, '-pix_fmt', 'bgr24', path.join(OUT, 'oem', 'nova-logo.bmp')]);
   fs.unlinkSync(tmpWall);
   fs.unlinkSync(tmpLogo);
-  console.log('Готово: assets/wallpaper/nova-dark.jpg и assets/oem/nova-logo.bmp');
+  console.log('Готово: assets/wallpaper/nova-dark.jpg, assets/oem/nova-logo.bmp, docs/img/icon-180.png и docs/img/og.jpg');
 })();

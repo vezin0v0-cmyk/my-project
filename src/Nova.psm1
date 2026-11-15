@@ -4,7 +4,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-$script:NovaVersion = '0.4.0'
+$script:NovaVersion = '0.5.0'
 $script:Categories = [ordered]@{
     privacy     = 'ПРИВАТНОСТЬ'
     interface   = 'ИНТЕРФЕЙС'
@@ -208,7 +208,8 @@ function Get-NovaProjectProblem {
 
 # Подставляет значения в текст настроек:
 # {NovaData} — C:\ProgramData\Nova, {NovaRoot} — папка проекта,
-# {WindowsName} — «Windows 11» или «Windows 10», {DisplayVersion} — версия Windows, например 24H2.
+# {WindowsName} — «Windows 11» или «Windows 10», {DisplayVersion} — версия Windows, например 24H2,
+# {NovaVersion} — версия Nova без последней цифры, например 0.5.
 function Expand-NovaText {
     param([string]$Text)
     if ($null -eq $Text -or $Text.IndexOf('{') -lt 0) { return $Text }
@@ -218,6 +219,7 @@ function Expand-NovaText {
     $result = $Text.Replace('{NovaData}', (Get-NovaDataDir).TrimEnd('\'))
     $result = $result.Replace('{NovaRoot}', $script:NovaRoot.TrimEnd('\'))
     $result = $result.Replace('{WindowsName}', $windowsName)
+    $result = $result.Replace('{NovaVersion}', (($script:NovaVersion -split '\.')[0..1] -join '.'))
     return $result.Replace('{DisplayVersion}', [string]$script:SystemInfo.Version)
 }
 
@@ -2018,6 +2020,86 @@ function Show-NovaHealth {
         Write-Nova 'Система готова к Nova.' ok
     }
     return $summary
+}
+
+#endregion
+
+#region Обновления
+
+# Nova ничего не скачивает и не ставит сама. Только когда пользователь попросит (пункт 12),
+# она читает с GitHub один небольшой файл — CHANGELOG.md — и сравнивает версии.
+# Ссылка на скачивание — своя, из этого файла, а не из ответа сервера.
+$script:NovaUpdate = @{
+    ChangelogUrl = 'https://raw.githubusercontent.com/vezin0v0-cmyk/my-project/claude/hello-973j4n/CHANGELOG.md'
+    DownloadPage = 'https://vezin0v0-cmyk.github.io/my-project/docs/'
+    MaxBytes     = 262144
+}
+
+function Get-NovaUpdateSource { return [pscustomobject]$script:NovaUpdate }
+
+# «0.5» и «0.5.0» — одна и та же версия. Всё, что не похоже на номер версии, — $null.
+function ConvertTo-NovaVersion {
+    param([string]$Text)
+    if ($Text -notmatch '^\d{1,4}\.\d{1,4}(\.\d{1,4})?\z') { return $null }
+    $parts = @($Text -split '\.')
+    while ($parts.Count -lt 3) { $parts += '0' }
+    return [version]($parts -join '.')
+}
+
+# Строка из чужого текста для консоли: без управляющих символов и разметки, не длиннее MaxLength.
+function Get-NovaPlainText {
+    param([string]$Text, [int]$MaxLength = 160)
+    $t = ([string]$Text -replace '[\p{Cc}\p{Cf}]', '') -replace '\*\*|`', ''
+    $t = ($t -replace '\s+', ' ').Trim()
+    if ($t.Length -gt $MaxLength) { $t = $t.Substring(0, $MaxLength - 1).TrimEnd() + '…' }
+    return $t
+}
+
+# Версии из CHANGELOG.md («## 0.5 — 15 ноября 2026») и пункты каждой («- …»).
+function Read-NovaChangelog {
+    param([string]$Text)
+    $releases = New-Object System.Collections.Generic.List[object]
+    $current = $null
+    foreach ($line in ([string]$Text -split '\r?\n')) {
+        if ($line -match '^## +(\d{1,4}\.\d{1,4}(?:\.\d{1,4})?)(?:\s|\z)') {
+            $current = [pscustomobject]@{ Version = (ConvertTo-NovaVersion $Matches[1]); Label = $Matches[1]; Items = New-Object System.Collections.Generic.List[string] }
+            $releases.Add($current)
+            continue
+        }
+        if ($line -match '^## ') { $current = $null; continue }
+        if ($current -and $line -match '^- +(.+)$') {
+            $item = Get-NovaPlainText $Matches[1]
+            if ($item) { $current.Items.Add($item) }
+        }
+    }
+    return $releases.ToArray()
+}
+
+function Get-NovaRemoteChangelog {
+    $ProgressPreference = 'SilentlyContinue'
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $response = Invoke-WebRequest -Uri $script:NovaUpdate.ChangelogUrl -UseBasicParsing -TimeoutSec 15
+    $stream = $response.RawContentStream
+    if ($null -eq $stream -or $stream.Length -gt $script:NovaUpdate.MaxBytes) { throw 'GitHub ответил чем-то не тем.' }
+    return [Text.Encoding]::UTF8.GetString($stream.ToArray())
+}
+
+# Есть ли версия новее. Текст можно передать самому — так это проверяется в тестах без интернета.
+function Get-NovaUpdateInfo {
+    param([string]$Changelog)
+    if (-not $PSBoundParameters.ContainsKey('Changelog')) { $Changelog = Get-NovaRemoteChangelog }
+    $releases = @(Read-NovaChangelog $Changelog | Where-Object { $null -ne $_.Version })
+    if ($releases.Count -eq 0) { throw 'В списке изменений не нашлось ни одной версии.' }
+    $mine = ConvertTo-NovaVersion (Get-NovaVersion)
+    $sorted = @($releases | Sort-Object -Property Version -Descending)
+    $newer = @($sorted | Where-Object { $_.Version -gt $mine })
+    return [pscustomobject]@{
+        Current      = Get-NovaVersion
+        Latest       = $sorted[0].Label
+        IsNewer      = ($newer.Count -gt 0)
+        Releases     = $newer
+        DownloadPage = $script:NovaUpdate.DownloadPage
+    }
 }
 
 #endregion

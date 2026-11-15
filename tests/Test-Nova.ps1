@@ -28,6 +28,12 @@ $evilProblems = @(Test-NovaDefinition -Config ([pscustomobject]@{ tweaks = [pscu
 if ($evilProblems.Count -ne 4) { throw ('Предохранитель пропустил отключение защиты: поймано {0} из 4.' -f $evilProblems.Count) }
 Write-Host 'Предохранитель не пропускает отключение защиты Windows.'
 
+# Версия Nova в «О системе» подставляется сама: «Nova 0.5 · твоя Windows».
+$short = ((Get-NovaVersion) -split '\.')[0..1] -join '.'
+$model = Expand-NovaText 'Nova {NovaVersion} · твоя Windows'
+if ($short -notmatch '^\d+\.\d+\z' -or $model -ne ('Nova ' + $short + ' · твоя Windows')) { throw ('Версия в «О системе» подставилась неверно: «{0}»' -f $model) }
+Write-Host ('Версия в «О системе»: {0}' -f $model)
+
 # Включаем все настройки. Гибернацию не трогаем: на виртуальных машинах её обычно нельзя включить обратно.
 foreach ($tweak in $context.Tweaks) {
     $context.Config.tweaks.($tweak.id) = ($tweak.id -ne 'hibernation-off')

@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nova — макет программы</title>
 <meta name="theme-color" content="#050505">
+<link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="img/icon-180.png">
 <style>
   :root {
     --bg: #050505;
@@ -672,7 +674,7 @@
       return;
     }
     if (state.page === 'settings') {
-      box.innerHTML = '<h1>Настройки</h1><p class="lead">Nova 0.4.0 · у тебя последняя версия.</p>' +
+      box.innerHTML = '<h1>Настройки</h1><p class="lead">Nova 0.5.0 · у тебя последняя версия.</p>' +
         '<label class="opt inline"><span class="txt"><b>Проверять обновления</b><small>Раз в день Nova смотрит, не вышла ли новая версия.</small></span><span class="sw"><input type="checkbox" checked><i></i></span></label><div style="height:8px"></div>' +
         '<label class="opt inline"><span class="txt"><b>Точка восстановления перед изменениями</b><small>Запасной вариант Windows на всякий случай.</small></span><span class="sw"><input type="checkbox" checked><i></i></span></label><div style="height:8px"></div>' +
         '<label class="opt inline"><span class="txt"><b>Ярлык Nova Центр на рабочем столе</b><small>Быстрый доступ к настройкам.</small></span><span class="sw"><input type="checkbox" checked><i></i></span></label>';
