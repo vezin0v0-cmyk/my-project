@@ -14,7 +14,7 @@
   })();
 </script>
 <!-- Странице можно ходить только к себе и к серверу аккаунтов: чужие скрипты и отправка данных на другие сайты запрещены. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://udnjvgvdiyfafsiqdkox.supabase.co; connect-src 'self' https://udnjvgvdiyfafsiqdkox.supabase.co https://api.pwnedpasswords.com; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://udnjvgvdiyfafsiqdkox.supabase.co; connect-src 'self' https://udnjvgvdiyfafsiqdkox.supabase.co https://api.pwnedpasswords.com; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>Nova — кабинет</title>
 <meta name="theme-color" content="#050505">
 <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
@@ -167,6 +167,7 @@
   .badge-ic svg.i { width: 22px; height: 22px; }
   .card.success .badge-ic { color: var(--ok); background: rgba(61,220,132,.1); border-color: rgba(61,220,132,.4); }
   .v-note { margin: -4px 0 12px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,201,64,.35); background: rgba(255,201,64,.08); color: var(--text); font-size: 13.5px; line-height: 1.45; text-align: left; }
+  .captcha { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 70; }
   .otp { position: relative; display: flex; justify-content: center; align-items: center; gap: 7px; height: 70px; margin: 6px 0 8px; transition: height .55s cubic-bezier(.6,0,.2,1); }
   .otp.tall { height: 176px; }
   .otp input { width: 44px; min-width: 0; flex: 0 1 auto; height: 60px; padding: 0; border-radius: 14px; text-align: center; font: 700 24px/1 var(--mono); background: rgba(0,0,0,.42);
@@ -781,7 +782,10 @@
   // Оба значения публичные, их можно хранить на сайте. Пока они пустые, кабинет работает в демо-режиме.
   var AUTH = {
     supabaseUrl: 'https://udnjvgvdiyfafsiqdkox.supabase.co',
-    supabaseKey: 'sb_publishable_BWWk8DEVBIDGeY-mtFdEoQ_R_kzCIyK'
+    supabaseKey: 'sb_publishable_BWWk8DEVBIDGeY-mtFdEoQ_R_kzCIyK',
+    // Защита от ботов Cloudflare Turnstile: публичный Site Key. Пусто — выключена.
+    // Как включить — docs/AUTH-SETUP.md, шаг «Защита от ботов». Секретный ключ сюда НЕ вставлять.
+    captchaSiteKey: ''
   };
   var REAL = !!(AUTH.supabaseUrl && AUTH.supabaseKey);
 
@@ -1132,6 +1136,48 @@
       return res ? res.data : null;
     });
   }
+  // ---------- Защита от ботов (Cloudflare Turnstile) ----------
+  // Сервер требует одноразовый токен для регистрации, входа по паролю, «Забыли пароль?» и повторного письма.
+  // Окошко «я не робот» появляется, только если Cloudflare сомневается; обычно всё проходит незаметно.
+  var captcha = { box: null, widget: null, used: false, waiters: [], loading: null };
+  function loadCaptcha() {
+    if (captcha.loading) return captcha.loading;
+    captcha.loading = new Promise(function (resolve, reject) {
+      var el = document.createElement('script');
+      el.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+      el.async = true;
+      el.onload = function () { if (window.turnstile) resolve(window.turnstile); else reject(new Error('captcha')); };
+      el.onerror = function () { captcha.loading = null; reject(new Error('captcha')); };
+      document.head.appendChild(el);
+    });
+    return captcha.loading;
+  }
+  function captchaToken() {
+    if (!REAL || !AUTH.captchaSiteKey) return Promise.resolve(undefined);
+    return loadCaptcha().then(function (ts) {
+      return new Promise(function (resolve, reject) {
+        captcha.waiters.push({ resolve: resolve, reject: reject });
+        if (!captcha.box) {
+          captcha.box = document.createElement('div');
+          captcha.box.className = 'captcha';
+          document.body.appendChild(captcha.box);
+          captcha.widget = ts.render(captcha.box, {
+            sitekey: AUTH.captchaSiteKey, execution: 'execute', appearance: 'interaction-only', language: 'ru',
+            callback: function (token) { var w = captcha.waiters.shift(); if (w) w.resolve(token); },
+            'error-callback': function () { var w = captcha.waiters.shift(); if (w) w.reject(new Error('captcha')); }
+          });
+        }
+        if (captcha.used) ts.reset(captcha.widget);
+        captcha.used = true;
+        ts.execute(captcha.widget);
+      });
+    });
+  }
+  // Как call(), но сначала берёт токен защиты от ботов и передаёт его в fn вторым аргументом.
+  function guarded(fn) {
+    return captchaToken().then(function (token) { return call(function (a) { return fn(a, token); }); });
+  }
+
   function userFrom(u) {
     var meta = (u && u.user_metadata) || {};
     var email = (u && u.email) || '';
@@ -1151,6 +1197,7 @@
     if (code === 'invalid_credentials' || /invalid login credentials/i.test(msg)) return { field: 'password', text: 'Неверная почта или пароль' };
     if (code === 'email_not_confirmed' || /email not confirmed/i.test(msg)) return { unconfirmed: true, text: 'Почта ещё не подтверждена' };
     if (code === 'otp_expired' || /token has expired|otp.*(expired|invalid)|invalid.*(token|otp)/i.test(msg)) return { text: 'Код не подошёл или устарел. Проверь последнее письмо или запроси новый код.' };
+    if (msg === 'captcha' || code === 'captcha_failed' || /captcha/i.test(msg)) return { text: 'Проверка «я не робот» не прошла. Обнови страницу и попробуй ещё раз.' };
     if (code === 'same_password' || /different from the old password/i.test(msg)) return { field: 'password', text: 'Новый пароль должен отличаться от старого' };
     if (code === 'current_password_mismatch' || code === 'current_password_required' || /current password required/i.test(msg)) return { field: 'current', text: 'Текущий пароль неверный' };
     if (code === 'reauthentication_needed' || /requires reauthentication/i.test(msg)) return { text: 'Для смены пароля войди в кабинет заново.' };
@@ -1203,7 +1250,7 @@
   function realLogin(btn, email, pass, remember) {
     var stop = spin(btn, 'Входим…');
     setRemember(remember);
-    call(function (a) { return a.signInWithPassword({ email: email, password: pass }); })
+    guarded(function (a, t) { return a.signInWithPassword({ email: email, password: pass, options: { captchaToken: t } }); })
       .then(function (data) {
         stop();
         signIn(userFrom(data.user), remember);
@@ -1221,7 +1268,7 @@
         }
         // Аккаунт есть, но почту не подтвердили: отправляем новый код и открываем ввод кода.
         var known = readJSON('local', 'nova.known') || {};
-        call(function (a) { return a.resend({ type: 'signup', email: email }); })
+        guarded(function (a, t) { return a.resend({ type: 'signup', email: email, options: { captchaToken: t } }); })
           .catch(function (e2) { var i2 = authError(e2); if (!/сек\./.test(i2.text)) errToast(i2); })
           .then(function () {
             stop();
@@ -1307,7 +1354,7 @@
     leakCheck(pass)
       .then(function (leak) {
         if (leak) throw { leak: leak };
-        return call(function (a) { return a.signUp({ email: email, password: pass, options: { data: { name: name } } }); });
+        return guarded(function (a, t) { return a.signUp({ email: email, password: pass, options: { data: { name: name }, captchaToken: t } }); });
       })
       .then(function (data) {
         stop();
@@ -1386,7 +1433,7 @@
 
   // ---------- Забыли пароль ----------
   function setRecovery(on) { state.recovery = !!on; writeJSON('session', 'nova.recovery', on ? 1 : null); }
-  function sendRecovery(email) { return call(function (a) { return a.resetPasswordForEmail(email); }); }
+  function sendRecovery(email) { return guarded(function (a, t) { return a.resetPasswordForEmail(email, { captchaToken: t }); }); }
   var forgotForm = $('#form-forgot');
   forgotForm.addEventListener('submit', function (e) {
     e.preventDefault();
@@ -1525,7 +1572,7 @@
     resend.disabled = true;
     var again = isRecovery()
       ? sendRecovery(state.pending.email)
-      : call(function (a) { return a.resend({ type: 'signup', email: state.pending.email }); });
+      : guarded(function (a, t) { return a.resend({ type: 'signup', email: state.pending.email, options: { captchaToken: t } }); });
     again
       .then(function () {
         startTimer();
@@ -2047,7 +2094,7 @@
   // Перед опасным действием ещё раз спрашиваем пароль. Свежий вход проверяет и сервер (supabase/account.sql).
   function reauth(pass) {
     if (!REAL) return pass.length >= 8 ? wait(400) : Promise.reject({ wrongPassword: true });
-    return call(function (a) { return a.signInWithPassword({ email: state.user.email, password: pass }); })
+    return guarded(function (a, t) { return a.signInWithPassword({ email: state.user.email, password: pass, options: { captchaToken: t } }); })
       .then(function (data) { if (data && data.user) signIn(userFrom(data.user), remembered()); }, function (err) {
         if (authError(err).field === 'password') throw { wrongPassword: true };
         throw err;
