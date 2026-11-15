@@ -64,7 +64,7 @@
     "security-updates-only": false,
     "no-forced-restart": false,
     "wu-no-drivers": false,
-    "edge-quiet": true,
+    "edge-quiet": false,
     "onedrive-remove": true
   },
 

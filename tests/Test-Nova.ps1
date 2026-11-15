@@ -43,6 +43,15 @@ if ($appProblems.Count -ne 3) { throw ('Удаление частей Windows в
 if (Test-NovaProtectedApp 'Microsoft.BingNews') { throw 'обычное приложение принято за часть Windows' }
 Write-Host 'Пути с «..» и удаление Store/winget/библиотек в config.json не проходят проверку.'
 
+# Отмена запуска прежней версии снимает «замок», который Nova больше не ставит (политика Game DVR).
+$allowedNow = Get-NovaAllowedTargets $context.Tweaks
+$oldEntry = [pscustomobject]@{ type = 'registry'; tweak = 'game-dvr-off'; path = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR'; name = 'AllowGameDVR'; existed = $false; kind = 'DWord'; value = $null }
+$why = Test-NovaJournalEntry -Entry $oldEntry -Allowed $allowedNow
+if ($why) { throw ('отмена старого запуска не снимет прежний «замок»: {0}' -f $why) }
+$alien = [pscustomobject]@{ type = 'registry'; tweak = 'x'; path = 'HKLM\SOFTWARE\Policies\Microsoft\Windows Defender'; name = 'DisableAntiSpyware'; existed = $false; kind = 'DWord'; value = $null }
+if (-not (Test-NovaJournalEntry -Entry $alien -Allowed $allowedNow)) { throw 'отмена приняла запись, которой у Nova никогда не было' }
+Write-Host 'Отмена старых запусков снимает прежние «замки», а чужие записи по-прежнему не принимает.'
+
 # Версия Nova в «О системе» подставляется сама: «Nova 0.5 · твоя Windows».
 $short = ((Get-NovaVersion) -split '\.')[0..1] -join '.'
 $model = Expand-NovaText 'Nova {NovaVersion} · твоя Windows'

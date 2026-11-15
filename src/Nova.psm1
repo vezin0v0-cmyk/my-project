@@ -1583,11 +1583,26 @@ function Get-NovaBackup {
             Sort-Object Name -Descending)
 }
 
+# Значения, которые ставили прежние версии Nova и которые она больше не ставит: отмена старых запусков
+# должна уметь их снять. Иначе «замок» (политика с надписью «управляет организация») остался бы навсегда.
+$script:RetiredRegistry = @(
+    @('HKLM\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo', 'DisabledByGroupPolicy'),
+    @('HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', 'DoNotShowFeedbackNotifications'),
+    @('HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Error Reporting', 'Disabled'),
+    @('HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR', 'AllowGameDVR'),
+    @('HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent', 'DisableWindowsConsumerFeatures')
+)
+
 # Что вообще может менять Nova: всё из tweaks.json плюс обои. Отмена трогает только это,
 # поэтому даже подменённый файл резервной копии не заставит Nova изменить что-то постороннее.
 function Get-NovaAllowedTargets {
     param($Tweaks)
     $allowed = @{ registry = @{}; keys = New-Object System.Collections.Generic.List[string]; service = @{}; task = @{}; file = @{} }
+    foreach ($old in $script:RetiredRegistry) {
+        $key = Get-NovaRegPathKey $old[0]
+        $allowed.registry[('{0}|{1}' -f $key, $old[1]).ToLowerInvariant()] = $true
+        $allowed.keys.Add($key)
+    }
     foreach ($tweak in @($Tweaks)) {
         foreach ($action in @($tweak.actions)) {
             switch ($action.type) {

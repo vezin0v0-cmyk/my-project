@@ -104,7 +104,7 @@ async function handle(route) {
   if (ep === '/token') {
     if (!u || u.password !== body.password) return err(route, 400, 'invalid_credentials', 'Invalid login credentials');
     if (!u.confirmed) return err(route, 400, 'email_not_confirmed', 'Email not confirmed');
-    return reply(route, 200, session(u));
+    return reply(route, 200, session(u, 'password'));
   }
   if (ep === '/logout') return reply(route, 204);
   if (ep === '/user') {
@@ -113,7 +113,8 @@ async function handle(route) {
     const me = Object.values(users).find(x => x.id === c.sub) || Object.values(users)[0];
     if (req.method() === 'PUT') {
       if (body.password) {
-        const recovery = (c.amr || []).some(a => a.method === 'recovery');
+        // Как в Supabase (Session.IsRecovery): сессия по коду из письма — otp, magiclink, recovery — без текущего пароля.
+        const recovery = (c.amr || []).some(a => ['otp', 'magiclink', 'recovery'].includes(a.method));
         if (!recovery) {
           if (!body.current_password) return err(route, 400, 'current_password_required', 'Current password required when setting new password.');
           if (body.current_password !== me.password) return err(route, 400, 'current_password_mismatch', 'Current password required when setting new password.');
@@ -259,7 +260,8 @@ async function flow(ctxOpts, tag, base) {
   await p.waitForTimeout(900);
   // Ответ не выдаёт, что почта занята: экран кода и нейтральная подсказка, письма нет.
   const dupToast = await p.$$eval('.toast', els => els.map(e => e.textContent).join('|'));
-  check(tag + ' duplicate email: neutral answer', dupToast.includes('Если эта почта ещё не зарегистрирована') && await p.isVisible('#view-verify'), dupToast);
+  // Тот же экран и то же «Письмо отправлено», что и при обычной регистрации; подсказка про существующий аккаунт — для всех.
+  check(tag + ' duplicate email: same answer as a new signup', dupToast.includes('Письмо отправлено') && await p.isVisible('#view-verify') && (await p.textContent('.resend-hint')).includes('Забыли пароль'), dupToast);
   const regErr = await p.textContent('#form-register .field:nth-of-type(2) .err');
   check(tag + ' duplicate email not revealed in form', !regErr.includes('уже зарегистрирована'), regErr);
 
@@ -316,55 +318,57 @@ async function flow(ctxOpts, tag, base) {
   check(tag + ' petya name from server', (await p.textContent('#v-email')).includes('Петя'));
 
   // Захват через «предрегистрацию»: кто-то заранее завёл неподтверждённый аккаунт на чужую почту со своим паролем.
-  // Хозяйка почты регистрируется сама и вводит код — сайт должен заставить задать свой пароль.
-  users['olga@mail.ru'] = { id: 'u7', email: 'olga@mail.ru', password: 'Attacker2026x', name: 'Взломщик', confirmed: false, code: null, sentAt: Date.now() - 120000, createdAt: new Date(Date.now() - 86400000).toISOString() };
-  await p.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
-  await p.goto(base + '/app.html#register');
-  await p.waitForSelector('#view-register:not([hidden])');
-  await p.waitForTimeout(1300);
-  await p.fill('#r-name', 'Ольга');
-  await p.fill('#r-email', 'olga@mail.ru');
-  await p.fill('#r-pass', 'Olga2026pass');
-  await p.fill('#r-pass2', 'Olga2026pass');
-  if (!(await p.$eval('#form-register [name=terms]', c => c.checked))) await p.click('#terms-label i');
-  await p.click('#form-register [type=submit]');
+  // Хозяйка почты регистрируется сама и вводит код — у аккаунта сразу её пароль, пароль взломщика больше не работает.
+  async function registerAs(name, email, pass) {
+    await p.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+    await p.goto(base + '/app.html#register');
+    await p.waitForSelector('#view-register:not([hidden])');
+    await p.waitForTimeout(1300);
+    await p.fill('#r-name', name);
+    await p.fill('#r-email', email);
+    await p.fill('#r-pass', pass);
+    await p.fill('#r-pass2', pass);
+    if (!(await p.$eval('#form-register [name=terms]', c => c.checked))) await p.click('#terms-label i');
+    await p.click('#form-register [type=submit]');
+    await p.waitForSelector('#view-verify:not([hidden])', { timeout: 6000 });
+    await p.waitForTimeout(500);
+  }
+  users['olga@mail.ru'] = { id: 'u7', email: 'olga@mail.ru', password: 'Attacker2026x', name: 'Взломщик', confirmed: false, code: null, sentAt: Date.now() - 120000, createdAt: new Date(Date.now() - 30000).toISOString() };
+  await registerAs('Ольга', 'olga@mail.ru', 'Olga2026pass');
+  await p.click('#otp input:nth-of-type(1)');
+  await p.keyboard.type(users['olga@mail.ru'].code);
+  await p.waitForSelector('#verify-btn:has-text("Перейти в кабинет")', { timeout: 9000 });
+  check(tag + ' pre-registered account: own password set right after the code', users['olga@mail.ru'].password === 'Olga2026pass', users['olga@mail.ru'].password);
+  check(tag + ' pre-registered account: attacker name replaced', users['olga@mail.ru'].name === 'Ольга', users['olga@mail.ru'].name);
+  check(tag + ' pre-registered account: switched to a password session, others closed', calls.slice(-4).some(c => c.startsWith('POST /token')) && calls.slice(-3).some(c => c.startsWith('POST /logout')), calls.slice(-5));
+  check(tag + ' pre-registered account: no extra email needed', !mails.some(m => m.email === 'olga@mail.ru' && m.kind === 'recovery'));
+
+  // Перезагрузка между регистрацией и кодом: пароля в памяти нет — кабинет закрыт, пока не придумаешь пароль.
+  users['masha@mail.ru'] = { id: 'u6', email: 'masha@mail.ru', password: 'Attacker2026y', name: 'Взломщик', confirmed: false, code: null, sentAt: Date.now() - 120000, createdAt: new Date(Date.now() - 30000).toISOString() };
+  await registerAs('Маша', 'masha@mail.ru', 'Masha2026pass');
+  await p.reload();
   await p.waitForSelector('#view-verify:not([hidden])', { timeout: 6000 });
   await p.waitForTimeout(500);
   await p.click('#otp input:nth-of-type(1)');
-  await p.keyboard.type(users['olga@mail.ru'].code);
-  await p.waitForSelector('#v-note:not([hidden])', { timeout: 12000 }).catch(() => {});
-  const takeNote = await p.textContent('#v-note');
-  check(tag + ' pre-registered account: forced to set own password', takeNote.includes('уже регистрировали') && await p.isVisible('#view-verify'), takeNote);
-  check(tag + ' pre-registered account: attacker name replaced', users['olga@mail.ru'].name === 'Ольга', users['olga@mail.ru'].name);
-  const rec = mails.filter(m => m.email === 'olga@mail.ru' && m.kind === 'recovery').pop();
-  check(tag + ' pre-registered account: recovery code sent', !!rec);
-  await p.waitForSelector('#view-verify:not([hidden])', { timeout: 5000 });
-  await p.waitForTimeout(900);
-  await p.click('#otp input:nth-of-type(1)');
-  await p.keyboard.type(rec ? rec.code : '00000000');
+  await p.keyboard.type(users['masha@mail.ru'].code);
   await p.waitForSelector('#view-newpass:not([hidden])', { timeout: 9000 });
-  await p.waitForTimeout(500);
-  await p.fill('#form-newpass [name=password]', 'Olga2026new');
-  await p.fill('#form-newpass [name=password2]', 'Olga2026new');
+  check(tag + ' reload before the code: asked to set a password', true);
+  await p.evaluate(() => { location.hash = '#dashboard'; });
+  await p.waitForTimeout(600);
+  check(tag + ' reload before the code: dashboard stays closed', await p.isVisible('#view-newpass') && !(await p.isVisible('#dash')));
+  await p.reload();
+  await p.waitForTimeout(1200);
+  check(tag + ' reload before the code: still closed after reload', await p.isVisible('#view-newpass'));
+  await p.fill('#form-newpass [name=password]', 'Masha2026new');
+  await p.fill('#form-newpass [name=password2]', 'Masha2026new');
   await p.click('#form-newpass [type=submit]');
   await p.waitForSelector('#dash:not([hidden])', { timeout: 8000 });
-  check(tag + ' pre-registered account: attacker password replaced', users['olga@mail.ru'].password === 'Olga2026new', users['olga@mail.ru'].password);
+  check(tag + ' reload before the code: attacker password replaced', users['masha@mail.ru'].password === 'Masha2026new', users['masha@mail.ru'].password);
 
   // Свой же старый неподтверждённый аккаунт с тем же паролем — без лишних шагов.
   users['ivan@mail.ru'] = { id: 'u8', email: 'ivan@mail.ru', password: 'Ivan2026pass', name: 'Иван', confirmed: false, code: null, sentAt: Date.now() - 120000, createdAt: new Date(Date.now() - 86400000).toISOString() };
   const mailsBefore = mails.length;
-  await p.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
-  await p.goto(base + '/app.html#register');
-  await p.waitForSelector('#view-register:not([hidden])');
-  await p.waitForTimeout(1300);
-  await p.fill('#r-name', 'Иван');
-  await p.fill('#r-email', 'ivan@mail.ru');
-  await p.fill('#r-pass', 'Ivan2026pass');
-  await p.fill('#r-pass2', 'Ivan2026pass');
-  if (!(await p.$eval('#form-register [name=terms]', c => c.checked))) await p.click('#terms-label i');
-  await p.click('#form-register [type=submit]');
-  await p.waitForSelector('#view-verify:not([hidden])', { timeout: 6000 });
-  await p.waitForTimeout(500);
+  await registerAs('Иван', 'ivan@mail.ru', 'Ivan2026pass');
   await p.click('#otp input:nth-of-type(1)');
   await p.keyboard.type(users['ivan@mail.ru'].code);
   await p.waitForSelector('#verify-btn:has-text("Перейти в кабинет")', { timeout: 9000 });

@@ -115,7 +115,8 @@ async function handle(route) {
     if (body.password) {
       // Как Supabase с «Require current password»: вне восстановления по коду нужен текущий пароль.
       const c = claims(req);
-      const recovery = (c.amr || []).some(a => a.method === 'recovery');
+      // Как в Supabase (Session.IsRecovery): сессия по коду из письма — otp, magiclink, recovery — без текущего пароля.
+      const recovery = (c.amr || []).some(a => ['otp', 'magiclink', 'recovery'].includes(a.method));
       if (!recovery) {
         if (!body.current_password) return err(route, 400, 'current_password_required', 'Current password required when setting new password.');
         if (body.current_password !== me.password) return err(route, 400, 'current_password_mismatch', 'Current password required when setting new password.');

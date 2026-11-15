@@ -17,8 +17,7 @@
       "title": "Без рекламного идентификатора",
       "description": "Приложения не получат идентификатор для персональной рекламы.",
       "actions": [
-        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo", "name": "Enabled", "kind": "DWord", "value": 0 },
-        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\AdvertisingInfo", "name": "DisabledByGroupPolicy", "kind": "DWord", "value": 1 }
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo", "name": "Enabled", "kind": "DWord", "value": 0 }
       ]
     },
     {
@@ -60,8 +59,7 @@
         { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SubscribedContent-353696Enabled", "kind": "DWord", "value": 0 },
         { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "name": "Start_IrisRecommendations", "kind": "DWord", "value": 0 },
         { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "name": "ShowSyncProviderNotifications", "kind": "DWord", "value": 0 },
-        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\UserProfileEngagement", "name": "ScoobeSystemSettingEnabled", "kind": "DWord", "value": 0 },
-        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent", "name": "DisableWindowsConsumerFeatures", "kind": "DWord", "value": 1 }
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\UserProfileEngagement", "name": "ScoobeSystemSettingEnabled", "kind": "DWord", "value": 0 }
       ]
     },
     {
@@ -104,8 +102,7 @@
       "title": "Не просить отзывы",
       "description": "Windows перестаёт показывать окна с просьбой оценить систему.",
       "actions": [
-        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Siuf\\Rules", "name": "NumberOfSIUFInPeriod", "kind": "DWord", "value": 0 },
-        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "name": "DoNotShowFeedbackNotifications", "kind": "DWord", "value": 1 }
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Siuf\\Rules", "name": "NumberOfSIUFInPeriod", "kind": "DWord", "value": 0 }
       ]
     },
     {
@@ -139,7 +136,7 @@
       "title": "Не отправлять отчёты об ошибках",
       "description": "Когда программа падает, Windows больше не отправляет отчёт в Microsoft и не держит для этого службу.",
       "actions": [
-        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Error Reporting", "name": "Disabled", "kind": "DWord", "value": 1 },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\Windows Error Reporting", "name": "Disabled", "kind": "DWord", "value": 1 },
         { "type": "scheduledTask", "path": "\\Microsoft\\Windows\\Windows Error Reporting\\", "name": "QueueReporting" },
         { "type": "service", "name": "WerSvc", "startup": "Disabled" }
       ]
@@ -395,11 +392,10 @@
       "id": "game-dvr-off",
       "category": "performance",
       "title": "Без фоновой записи игр",
-      "description": "Отключает Game DVR, который постоянно пишет игру в фоне и отнимает FPS. Если записываешь клипы через Win+G — выключи эту настройку.",
+      "description": "Выключает Game DVR — фоновую запись игры, которая отнимает FPS. Захочешь записывать клипы — включи запись в «Параметры → Игры → Клипы»: Nova этот переключатель не запирает.",
       "actions": [
         { "type": "registry", "path": "HKCU\\System\\GameConfigStore", "name": "GameDVR_Enabled", "kind": "DWord", "value": 0 },
-        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR", "name": "AppCaptureEnabled", "kind": "DWord", "value": 0 },
-        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\GameDVR", "name": "AllowGameDVR", "kind": "DWord", "value": 0 }
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR", "name": "AppCaptureEnabled", "kind": "DWord", "value": 0 }
       ]
     },
     {
@@ -603,7 +599,7 @@
       "id": "edge-quiet",
       "category": "system",
       "title": "«Тихий» Microsoft Edge",
-      "description": "Edge больше не висит в фоне и не запускается вместе с Windows, не показывает рекламу, советы и «помощника покупок», не отправляет данные о просмотре. Удалять Edge не будем: на нём работают другие программы. В настройках Edge появится надпись «Браузер управляется организацией» — так Edge показывает любые такие правила, это нормально.",
+      "description": "Edge больше не висит в фоне и не запускается вместе с Windows, не показывает рекламу, советы и «помощника покупок», не отправляет данные о просмотре. Удалять Edge не будем: на нём работают другие программы. В настройках Edge появится надпись «Браузер управляется организацией» — так Edge показывает любые такие правила, это нормально. Пункт по желанию: если пользуешься Edge и хочешь настраивать его сам — не включай.",
       "actions": [
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge", "name": "StartupBoostEnabled", "kind": "DWord", "value": 0 },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge", "name": "BackgroundModeEnabled", "kind": "DWord", "value": 0 },

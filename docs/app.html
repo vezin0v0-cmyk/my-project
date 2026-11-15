@@ -166,7 +166,7 @@
     background: rgba(255,201,64,.1); border: 1px solid rgba(255,201,64,.35); transition: color .4s, background .4s, border-color .4s; }
   .badge-ic svg.i { width: 22px; height: 22px; }
   .card.success .badge-ic { color: var(--ok); background: rgba(61,220,132,.1); border-color: rgba(61,220,132,.4); }
-  .v-note { margin: -4px 0 12px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,201,64,.35); background: rgba(255,201,64,.08); color: var(--text); font-size: 13.5px; line-height: 1.45; text-align: left; }
+  .resend-hint { margin: 6px 0 0; color: var(--dim); font-size: 12.5px; text-align: center; }
   .captcha { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 70; }
   .otp { position: relative; display: flex; justify-content: center; align-items: center; gap: 7px; height: 70px; margin: 6px 0 8px; transition: height .55s cubic-bezier(.6,0,.2,1); }
   .otp.tall { height: 176px; }
@@ -571,7 +571,6 @@
         <div class="badge-ic" id="v-badge"><svg class="i"><use href="#i-key"/></svg></div>
         <h1 id="v-title">Подтверди <span class="gold-text">почту</span></h1>
         <p class="sub" id="v-sub">Мы отправили 8-значный код на <b id="v-email"></b></p>
-        <p class="v-note" id="v-note" role="status" hidden></p>
         <div class="otp" id="otp">
           <input inputmode="numeric" autocomplete="one-time-code" aria-label="Цифра 1" pattern="[0-9]*">
           <input inputmode="numeric" aria-label="Цифра 2" pattern="[0-9]*">
@@ -585,6 +584,7 @@
         </div>
         <p class="otp-err" id="otp-err" aria-live="polite"></p>
         <p class="resend">Не пришёл код? <button class="link" type="button" id="resend" disabled>Отправить снова</button></p>
+        <p class="resend-hint">Загляни в «Спам». Если аккаунт с этой почтой уже есть, письма не будет — войди или нажми «Забыли пароль?».</p>
         <button class="btn-gold wide" type="button" id="verify-btn"><span>Подтвердить</span><svg class="i"><use href="#i-arrow"/></svg></button>
         <p class="switch"><a class="link" href="#register" id="v-back">← Изменить почту</a></p>
       </div>
@@ -771,7 +771,7 @@
   'use strict';
 
   // Данные настроек. Обновляются командой: python tools/sync-site-data.py
-  var DATA = /*DATA-START*/{"tweaks":[{"id":"telemetry-off","category":"privacy","title":"Минимум телеметрии","description":"Ставит минимальный уровень сбора данных и отключает службу телеметрии DiagTrack. На Home и Pro минимум — «обязательные данные», полный ноль бывает только на Enterprise."},{"id":"ads-id-off","category":"privacy","title":"Без рекламного идентификатора","description":"Приложения не получат идентификатор для персональной рекламы."},{"id":"tailored-off","category":"privacy","title":"Без советов по данным диагностики","description":"Microsoft не будет подбирать советы и рекламу на основе диагностических данных."},{"id":"activity-history-off","category":"privacy","title":"Не собирать историю действий","description":"Windows перестаёт записывать, какие программы и файлы ты открывал, и отправлять это в облако."},{"id":"suggestions-off","category":"privacy","title":"Убрать рекламу и «советы» Windows","description":"Выключает рекламу в «Пуске», автоустановку предлагаемых приложений, советы на экране блокировки, рекламу OneDrive в Проводнике и напоминания «давайте завершим настройку»."},{"id":"web-search-off","category":"privacy","title":"Без Bing в поиске «Пуска»","description":"Поиск в «Пуске» ищет только на компьютере и не отправляет запросы в интернет."},{"id":"copilot-off","category":"privacy","title":"Отключить Copilot","description":"Выключает встроенный Copilot и убирает его кнопку. В новых версиях Copilot — отдельное приложение: его удаляет пункт Microsoft.Copilot в списке removeApps."},{"id":"recall-off","category":"privacy","title":"Отключить Recall","description":"Recall постоянно делает снимки экрана для поиска с ИИ. Настройка запрещает эту функцию."},{"id":"feedback-off","category":"privacy","title":"Не просить отзывы","description":"Windows перестаёт показывать окна с просьбой оценить систему."},{"id":"update-sharing-off","category":"privacy","title":"Не раздавать обновления другим ПК","description":"Обновления качаются только с серверов Microsoft, а твой интернет не тратится на раздачу чужим компьютерам."},{"id":"telemetry-tasks-off","category":"privacy","title":"Отключить скрытые задачи сбора данных","description":"Windows по расписанию запускает задачи, которые собирают данные о программах, дисках и использовании. Отключаем их и службу отправки (dmwappushservice)."},{"id":"error-reporting-off","category":"privacy","title":"Не отправлять отчёты об ошибках","description":"Когда программа падает, Windows больше не отправляет отчёт в Microsoft и не держит для этого службу."},{"id":"sync-off","category":"privacy","title":"Не синхронизировать настройки с Microsoft","description":"Тема, пароли браузера Edge, язык и другие настройки не отправляются в облако Microsoft и не переносятся на другие устройства. Буфер обмена тоже не уходит в облако."},{"id":"input-data-off","category":"privacy","title":"Не собирать то, что ты печатаешь и говоришь","description":"Windows перестаёт собирать образцы набранного текста и рукописного ввода «для улучшения» и отправлять голос в онлайн-распознавание."},{"id":"account-nags-off","category":"privacy","title":"Без напоминаний «войди в аккаунт Microsoft»","description":"Убирает значки и подсказки в «Пуске» и Параметрах, которые уговаривают войти в аккаунт Microsoft или купить подписку."},{"id":"location-off","category":"privacy","title":"Запретить доступ к местоположению","description":"Приложения не узнают, где ты находишься. Погода и карты перестанут определять город сами."},{"id":"dark-theme","category":"interface","title":"Тёмная тема","description":"Тёмное оформление для системы и приложений."},{"id":"show-extensions","category":"interface","title":"Показывать расширения файлов","description":"В Проводнике видно, что файл — это «фото.jpg», а не «фото.jpg.exe». Полезно и для безопасности."},{"id":"show-hidden-files","category":"interface","title":"Показывать скрытые файлы","description":"Проводник показывает скрытые файлы и папки."},{"id":"explorer-this-pc","category":"interface","title":"Проводник открывается на «Этот компьютер»","description":"Вместо «Главной» с рекомендациями сразу видны диски."},{"id":"classic-context-menu","category":"interface","title":"Полное контекстное меню сразу","description":"Правый клик сразу показывает все пункты, без «Показать дополнительные параметры»."},{"id":"taskbar-left","category":"interface","title":"Кнопка «Пуск» слева","description":"Значки на панели задач прижаты к левому краю, как в Windows 10."},{"id":"search-icon-only","category":"interface","title":"Поиск на панели задач — только значок","description":"Вместо широкого поля поиска остаётся компактный значок."},{"id":"task-view-hide","category":"interface","title":"Убрать кнопку «Представление задач»","description":"Кнопка пропадает с панели задач. Окна всё равно можно листать через Win+Tab."},{"id":"widgets-off","category":"interface","title":"Без виджетов и новостей","description":"Убирает виджеты (Windows 11) и «Новости и интересы» (Windows 10) с панели задач."},{"id":"end-task-button","category":"interface","title":"«Завершить задачу» на панели задач","description":"Зависшую программу можно закрыть правым кликом по её значку, без Диспетчера задач."},{"id":"sticky-keys-off","category":"interface","title":"Не спрашивать про залипание клавиш","description":"Окно «Включить залипание клавиш?» больше не выскакивает, если пять раз нажать Shift (например, в игре)."},{"id":"context-menu-cleanup","category":"interface","title":"Убрать лишнее из правой кнопки","description":"Убирает редко нужные пункты: «Поделиться», «Предоставить доступ», «Добавить в библиотеку», «Восстановить прежнюю версию» и «Спросить Copilot»."},{"id":"notifications-off","category":"interface","title":"Без всплывающих уведомлений","description":"Уведомления программ в углу экрана больше не появляются. Удобно в играх, но можно пропустить что-то важное."},{"id":"transparency-off","category":"interface","title":"Без прозрачности окон","description":"Панель задач и меню становятся непрозрачными. Чуть меньше нагрузки на слабую видеокарту."},{"id":"fewer-animations","category":"interface","title":"Меньше анимаций","description":"Окна сворачиваются и разворачиваются мгновенно, панель задач — без анимации. Компьютер кажется отзывчивее, особенно слабый. Для окон начнёт действовать после выхода из системы и входа."},{"id":"nova-wallpaper","category":"style","title":"Обои Nova","description":"Тёмные обои с золотыми линиями и логотипом Nova. Ставятся сразу, без перезагрузки. Старые обои вернутся при отмене."},{"id":"nova-accent","category":"style","title":"Золотой цвет акцента","description":"Выделения, переключатели и кнопки в Windows становятся золотыми, как у Nova."},{"id":"nova-about","category":"style","title":"Nova в «О системе»","description":"В «Параметры → Система → О системе» появятся название и версия Nova, а в «Поддержке» — ссылка на проект. Если там были данные производителя ПК, они вернутся при отмене."},{"id":"game-mode-on","category":"performance","title":"Игровой режим","description":"Во время игры Windows отдаёт ей приоритет и не ставит обновления."},{"id":"game-dvr-off","category":"performance","title":"Без фоновой записи игр","description":"Отключает Game DVR, который постоянно пишет игру в фоне и отнимает FPS. Если записываешь клипы через Win+G — выключи эту настройку."},{"id":"faster-menus","category":"performance","title":"Меню открываются быстрее","description":"Задержка перед открытием подменю — 100 мс вместо 400."},{"id":"no-startup-delay","category":"performance","title":"Автозагрузка без задержки","description":"Программы из автозагрузки стартуют сразу после входа, без искусственной паузы."},{"id":"mouse-acceleration-off","category":"performance","title":"Без ускорения мыши","description":"Курсор двигается ровно на столько, на сколько двигаешь мышь. Любят в шутерах. Начнёт работать после выхода из системы и входа."},{"id":"high-performance-power","category":"performance","title":"Схема питания «Высокая производительность»","description":"Процессор не сбрасывает частоту. На ноутбуке батарея сядет быстрее."},{"id":"hibernation-off","category":"performance","title":"Отключить гибернацию","description":"Освобождает на диске C: столько места, сколько у тебя оперативной памяти (файл hiberfil.sys). Вместе с ней отключается «быстрый запуск»."},{"id":"background-apps-off","category":"performance","title":"Запретить приложениям из Store работать в фоне","description":"Экономит память и батарею. Некоторые приложения из Store могут перестать присылать уведомления."},{"id":"gpu-scheduling-on","category":"performance","title":"Планирование GPU (меньше задержка)","description":"Видеокарта сама управляет своей памятью — это может снизить задержку в играх. Работает на современных видеокартах, начнёт действовать после перезагрузки."},{"id":"windowed-games-optimization","category":"performance","title":"Оптимизация игр в окне","description":"Игры в окне и без рамки работают почти как в полноэкранном режиме: меньше задержка и плавнее картинка."},{"id":"game-priority","category":"performance","title":"Игры в приоритете у планировщика","description":"Служба мультимедиа Windows (MMCSS) оставляет фоновым задачам 10% процессора вместо 20%, а игре даёт высокий приоритет процессора и диска. Заметнее всего, когда рядом открыты браузер, Discord или запись — меньше подтормаживаний. На мощном ПК без фоновой нагрузки разница может быть не видна."},{"id":"power-throttling-off","category":"performance","title":"Без энергосбережения процессора","description":"Windows перестаёт замедлять фоновые программы ради экономии энергии. На ноутбуке батарея сядет быстрее."},{"id":"memory-integrity-off","category":"performance","title":"Выключить «Целостность памяти»","description":"Microsoft сама пишет, что эта защита может снижать FPS в играх. Но это защита от вредоносных драйверов: выключай, только если понимаешь риск. Некоторые античиты требуют её включённой. Действует после перезагрузки."},{"id":"background-services-trim","category":"system","title":"Отключить ненужные фоновые службы","description":"Службы, которые обычному ПК не нужны: загрузка офлайн-карт, демо-режим для магазинов, факс, отслеживание ссылок в сети и сетевой доступ к медиатеке."},{"id":"sysmain-off","category":"system","title":"Отключить SysMain (Superfetch)","description":"SysMain заранее загружает программы в память. На SSD пользы почти нет, а в фоне он нагружает диск и процессор. На старом жёстком диске программы могут открываться медленнее."},{"id":"search-indexing-off","category":"system","title":"Отключить индексацию поиска","description":"Windows перестаёт постоянно сканировать файлы для быстрого поиска — меньше фоновой нагрузки. Поиск в «Пуске» и Проводнике по содержимому файлов станет медленнее."},{"id":"printing-off","category":"system","title":"Отключить печать","description":"Если у тебя нет принтера — служба печати не нужна. Включится обратно при отмене."},{"id":"bluetooth-off","category":"system","title":"Отключить Bluetooth","description":"Если не пользуешься беспроводными наушниками, мышью или геймпадом по Bluetooth. С ними включать нельзя — перестанут подключаться."},{"id":"xbox-services-off","category":"system","title":"Отключить службы Xbox","description":"Если не играешь через Xbox и Game Pass. Игры из Steam и Epic Games это не затронет."},{"id":"security-updates-only","category":"system","title":"Только обновления безопасности","description":"Windows продолжит ставить исправления безопасности, но не будет сама переходить на новую большую версию (например, с 24H2 на следующую) и ломать твои настройки. Работает на Pro и выше. Важно: у каждой версии Windows есть срок поддержки — когда он заканчивается, исправления перестают приходить. Тогда выключи этот пункт и обновись."},{"id":"no-forced-restart","category":"system","title":"Без перезагрузки посреди игры","description":"Windows не перезагрузит компьютер сама, пока ты в системе, — например, посреди игры. Обновления скачиваются и ставятся как обычно, но начинают действовать только после перезагрузки: перезагружай компьютер сам хотя бы раз в несколько дней. Проверка системы в Nova напомнит, если Windows ждёт перезагрузки."},{"id":"wu-no-drivers","category":"system","title":"Драйверы не через Центр обновления","description":"Центр обновления Windows перестанет сам ставить драйверы — и не подменит свежий драйвер видеокарты старым. Обновления безопасности приходят как обычно. Драйверы тогда обновляешь сам: видеокарту — с сайта NVIDIA, AMD или Intel (Nova подскажет ссылку в пункте 6). Работает на Pro и выше."},{"id":"edge-quiet","category":"system","title":"«Тихий» Microsoft Edge","description":"Edge больше не висит в фоне и не запускается вместе с Windows, не показывает рекламу, советы и «помощника покупок», не отправляет данные о просмотре. Удалять Edge не будем: на нём работают другие программы. В настройках Edge появится надпись «Браузер управляется организацией» — так Edge показывает любые такие правила, это нормально."},{"id":"onedrive-remove","category":"system","title":"Удалить OneDrive (если он не настроен)","description":"Если ты не входил в OneDrive, он просто висит в фоне и предлагает сохранять файлы в облако. Nova удалит его. Если ты в OneDrive вошёл — Nova его не тронет, чтобы не потерять файлы. Вернуть можно из Microsoft Store."}],"config":{"_info":"Это настройки твоей сборки. true — включено, false — выключено. Что делает каждый пункт, написано в src/tweaks.json. После правок запусти Nova.cmd и выбери «Посмотреть, что изменится».","createRestorePoint":true,"tweaks":{"telemetry-off":true,"ads-id-off":true,"tailored-off":true,"activity-history-off":true,"suggestions-off":true,"web-search-off":true,"copilot-off":true,"recall-off":true,"feedback-off":true,"update-sharing-off":true,"telemetry-tasks-off":true,"error-reporting-off":true,"sync-off":true,"input-data-off":true,"account-nags-off":true,"location-off":false,"dark-theme":true,"show-extensions":true,"show-hidden-files":false,"explorer-this-pc":true,"classic-context-menu":true,"taskbar-left":false,"search-icon-only":true,"task-view-hide":true,"widgets-off":true,"end-task-button":true,"sticky-keys-off":true,"context-menu-cleanup":true,"notifications-off":false,"transparency-off":false,"fewer-animations":false,"nova-wallpaper":true,"nova-accent":true,"nova-about":true,"game-mode-on":true,"game-dvr-off":true,"faster-menus":true,"no-startup-delay":true,"mouse-acceleration-off":false,"high-performance-power":false,"hibernation-off":false,"background-apps-off":false,"gpu-scheduling-on":true,"windowed-games-optimization":true,"game-priority":true,"power-throttling-off":false,"memory-integrity-off":false,"background-services-trim":true,"sysmain-off":false,"search-indexing-off":false,"printing-off":false,"bluetooth-off":false,"xbox-services-off":false,"security-updates-only":false,"no-forced-restart":false,"wu-no-drivers":false,"edge-quiet":true,"onedrive-remove":true},"removeApps":{"Microsoft.BingNews":true,"Microsoft.BingWeather":true,"Microsoft.BingSearch":true,"Microsoft.GetHelp":true,"Microsoft.Getstarted":true,"Microsoft.MicrosoftSolitaireCollection":true,"Microsoft.MicrosoftOfficeHub":true,"Microsoft.People":true,"Microsoft.PowerAutomateDesktop":true,"Microsoft.Todos":true,"Microsoft.WindowsFeedbackHub":true,"Microsoft.WindowsMaps":true,"Microsoft.549981C3F5F10":true,"Microsoft.Copilot":true,"Microsoft.Windows.DevHome":true,"Microsoft.MixedReality.Portal":true,"Microsoft.Microsoft3DViewer":true,"Microsoft.SkypeApp":true,"Clipchamp.Clipchamp":true,"MSTeams":true,"MicrosoftTeams":true,"Microsoft.OutlookForWindows":false,"Microsoft.YourPhone":true,"Microsoft.MicrosoftStickyNotes":true,"Microsoft.ZuneMusic":false,"Microsoft.GamingApp":false,"Microsoft.XboxGamingOverlay":false,"MicrosoftCorporationII.MicrosoftFamily":true,"Microsoft.Office.OneNote":true,"Microsoft.Wallet":true,"Microsoft.WindowsSoundRecorder":true,"MicrosoftWindows.CrossDevice":true,"microsoft.windowscommunicationsapps":true,"Microsoft.ZuneVideo":true,"Microsoft.BingFinance":true,"Microsoft.BingSports":true,"Microsoft.Messaging":true,"Microsoft.Print3D":true,"Microsoft.OneConnect":true,"Microsoft.MSPaint":true},"installApps":{"7zip.7zip":false,"VideoLAN.VLC":false,"Mozilla.Firefox":false,"Brave.Brave":false,"Google.Chrome":false,"Valve.Steam":false,"Discord.Discord":false,"Telegram.TelegramDesktop":false,"Notepad++.Notepad++":false,"voidtools.Everything":false,"Microsoft.PowerToys":false,"OBSProject.OBSStudio":false,"Microsoft.VCRedist.2015+.x64":false,"Microsoft.VCRedist.2015+.x86":false,"Microsoft.DirectX":false}},"voice":{"_info":"Голосовые команды Nova. Говори «Нова, …» — например «Нова, сверни все окна». Фразы пиши маленькими буквами, без запятых. Что умеет «do»: shutdown, restart, cancel, minimizeAll, restoreAll, closeWindow, closeAll, lock, volumeUp, volumeDown, mute, playPause, nextTrack, prevTrack, а ещё отвечает на вопросы: time (который час), date (какое число), battery (заряд ноутбука), hello (привет). Ответ Нова говорит вслух встроенным голосом Windows, если в системе есть русский голос; не нужно — поставь \"speak\": false. Свою команду можно сделать через «run» (программа или ссылка) или «keys» (сочетание клавиш, например win+shift+s). Играешь с голосовым чатом или стримишь? Впиши в pushToTalk клавишу (например \"ctrl+alt\" или \"f8\") — команды будут слышны, только пока она зажата.","wakeWord":"нова","delaySeconds":15,"pushToTalk":"","speak":true,"commands":[{"say":["выключи компьютер","выключи комп"],"do":"shutdown"},{"say":["перезагрузка компьютера","перезагрузить компьютер"],"do":"restart"},{"say":["отмена","отмени","стоп"],"do":"cancel"},{"say":["сверни все окна","спрячь все окна","покажи рабочий стол"],"do":"minimizeAll"},{"say":["верни окна","разверни окна"],"do":"restoreAll"},{"say":["закрой окно"],"do":"closeWindow"},{"say":["закрой все окна"],"do":"closeAll"},{"say":["заблокируй компьютер"],"do":"lock"},{"say":["громче","сделай громче"],"do":"volumeUp"},{"say":["тише","сделай тише"],"do":"volumeDown"},{"say":["выключи звук","включи звук"],"do":"mute"},{"say":["пауза","поставь на паузу","продолжи","включи музыку"],"do":"playPause"},{"say":["следующий трек","следующая песня","дальше"],"do":"nextTrack"},{"say":["предыдущий трек","предыдущая песня"],"do":"prevTrack"},{"say":["который час","сколько времени"],"do":"time"},{"say":["какое сегодня число","какой сегодня день"],"do":"date"},{"say":["сколько заряда","заряд батареи"],"do":"battery"},{"say":["привет"],"do":"hello"},{"say":["сделай скриншот","скриншот"],"keys":"win+shift+s"},{"say":["открой проводник"],"run":"explorer.exe"},{"say":["открой диспетчер задач"],"run":"taskmgr.exe"},{"say":["открой стим"],"run":"steam://open/main"}]}}/*DATA-END*/;
+  var DATA = /*DATA-START*/{"tweaks":[{"id":"telemetry-off","category":"privacy","title":"Минимум телеметрии","description":"Ставит минимальный уровень сбора данных и отключает службу телеметрии DiagTrack. На Home и Pro минимум — «обязательные данные», полный ноль бывает только на Enterprise."},{"id":"ads-id-off","category":"privacy","title":"Без рекламного идентификатора","description":"Приложения не получат идентификатор для персональной рекламы."},{"id":"tailored-off","category":"privacy","title":"Без советов по данным диагностики","description":"Microsoft не будет подбирать советы и рекламу на основе диагностических данных."},{"id":"activity-history-off","category":"privacy","title":"Не собирать историю действий","description":"Windows перестаёт записывать, какие программы и файлы ты открывал, и отправлять это в облако."},{"id":"suggestions-off","category":"privacy","title":"Убрать рекламу и «советы» Windows","description":"Выключает рекламу в «Пуске», автоустановку предлагаемых приложений, советы на экране блокировки, рекламу OneDrive в Проводнике и напоминания «давайте завершим настройку»."},{"id":"web-search-off","category":"privacy","title":"Без Bing в поиске «Пуска»","description":"Поиск в «Пуске» ищет только на компьютере и не отправляет запросы в интернет."},{"id":"copilot-off","category":"privacy","title":"Отключить Copilot","description":"Выключает встроенный Copilot и убирает его кнопку. В новых версиях Copilot — отдельное приложение: его удаляет пункт Microsoft.Copilot в списке removeApps."},{"id":"recall-off","category":"privacy","title":"Отключить Recall","description":"Recall постоянно делает снимки экрана для поиска с ИИ. Настройка запрещает эту функцию."},{"id":"feedback-off","category":"privacy","title":"Не просить отзывы","description":"Windows перестаёт показывать окна с просьбой оценить систему."},{"id":"update-sharing-off","category":"privacy","title":"Не раздавать обновления другим ПК","description":"Обновления качаются только с серверов Microsoft, а твой интернет не тратится на раздачу чужим компьютерам."},{"id":"telemetry-tasks-off","category":"privacy","title":"Отключить скрытые задачи сбора данных","description":"Windows по расписанию запускает задачи, которые собирают данные о программах, дисках и использовании. Отключаем их и службу отправки (dmwappushservice)."},{"id":"error-reporting-off","category":"privacy","title":"Не отправлять отчёты об ошибках","description":"Когда программа падает, Windows больше не отправляет отчёт в Microsoft и не держит для этого службу."},{"id":"sync-off","category":"privacy","title":"Не синхронизировать настройки с Microsoft","description":"Тема, пароли браузера Edge, язык и другие настройки не отправляются в облако Microsoft и не переносятся на другие устройства. Буфер обмена тоже не уходит в облако."},{"id":"input-data-off","category":"privacy","title":"Не собирать то, что ты печатаешь и говоришь","description":"Windows перестаёт собирать образцы набранного текста и рукописного ввода «для улучшения» и отправлять голос в онлайн-распознавание."},{"id":"account-nags-off","category":"privacy","title":"Без напоминаний «войди в аккаунт Microsoft»","description":"Убирает значки и подсказки в «Пуске» и Параметрах, которые уговаривают войти в аккаунт Microsoft или купить подписку."},{"id":"location-off","category":"privacy","title":"Запретить доступ к местоположению","description":"Приложения не узнают, где ты находишься. Погода и карты перестанут определять город сами."},{"id":"dark-theme","category":"interface","title":"Тёмная тема","description":"Тёмное оформление для системы и приложений."},{"id":"show-extensions","category":"interface","title":"Показывать расширения файлов","description":"В Проводнике видно, что файл — это «фото.jpg», а не «фото.jpg.exe». Полезно и для безопасности."},{"id":"show-hidden-files","category":"interface","title":"Показывать скрытые файлы","description":"Проводник показывает скрытые файлы и папки."},{"id":"explorer-this-pc","category":"interface","title":"Проводник открывается на «Этот компьютер»","description":"Вместо «Главной» с рекомендациями сразу видны диски."},{"id":"classic-context-menu","category":"interface","title":"Полное контекстное меню сразу","description":"Правый клик сразу показывает все пункты, без «Показать дополнительные параметры»."},{"id":"taskbar-left","category":"interface","title":"Кнопка «Пуск» слева","description":"Значки на панели задач прижаты к левому краю, как в Windows 10."},{"id":"search-icon-only","category":"interface","title":"Поиск на панели задач — только значок","description":"Вместо широкого поля поиска остаётся компактный значок."},{"id":"task-view-hide","category":"interface","title":"Убрать кнопку «Представление задач»","description":"Кнопка пропадает с панели задач. Окна всё равно можно листать через Win+Tab."},{"id":"widgets-off","category":"interface","title":"Без виджетов и новостей","description":"Убирает виджеты (Windows 11) и «Новости и интересы» (Windows 10) с панели задач."},{"id":"end-task-button","category":"interface","title":"«Завершить задачу» на панели задач","description":"Зависшую программу можно закрыть правым кликом по её значку, без Диспетчера задач."},{"id":"sticky-keys-off","category":"interface","title":"Не спрашивать про залипание клавиш","description":"Окно «Включить залипание клавиш?» больше не выскакивает, если пять раз нажать Shift (например, в игре)."},{"id":"context-menu-cleanup","category":"interface","title":"Убрать лишнее из правой кнопки","description":"Убирает редко нужные пункты: «Поделиться», «Предоставить доступ», «Добавить в библиотеку», «Восстановить прежнюю версию» и «Спросить Copilot»."},{"id":"notifications-off","category":"interface","title":"Без всплывающих уведомлений","description":"Уведомления программ в углу экрана больше не появляются. Удобно в играх, но можно пропустить что-то важное."},{"id":"transparency-off","category":"interface","title":"Без прозрачности окон","description":"Панель задач и меню становятся непрозрачными. Чуть меньше нагрузки на слабую видеокарту."},{"id":"fewer-animations","category":"interface","title":"Меньше анимаций","description":"Окна сворачиваются и разворачиваются мгновенно, панель задач — без анимации. Компьютер кажется отзывчивее, особенно слабый. Для окон начнёт действовать после выхода из системы и входа."},{"id":"nova-wallpaper","category":"style","title":"Обои Nova","description":"Тёмные обои с золотыми линиями и логотипом Nova. Ставятся сразу, без перезагрузки. Старые обои вернутся при отмене."},{"id":"nova-accent","category":"style","title":"Золотой цвет акцента","description":"Выделения, переключатели и кнопки в Windows становятся золотыми, как у Nova."},{"id":"nova-about","category":"style","title":"Nova в «О системе»","description":"В «Параметры → Система → О системе» появятся название и версия Nova, а в «Поддержке» — ссылка на проект. Если там были данные производителя ПК, они вернутся при отмене."},{"id":"game-mode-on","category":"performance","title":"Игровой режим","description":"Во время игры Windows отдаёт ей приоритет и не ставит обновления."},{"id":"game-dvr-off","category":"performance","title":"Без фоновой записи игр","description":"Выключает Game DVR — фоновую запись игры, которая отнимает FPS. Захочешь записывать клипы — включи запись в «Параметры → Игры → Клипы»: Nova этот переключатель не запирает."},{"id":"faster-menus","category":"performance","title":"Меню открываются быстрее","description":"Задержка перед открытием подменю — 100 мс вместо 400."},{"id":"no-startup-delay","category":"performance","title":"Автозагрузка без задержки","description":"Программы из автозагрузки стартуют сразу после входа, без искусственной паузы."},{"id":"mouse-acceleration-off","category":"performance","title":"Без ускорения мыши","description":"Курсор двигается ровно на столько, на сколько двигаешь мышь. Любят в шутерах. Начнёт работать после выхода из системы и входа."},{"id":"high-performance-power","category":"performance","title":"Схема питания «Высокая производительность»","description":"Процессор не сбрасывает частоту. На ноутбуке батарея сядет быстрее."},{"id":"hibernation-off","category":"performance","title":"Отключить гибернацию","description":"Освобождает на диске C: столько места, сколько у тебя оперативной памяти (файл hiberfil.sys). Вместе с ней отключается «быстрый запуск»."},{"id":"background-apps-off","category":"performance","title":"Запретить приложениям из Store работать в фоне","description":"Экономит память и батарею. Некоторые приложения из Store могут перестать присылать уведомления."},{"id":"gpu-scheduling-on","category":"performance","title":"Планирование GPU (меньше задержка)","description":"Видеокарта сама управляет своей памятью — это может снизить задержку в играх. Работает на современных видеокартах, начнёт действовать после перезагрузки."},{"id":"windowed-games-optimization","category":"performance","title":"Оптимизация игр в окне","description":"Игры в окне и без рамки работают почти как в полноэкранном режиме: меньше задержка и плавнее картинка."},{"id":"game-priority","category":"performance","title":"Игры в приоритете у планировщика","description":"Служба мультимедиа Windows (MMCSS) оставляет фоновым задачам 10% процессора вместо 20%, а игре даёт высокий приоритет процессора и диска. Заметнее всего, когда рядом открыты браузер, Discord или запись — меньше подтормаживаний. На мощном ПК без фоновой нагрузки разница может быть не видна."},{"id":"power-throttling-off","category":"performance","title":"Без энергосбережения процессора","description":"Windows перестаёт замедлять фоновые программы ради экономии энергии. На ноутбуке батарея сядет быстрее."},{"id":"memory-integrity-off","category":"performance","title":"Выключить «Целостность памяти»","description":"Microsoft сама пишет, что эта защита может снижать FPS в играх. Но это защита от вредоносных драйверов: выключай, только если понимаешь риск. Некоторые античиты требуют её включённой. Действует после перезагрузки."},{"id":"background-services-trim","category":"system","title":"Отключить ненужные фоновые службы","description":"Службы, которые обычному ПК не нужны: загрузка офлайн-карт, демо-режим для магазинов, факс, отслеживание ссылок в сети и сетевой доступ к медиатеке."},{"id":"sysmain-off","category":"system","title":"Отключить SysMain (Superfetch)","description":"SysMain заранее загружает программы в память. На SSD пользы почти нет, а в фоне он нагружает диск и процессор. На старом жёстком диске программы могут открываться медленнее."},{"id":"search-indexing-off","category":"system","title":"Отключить индексацию поиска","description":"Windows перестаёт постоянно сканировать файлы для быстрого поиска — меньше фоновой нагрузки. Поиск в «Пуске» и Проводнике по содержимому файлов станет медленнее."},{"id":"printing-off","category":"system","title":"Отключить печать","description":"Если у тебя нет принтера — служба печати не нужна. Включится обратно при отмене."},{"id":"bluetooth-off","category":"system","title":"Отключить Bluetooth","description":"Если не пользуешься беспроводными наушниками, мышью или геймпадом по Bluetooth. С ними включать нельзя — перестанут подключаться."},{"id":"xbox-services-off","category":"system","title":"Отключить службы Xbox","description":"Если не играешь через Xbox и Game Pass. Игры из Steam и Epic Games это не затронет."},{"id":"security-updates-only","category":"system","title":"Только обновления безопасности","description":"Windows продолжит ставить исправления безопасности, но не будет сама переходить на новую большую версию (например, с 24H2 на следующую) и ломать твои настройки. Работает на Pro и выше. Важно: у каждой версии Windows есть срок поддержки — когда он заканчивается, исправления перестают приходить. Тогда выключи этот пункт и обновись."},{"id":"no-forced-restart","category":"system","title":"Без перезагрузки посреди игры","description":"Windows не перезагрузит компьютер сама, пока ты в системе, — например, посреди игры. Обновления скачиваются и ставятся как обычно, но начинают действовать только после перезагрузки: перезагружай компьютер сам хотя бы раз в несколько дней. Проверка системы в Nova напомнит, если Windows ждёт перезагрузки."},{"id":"wu-no-drivers","category":"system","title":"Драйверы не через Центр обновления","description":"Центр обновления Windows перестанет сам ставить драйверы — и не подменит свежий драйвер видеокарты старым. Обновления безопасности приходят как обычно. Драйверы тогда обновляешь сам: видеокарту — с сайта NVIDIA, AMD или Intel (Nova подскажет ссылку в пункте 6). Работает на Pro и выше."},{"id":"edge-quiet","category":"system","title":"«Тихий» Microsoft Edge","description":"Edge больше не висит в фоне и не запускается вместе с Windows, не показывает рекламу, советы и «помощника покупок», не отправляет данные о просмотре. Удалять Edge не будем: на нём работают другие программы. В настройках Edge появится надпись «Браузер управляется организацией» — так Edge показывает любые такие правила, это нормально. Пункт по желанию: если пользуешься Edge и хочешь настраивать его сам — не включай."},{"id":"onedrive-remove","category":"system","title":"Удалить OneDrive (если он не настроен)","description":"Если ты не входил в OneDrive, он просто висит в фоне и предлагает сохранять файлы в облако. Nova удалит его. Если ты в OneDrive вошёл — Nova его не тронет, чтобы не потерять файлы. Вернуть можно из Microsoft Store."}],"config":{"_info":"Это настройки твоей сборки. true — включено, false — выключено. Что делает каждый пункт, написано в src/tweaks.json. После правок запусти Nova.cmd и выбери «Посмотреть, что изменится».","createRestorePoint":true,"tweaks":{"telemetry-off":true,"ads-id-off":true,"tailored-off":true,"activity-history-off":true,"suggestions-off":true,"web-search-off":true,"copilot-off":true,"recall-off":true,"feedback-off":true,"update-sharing-off":true,"telemetry-tasks-off":true,"error-reporting-off":true,"sync-off":true,"input-data-off":true,"account-nags-off":true,"location-off":false,"dark-theme":true,"show-extensions":true,"show-hidden-files":false,"explorer-this-pc":true,"classic-context-menu":true,"taskbar-left":false,"search-icon-only":true,"task-view-hide":true,"widgets-off":true,"end-task-button":true,"sticky-keys-off":true,"context-menu-cleanup":true,"notifications-off":false,"transparency-off":false,"fewer-animations":false,"nova-wallpaper":true,"nova-accent":true,"nova-about":true,"game-mode-on":true,"game-dvr-off":true,"faster-menus":true,"no-startup-delay":true,"mouse-acceleration-off":false,"high-performance-power":false,"hibernation-off":false,"background-apps-off":false,"gpu-scheduling-on":true,"windowed-games-optimization":true,"game-priority":true,"power-throttling-off":false,"memory-integrity-off":false,"background-services-trim":true,"sysmain-off":false,"search-indexing-off":false,"printing-off":false,"bluetooth-off":false,"xbox-services-off":false,"security-updates-only":false,"no-forced-restart":false,"wu-no-drivers":false,"edge-quiet":false,"onedrive-remove":true},"removeApps":{"Microsoft.BingNews":true,"Microsoft.BingWeather":true,"Microsoft.BingSearch":true,"Microsoft.GetHelp":true,"Microsoft.Getstarted":true,"Microsoft.MicrosoftSolitaireCollection":true,"Microsoft.MicrosoftOfficeHub":true,"Microsoft.People":true,"Microsoft.PowerAutomateDesktop":true,"Microsoft.Todos":true,"Microsoft.WindowsFeedbackHub":true,"Microsoft.WindowsMaps":true,"Microsoft.549981C3F5F10":true,"Microsoft.Copilot":true,"Microsoft.Windows.DevHome":true,"Microsoft.MixedReality.Portal":true,"Microsoft.Microsoft3DViewer":true,"Microsoft.SkypeApp":true,"Clipchamp.Clipchamp":true,"MSTeams":true,"MicrosoftTeams":true,"Microsoft.OutlookForWindows":false,"Microsoft.YourPhone":true,"Microsoft.MicrosoftStickyNotes":true,"Microsoft.ZuneMusic":false,"Microsoft.GamingApp":false,"Microsoft.XboxGamingOverlay":false,"MicrosoftCorporationII.MicrosoftFamily":true,"Microsoft.Office.OneNote":true,"Microsoft.Wallet":true,"Microsoft.WindowsSoundRecorder":true,"MicrosoftWindows.CrossDevice":true,"microsoft.windowscommunicationsapps":true,"Microsoft.ZuneVideo":true,"Microsoft.BingFinance":true,"Microsoft.BingSports":true,"Microsoft.Messaging":true,"Microsoft.Print3D":true,"Microsoft.OneConnect":true,"Microsoft.MSPaint":true},"installApps":{"7zip.7zip":false,"VideoLAN.VLC":false,"Mozilla.Firefox":false,"Brave.Brave":false,"Google.Chrome":false,"Valve.Steam":false,"Discord.Discord":false,"Telegram.TelegramDesktop":false,"Notepad++.Notepad++":false,"voidtools.Everything":false,"Microsoft.PowerToys":false,"OBSProject.OBSStudio":false,"Microsoft.VCRedist.2015+.x64":false,"Microsoft.VCRedist.2015+.x86":false,"Microsoft.DirectX":false}},"voice":{"_info":"Голосовые команды Nova. Говори «Нова, …» — например «Нова, сверни все окна». Фразы пиши маленькими буквами, без запятых. Что умеет «do»: shutdown, restart, cancel, minimizeAll, restoreAll, closeWindow, closeAll, lock, volumeUp, volumeDown, mute, playPause, nextTrack, prevTrack, а ещё отвечает на вопросы: time (который час), date (какое число), battery (заряд ноутбука), hello (привет). Ответ Нова говорит вслух встроенным голосом Windows, если в системе есть русский голос; не нужно — поставь \"speak\": false. Свою команду можно сделать через «run» (программа или ссылка) или «keys» (сочетание клавиш, например win+shift+s). Играешь с голосовым чатом или стримишь? Впиши в pushToTalk клавишу (например \"ctrl+alt\" или \"f8\") — команды будут слышны, только пока она зажата.","wakeWord":"нова","delaySeconds":15,"pushToTalk":"","speak":true,"commands":[{"say":["выключи компьютер","выключи комп"],"do":"shutdown"},{"say":["перезагрузка компьютера","перезагрузить компьютер"],"do":"restart"},{"say":["отмена","отмени","стоп"],"do":"cancel"},{"say":["сверни все окна","спрячь все окна","покажи рабочий стол"],"do":"minimizeAll"},{"say":["верни окна","разверни окна"],"do":"restoreAll"},{"say":["закрой окно"],"do":"closeWindow"},{"say":["закрой все окна"],"do":"closeAll"},{"say":["заблокируй компьютер"],"do":"lock"},{"say":["громче","сделай громче"],"do":"volumeUp"},{"say":["тише","сделай тише"],"do":"volumeDown"},{"say":["выключи звук","включи звук"],"do":"mute"},{"say":["пауза","поставь на паузу","продолжи","включи музыку"],"do":"playPause"},{"say":["следующий трек","следующая песня","дальше"],"do":"nextTrack"},{"say":["предыдущий трек","предыдущая песня"],"do":"prevTrack"},{"say":["который час","сколько времени"],"do":"time"},{"say":["какое сегодня число","какой сегодня день"],"do":"date"},{"say":["сколько заряда","заряд батареи"],"do":"battery"},{"say":["привет"],"do":"hello"},{"say":["сделай скриншот","скриншот"],"keys":"win+shift+s"},{"say":["открой проводник"],"run":"explorer.exe"},{"say":["открой диспетчер задач"],"run":"taskmgr.exe"},{"say":["открой стим"],"run":"steam://open/main"}]}}/*DATA-END*/;
 
   var SITE = {
     download: 'https://github.com/vezin0v0-cmyk/my-project/archive/refs/heads/claude/hello-973j4n.zip'
@@ -824,13 +824,13 @@
   var RUNTIMES = { 'Microsoft.VCRedist.2015+.x64': true, 'Microsoft.VCRedist.2015+.x86': true, 'Microsoft.DirectX': true };
   var PRESETS = [
     { id: 'gaming', name: 'Игровой ПК', text: 'Максимум для игр на настольном компьютере',
-      tweaks: { 'high-performance-power': true, 'power-throttling-off': true, 'mouse-acceleration-off': true, 'background-apps-off': true, 'hibernation-off': true, 'no-forced-restart': true },
+      tweaks: { 'high-performance-power': true, 'power-throttling-off': true, 'mouse-acceleration-off': true, 'background-apps-off': true, 'hibernation-off': true, 'no-forced-restart': true, 'edge-quiet': true },
       installApps: RUNTIMES },
     { id: 'laptop', name: 'Ноутбук', text: 'Игры без лишнего расхода батареи',
       tweaks: { 'high-performance-power': false, 'power-throttling-off': false, 'background-apps-off': true, 'transparency-off': true },
       installApps: RUNTIMES },
     { id: 'weak', name: 'Слабый ПК', text: 'Меньше фоновой нагрузки и анимаций',
-      tweaks: { 'fewer-animations': true, 'transparency-off': true, 'background-apps-off': true, 'search-indexing-off': true } },
+      tweaks: { 'fewer-animations': true, 'transparency-off': true, 'background-apps-off': true, 'search-indexing-off': true, 'edge-quiet': true } },
     { id: 'default', name: 'Стандарт Nova', text: 'Как по умолчанию' }
   ];
 
@@ -1003,8 +1003,9 @@
     var name = location.hash.replace('#', '');
     if (name === 'verify' && !state.pending) name = 'register';
     if (name === 'dashboard' && !state.user) name = 'login';
-    // Новый пароль задают только сразу после кода из письма «Забыли пароль?».
-    if (name === 'newpass' && !(state.user && state.recovery)) name = state.user ? 'dashboard' : 'login';
+    // Новый пароль задают только сразу после кода из письма; пока он не задан — кабинет закрыт.
+    if (state.user && mustPass(state.user.id) && name !== 'newpass') name = 'newpass';
+    if (name === 'newpass' && !(state.user && (state.recovery || mustPass(state.user.id)))) name = state.user ? 'dashboard' : 'login';
     if (AUTH_VIEWS.indexOf(name) === -1 && name !== 'dashboard') name = state.user ? 'dashboard' : 'login';
     show(name);
   }
@@ -1139,14 +1140,14 @@
   // ---------- Защита от ботов (Cloudflare Turnstile) ----------
   // Сервер требует одноразовый токен для регистрации, входа по паролю, «Забыли пароль?» и повторного письма.
   // Окошко «я не робот» появляется, только если Cloudflare сомневается; обычно всё проходит незаметно.
-  var captcha = { box: null, widget: null, used: false, waiters: [], loading: null };
+  var captcha = { box: null, widget: null, used: false, waiters: [], loading: null, queue: Promise.resolve() };
   function loadCaptcha() {
     if (captcha.loading) return captcha.loading;
     captcha.loading = new Promise(function (resolve, reject) {
       var el = document.createElement('script');
       el.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
       el.async = true;
-      el.onload = function () { if (window.turnstile) resolve(window.turnstile); else reject(new Error('captcha')); };
+      el.onload = function () { if (window.turnstile) resolve(window.turnstile); else { captcha.loading = null; reject(new Error('captcha')); } };
       el.onerror = function () { captcha.loading = null; reject(new Error('captcha')); };
       document.head.appendChild(el);
     });
@@ -1154,9 +1155,16 @@
   }
   function captchaToken() {
     if (!REAL || !AUTH.captchaSiteKey) return Promise.resolve(undefined);
+    // По одному: у виджета одно окошко, а токен одноразовый.
+    var next = captcha.queue.then(captchaOnce, captchaOnce);
+    captcha.queue = next.catch(function () { return null; });
+    return next;
+  }
+  function captchaOnce() {
     return loadCaptcha().then(function (ts) {
       return new Promise(function (resolve, reject) {
-        captcha.waiters.push({ resolve: resolve, reject: reject });
+        var timer = setTimeout(function () { captcha.waiters = []; reject(new Error('captcha')); }, 120000);
+        captcha.waiters.push({ resolve: function (t) { clearTimeout(timer); resolve(t); }, reject: function (e) { clearTimeout(timer); reject(e); } });
         if (!captcha.box) {
           captcha.box = document.createElement('div');
           captcha.box.className = 'captcha';
@@ -1164,7 +1172,8 @@
           captcha.widget = ts.render(captcha.box, {
             sitekey: AUTH.captchaSiteKey, execution: 'execute', appearance: 'interaction-only', language: 'ru',
             callback: function (token) { var w = captcha.waiters.shift(); if (w) w.resolve(token); },
-            'error-callback': function () { var w = captcha.waiters.shift(); if (w) w.reject(new Error('captcha')); }
+            'error-callback': function () { var w = captcha.waiters.shift(); if (w) w.reject(new Error('captcha')); },
+            'timeout-callback': function () { var w = captcha.waiters.shift(); if (w) w.reject(new Error('captcha')); }
           });
         }
         if (captcha.used) ts.reset(captcha.widget);
@@ -1267,6 +1276,7 @@
           return;
         }
         // Аккаунт есть, но почту не подтвердили: отправляем новый код и открываем ввод кода.
+        signupSecret = pass;
         var known = readJSON('local', 'nova.known') || {};
         guarded(function (a, t) { return a.resend({ type: 'signup', email: email, options: { captchaToken: t } }); })
           .catch(function (e2) { var i2 = authError(e2); if (!/сек\./.test(i2.text)) errToast(i2); })
@@ -1284,24 +1294,43 @@
     writeJSON('session', 'nova.pending', p);
   }
 
-  // Пароль из формы регистрации — только в памяти, до ввода кода. Нужен, чтобы проверить аккаунт, который
-  // существовал неподтверждённым ещё до тебя: его мог завести кто-то другой со своим паролем.
+  // Пароль из формы регистрации или входа — только в памяти, до ввода кода из письма.
   var signupSecret = null;
-  // Сервер не меняет пароль неподтверждённого аккаунта при повторной регистрации. Если почту заранее
-  // «занял» кто-то другой, после кода из письма аккаунт достался бы с его паролем. Поэтому сверяем пароль,
-  // а если он чужой или сверить нечем — сразу задаём свой по коду для нового пароля.
-  function securePreExisting(name, email) {
+  // «Пароль ещё не задан»: пока метка стоит, кабинет не открывается — только экран нового пароля.
+  // Хранится в браузере, поэтому переживает перезагрузку и закрытие вкладки.
+  function setMustPass(id) { writeJSON('local', 'nova.mustpass', id || null); }
+  function mustPass(id) { var v = readJSON('local', 'nova.mustpass'); return !!(v && id && v === id); }
+  // Сессия по коду из письма слишком сильная: Supabase сутки разрешает с неё менять пароль без старого.
+  // Поэтому сразу входим по паролю и закрываем все остальные входы — и её, и чьи-то ещё.
+  function swapToPassword(email, pass) {
+    return guarded(function (a, t) { return a.signInWithPassword({ email: email, password: pass, options: { captchaToken: t } }); })
+      .then(function () { return call(function (a) { return a.signOut({ scope: 'others' }); }).catch(function () { return null; }); });
+  }
+  // Сразу после кода, до любых анимаций. Сервер не меняет пароль неподтверждённого аккаунта при повторной
+  // регистрации: если почту заранее «занял» кто-то другой, у аккаунта был бы его пароль. Ставим свой.
+  // Нет пароля в памяти (страницу перезагружали) — метка «пароль не задан», и человек придумает его сам.
+  function secureAfterCode(user, pending) {
     var pass = signupSecret;
     signupSecret = null;
-    return call(function (a) { return a.updateUser({ data: { name: name } }); }).catch(function () { return null; })
+    setMustPass(user.id);
+    // Имя меняем только после регистрации: при входе в неподтверждённый аккаунт имя в форме — догадка.
+    var name = pending && pending.signup ? pending.name : null;
+    var meta = user.user_metadata || {};
+    if (name && meta.name !== name) user.user_metadata = Object.assign({}, meta, { name: name });
+    var step = (name && meta.name !== name)
+      ? call(function (a) { return a.updateUser({ data: { name: name } }); }).catch(function () { return null; })
+      : Promise.resolve(null);
+    if (!pass) return step;
+    return step
       .then(function () {
-        if (!pass) return 'reset';
-        return call(function (a) { return a.updateUser({ password: pass, current_password: pass }); })
-          .then(function () { return 'ok'; }, function (err) {
-            var code = String((err && err.code) || ''), msg = String((err && err.message) || '');
-            return (code === 'same_password' || /different from the old password/i.test(msg)) ? 'ok' : 'reset';
-          });
-      });
+        return call(function (a) { return a.updateUser({ password: pass }); }).catch(function (err) {
+          var code = String((err && err.code) || ''), msg = String((err && err.message) || '');
+          if (code === 'same_password' || /different from the old password/i.test(msg)) return null;
+          throw err;
+        });
+      })
+      .then(function () { return swapToPassword(user.email, pass); })
+      .then(function () { setMustPass(null); });
   }
 
   var regForm = $('#form-register');
@@ -1363,14 +1392,11 @@
         // иначе по форме можно было бы проверять, кто зарегистрирован. Письма в этом случае не будет.
         if (u && Array.isArray(u.identities) && u.identities.length === 0) {
           finish();
-          setPending({ name: name, email: email });
+          setPending({ name: name, email: email, signup: true });
           go('verify');
-          toast({ title: 'Проверь почту', text: 'Если эта почта ещё не зарегистрирована, код уже в пути. Уже есть аккаунт — войди или нажми «Забыли пароль?».', icon: 'mail', ms: 9000 });
           return;
         }
-        // Аккаунт с этой почтой был и раньше (неподтверждённый) — после кода проверим, чей у него пароль.
-        var preExisting = !!(u && u.created_at && Date.now() - Date.parse(u.created_at) > 120000);
-        signupSecret = preExisting ? pass : null;
+        signupSecret = pass;
         finish();
         if (data.session) {
           // В Supabase выключено подтверждение почты — аккаунт готов сразу.
@@ -1379,7 +1405,7 @@
           go('dashboard');
           return;
         }
-        setPending({ name: name, email: email, check: preExisting || undefined });
+        setPending({ name: name, email: email, signup: true });
         go('verify');
       })
       .catch(function (err) {
@@ -1453,7 +1479,6 @@
       // «Слишком часто» сервер отвечает только для существующих аккаунтов — показываем то же, что и при успехе.
       if (err && (err.status === 429 || /rate.limit|only request this after/i.test(String(err.code || '') + ' ' + String(err.message || '')))) {
         next();
-        toast({ title: 'Код уже в почте', text: 'Если такая почта зарегистрирована, код отправлен. Нет письма — подожди минуту и нажми «Отправить снова».', icon: 'mail' });
         return;
       }
       var info = authError(err);
@@ -1480,7 +1505,10 @@
     }
     if (!REAL) { busy(btn, 'Сохраняю…', finish); return; }
     var stop = spin(btn, 'Сохраняю…');
-    leakCheck(pv).then(function (leak) { if (leak) throw { leak: leak }; return changePassword(pv); }).then(function () { stop(); finish(); }, function (err) {
+    var email = state.user && state.user.email;
+    leakCheck(pv).then(function (leak) { if (leak) throw { leak: leak }; return changePassword(pv); })
+      .then(function () { return swapToPassword(email, pv); })
+      .then(function () { setMustPass(null); stop(); finish(); }, function (err) {
       stop();
       if (err && err.leak) { setErr(npForm.password, err.leak); return; }
       var info = authError(err);
@@ -1501,9 +1529,7 @@
     $('#v-title').innerHTML = isRecovery() ? 'Код для <span class="gold-text">нового пароля</span>' : 'Подтверди <span class="gold-text">почту</span>';
     $('#v-back').setAttribute('href', isRecovery() ? '#forgot' : '#register');
     $('#v-sub').firstChild.textContent = 'Мы отправили ' + N + '-значный код на ';
-    var note = $('#v-note');
-    note.hidden = !(state.pending && state.pending.reason === 'preexisting');
-    note.textContent = note.hidden ? '' : 'Эту почту уже регистрировали раньше — возможно, не ты. Чтобы аккаунт был только твоим, введи код из нового письма и придумай пароль.';
+
     $('#v-badge').innerHTML = use('key');
     $('#view-verify').classList.remove('verifying');
     otp.className = 'otp';
@@ -1631,8 +1657,14 @@
     // Анимация идёт не меньше minMs, даже если сервер ответил быстрее.
     var t0 = Date.now(), minMs = reduce ? 300 : (REAL ? 1600 : 2100);
     function later(fn) { setTimeout(fn, Math.max(0, minMs - (Date.now() - t0))); }
+    var pendingNow = state.pending;
     var check = REAL
-      ? call(function (a) { return a.verifyOtp({ email: state.pending.email, token: v, type: isRecovery() ? 'recovery' : 'email' }); })
+      ? call(function (a) { return a.verifyOtp({ email: pendingNow.email, token: v, type: isRecovery() ? 'recovery' : 'email' }); })
+        .then(function (data) {
+          if (isRecovery() || !data || !data.user) return data;
+          // Ошибка сети здесь не открывает кабинет: метка «пароль не задан» уже стоит.
+          return secureAfterCode(data.user, pendingNow).then(function () { return data; }, function () { return data; });
+        })
       : (v === state.code ? Promise.resolve(null) : Promise.reject(null));
     check.then(function (data) {
       later(function () { success(data && data.user ? userFrom(data.user) : null); });
@@ -1679,8 +1711,7 @@
 
   function success(realUser) {
     var recovery = isRecovery();
-    var mustCheck = REAL && !recovery && !!(state.pending && state.pending.check);
-    var pendingName = state.pending && state.pending.name;
+    var needPass = REAL && !recovery && !!(realUser && mustPass(realUser.id));
     var user = realUser || { name: state.pending.name, email: state.pending.email };
     otp.classList.remove('spin');
     digits.forEach(function (d) {
@@ -1692,9 +1723,9 @@
       card.classList.add('success');
       done.classList.add('show');
       $('#v-badge').innerHTML = use('shield-check');
-      if (recovery) {
-        $('#v-title').innerHTML = 'Код <span class="ok-text">подошёл</span>';
-        $('#v-sub').firstChild.textContent = 'Осталось придумать новый пароль для ';
+      if (recovery || needPass) {
+        $('#v-title').innerHTML = recovery ? 'Код <span class="ok-text">подошёл</span>' : 'Почта <span class="ok-text">подтверждена</span>';
+        $('#v-sub').firstChild.textContent = 'Осталось придумать пароль для ';
         $('#v-email').textContent = user.email;
       } else {
         $('#v-title').innerHTML = 'Почта <span class="ok-text">подтверждена</span>';
@@ -1716,29 +1747,11 @@
         log('Почта подтверждена');
       }
       setTimeout(function () {
-        if (recovery) { verifying = false; go('newpass'); return; }
-        function ready() {
-          verifyBtn.className = 'btn-gold wide';
-          verifyBtn.disabled = false;
-          verifyBtn.innerHTML = '<span>Перейти в кабинет</span>' + use('arrow');
-          verifyBtn.onclick = function () { go('dashboard'); };
-          verifying = false;
-        }
-        if (!mustCheck) { ready(); return; }
-        verifyBtn.disabled = true;
-        verifyBtn.innerHTML = '<span class="spinner"></span><span>Проверяю аккаунт…</span>';
-        securePreExisting(pendingName, user.email).then(function (verdict) {
-          if (verdict === 'ok') { ready(); return; }
-          return sendRecovery(user.email).then(function () {
-            verifyBtn.disabled = false;
-            setPending({ name: pendingName, email: user.email, kind: 'recovery', reason: 'preexisting' });
-            verifying = false;
-            // Мы уже на экране кода: go() его не перерисует — сбрасываем вручную под новый код.
-            card.classList.remove('success');
-            enterVerify();
-            toast({ title: 'Задай пароль ещё раз', text: 'Эту почту уже регистрировали раньше — возможно, не ты. Чтобы аккаунт был только твоим, мы отправили код: введи его и придумай пароль.', icon: 'shield', ms: 10000 });
-          });
-        }).catch(function (e) { ready(); errToast(authError(e)); });
+        if (recovery || needPass) { verifying = false; go('newpass'); return; }
+        verifyBtn.className = 'btn-gold wide';
+        verifyBtn.innerHTML = '<span>Перейти в кабинет</span>' + use('arrow');
+        verifyBtn.onclick = function () { go('dashboard'); };
+        verifying = false;
       }, reduce ? 0 : 1500);
     }, reduce ? 0 : 500);
   }
