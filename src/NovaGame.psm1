@@ -379,6 +379,43 @@ function Get-NovaDiskHealth {
     }
 }
 
+# Библиотеки, без которых многие игры не запускаются: «не найден MSVCP140.dll», «d3dx9_43.dll».
+# На чистой Windows их нет. Nova проверяет и по просьбе ставит с серверов Microsoft через winget.
+$script:Runtimes = @(
+    [pscustomobject]@{ Id = 'Microsoft.VCRedist.2015+.x64'; Name = 'Visual C++ 2015–2022 (64 бита)'; Key = 'HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64'; File = ''; Vital = $true }
+    [pscustomobject]@{ Id = 'Microsoft.VCRedist.2015+.x86'; Name = 'Visual C++ 2015–2022 (32 бита)'; Key = 'HKLM\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\X86'; File = ''; Vital = $true }
+    [pscustomobject]@{ Id = 'Microsoft.DirectX'; Name = 'DirectX 9 для старых игр'; Key = ''; File = 'd3dx9_43.dll'; Vital = $false }
+)
+
+function Get-NovaRuntimeState {
+    foreach ($r in $script:Runtimes) {
+        $ok = $false
+        if ($r.Key) {
+            $v = Get-NovaRegValue -Path $r.Key -Name 'Installed'
+            $ok = $v.Exists -and [int]$v.Value -eq 1
+        } else {
+            $in64 = Test-Path -LiteralPath (Join-Path $env:SystemRoot ('System32\' + $r.File)) -PathType Leaf
+            $in32 = Test-Path -LiteralPath (Join-Path $env:SystemRoot ('SysWOW64\' + $r.File)) -PathType Leaf
+            $ok = $in64 -or $in32
+        }
+        [pscustomobject]@{ Id = $r.Id; Name = $r.Name; Vital = $r.Vital; Installed = [bool]$ok }
+    }
+}
+
+function Get-NovaRuntimeAdvice {
+    param([object[]]$State)
+    $all = @($State | Where-Object { $_ })
+    if ($all.Count -eq 0) { return $null }
+    $missing = @($all | Where-Object { -not $_.Installed })
+    if ($missing.Count -eq 0) { return (New-NovaCheck 'Библиотеки для игр' 'ok' 'Visual C++ и DirectX на месте.' -Id 'runtimes') }
+    $status = 'info'
+    if (@($missing | Where-Object { $_.Vital }).Count -gt 0) { $status = 'warn' }
+    $hint = 'Без них игры пишут «не найден MSVCP140.dll» или «d3dx9_43.dll». Nova поставит их с серверов Microsoft через winget — в меню она предложит это сама, или отметь их в разделе «Программы» конструктора.'
+    $check = New-NovaCheck 'Библиотеки для игр' $status ('Нет: {0}.' -f (($missing | ForEach-Object { $_.Name }) -join ', ')) $hint 'runtimes'
+    $check | Add-Member -NotePropertyName Fix -NotePropertyValue ([pscustomobject]@{ Kind = 'runtimes'; Ids = @($missing | ForEach-Object { $_.Id }); Names = @($missing | ForEach-Object { $_.Name }) })
+    return $check
+}
+
 # Античиты Vanguard (Valorant) и FACEIT на Windows 11 требуют TPM 2.0 и безопасную загрузку (Secure Boot).
 # $Tpm: Present, Ready, Version ('2.0' / '1.2' / ''); $SecureBoot: $true, $false или $null (старый режим BIOS).
 function Get-NovaAntiCheatAdvice {
@@ -456,6 +493,11 @@ function Get-NovaGameCheck {
         $disk = Get-NovaDiskAdvice (Get-NovaSystemDisk)
         if ($disk) { $checks.Add($disk) }
     } catch { Write-Verbose ('Диск: {0}' -f $_.Exception.Message) }
+
+    try {
+        $runtimes = Get-NovaRuntimeAdvice -State @(Get-NovaRuntimeState)
+        if ($runtimes) { $checks.Add($runtimes) }
+    } catch { Write-Verbose ('Библиотеки: {0}' -f $_.Exception.Message) }
 
     try {
         $health = Get-NovaDiskHealthAdvice -Disks @(Get-NovaDiskHealth)

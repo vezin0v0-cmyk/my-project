@@ -150,6 +150,19 @@ function Invoke-NovaCheckFlow {
                 Invoke-NovaHzFix $check.Fix
             }
         }
+        # Библиотеки для игр — с серверов Microsoft через winget, только из официального источника.
+        foreach ($check in $game) {
+            if (-not $check.PSObject.Properties['Fix'] -or -not $check.Fix -or $check.Fix.Kind -ne 'runtimes') { continue }
+            if (-not (Get-NovaWingetPath)) { Write-Nova 'winget не найден — поставить библиотеки сама Nova не сможет. Обнови «Установщик приложений» в Microsoft Store.' warn; continue }
+            if (-not (Confirm-NovaAction ('Поставить {0}? Скачается с серверов Microsoft.' -f ($check.Fix.Names -join ', ')))) { continue }
+            $apps = @($check.Fix.Ids | ForEach-Object { [pscustomobject]@{ Id = $_; Source = 'winget' } })
+            $res = Install-NovaMoveApps -Apps $apps -OnStep { param($app) Write-Nova ('Ставлю {0}...' -f $app.Id) dim }
+            if ($res.Failed -eq 0) {
+                Write-Nova ('Готово: поставлено {0}, уже было {1}.' -f $res.Installed, $res.Already) ok
+            } else {
+                Write-Nova ('Не получилось поставить: {0}. Проверь интернет и попробуй ещё раз.' -f ($res.FailedIds -join ', ')) warn
+            }
+        }
     }
     if ($summary.Stop -gt 0) { return 1 }
     return 0

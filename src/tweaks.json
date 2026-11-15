@@ -334,6 +334,16 @@
       ]
     },
     {
+      "id": "fewer-animations",
+      "category": "interface",
+      "title": "Меньше анимаций",
+      "description": "Окна сворачиваются и разворачиваются мгновенно, панель задач — без анимации. Компьютер кажется отзывчивее, особенно слабый. Для окон начнёт действовать после выхода из системы и входа.",
+      "actions": [
+        { "type": "registry", "path": "HKCU\\Control Panel\\Desktop\\WindowMetrics", "name": "MinAnimate", "kind": "String", "value": "0" },
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "name": "TaskbarAnimations", "kind": "DWord", "value": 0 }
+      ]
+    },
+    {
       "id": "nova-wallpaper",
       "category": "style",
       "title": "Обои Nova",
@@ -467,6 +477,19 @@
       ]
     },
     {
+      "id": "game-priority",
+      "category": "performance",
+      "title": "Игры в приоритете у планировщика",
+      "description": "Служба мультимедиа Windows (MMCSS) оставляет фоновым задачам 10% процессора вместо 20%, а игре даёт высокий приоритет процессора и диска. Заметнее всего, когда рядом открыты браузер, Discord или запись — меньше подтормаживаний. На мощном ПК без фоновой нагрузки разница может быть не видна.",
+      "actions": [
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile", "name": "SystemResponsiveness", "kind": "DWord", "value": 10 },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "name": "GPU Priority", "kind": "DWord", "value": 8 },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "name": "Priority", "kind": "DWord", "value": 6 },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "name": "Scheduling Category", "kind": "String", "value": "High" },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "name": "SFIO Priority", "kind": "String", "value": "High" }
+      ]
+    },
+    {
       "id": "power-throttling-off",
       "category": "performance",
       "title": "Без энергосбережения процессора",
@@ -556,6 +579,24 @@
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate", "name": "ProductVersion", "kind": "String", "value": "{WindowsName}" },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate", "name": "TargetReleaseVersion", "kind": "DWord", "value": 1 },
         { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate", "name": "TargetReleaseVersionInfo", "kind": "String", "value": "{DisplayVersion}" }
+      ]
+    },
+    {
+      "id": "no-forced-restart",
+      "category": "system",
+      "title": "Без перезагрузки посреди игры",
+      "description": "Windows не перезагрузит компьютер сама, пока ты в системе: обновления поставятся, а перезагрузить она попросит. Обновления и защита продолжают работать как обычно.",
+      "actions": [
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU", "name": "NoAutoRebootWithLoggedOnUsers", "kind": "DWord", "value": 1 }
+      ]
+    },
+    {
+      "id": "wu-no-drivers",
+      "category": "system",
+      "title": "Драйверы не через Центр обновления",
+      "description": "Центр обновления Windows перестанет сам ставить драйверы — и не подменит свежий драйвер видеокарты старым. Обновления безопасности приходят как обычно. Драйверы тогда обновляешь сам: видеокарту — с сайта NVIDIA, AMD или Intel (Nova подскажет ссылку в пункте 6). Работает на Pro и выше.",
+      "actions": [
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate", "name": "ExcludeWUDriversInQualityUpdate", "kind": "DWord", "value": 1 }
       ]
     },
     {

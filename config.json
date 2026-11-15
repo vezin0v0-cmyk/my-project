@@ -35,6 +35,7 @@
     "context-menu-cleanup": true,
     "notifications-off": false,
     "transparency-off": false,
+    "fewer-animations": false,
 
     "nova-wallpaper": true,
     "nova-accent": true,
@@ -50,6 +51,7 @@
     "background-apps-off": false,
     "gpu-scheduling-on": true,
     "windowed-games-optimization": true,
+    "game-priority": true,
     "power-throttling-off": false,
     "memory-integrity-off": false,
 
@@ -60,6 +62,8 @@
     "bluetooth-off": false,
     "xbox-services-off": false,
     "security-updates-only": false,
+    "no-forced-restart": true,
+    "wu-no-drivers": false,
     "edge-quiet": true,
     "onedrive-remove": true
   },
@@ -119,6 +123,9 @@
     "Notepad++.Notepad++": false,
     "voidtools.Everything": false,
     "Microsoft.PowerToys": false,
-    "OBSProject.OBSStudio": false
+    "OBSProject.OBSStudio": false,
+    "Microsoft.VCRedist.2015+.x64": false,
+    "Microsoft.VCRedist.2015+.x86": false,
+    "Microsoft.DirectX": false
   }
 }

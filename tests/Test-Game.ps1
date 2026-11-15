@@ -4,6 +4,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Import-Module (Join-Path $root 'src\Nova.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $root 'src\NovaGame.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $root 'src\NovaMove.psm1') -Force -DisableNameChecking
 
 function Assert-Check {
     param($Check, [string]$Status, [string]$Contains, [string]$What)
@@ -80,6 +81,33 @@ Assert-Check (Get-NovaDiskAdvice ([pscustomobject]@{ FriendlyName = 'ST1000DM010
 Assert-Check (Get-NovaDiskAdvice ([pscustomobject]@{ FriendlyName = 'Samsung 980'; MediaType = 'SSD'; BusType = 'NVMe' })) 'ok' 'NVMe' 'Windows на NVMe'
 if ($null -ne (Get-NovaDiskAdvice ([pscustomobject]@{ FriendlyName = 'Virtual Disk'; MediaType = 'Unspecified'; BusType = 'SAS' }))) { throw 'неизвестный тип диска — без совета' }
 Write-Host 'ok  неизвестный тип диска — без совета'
+
+# Библиотеки для игр (Visual C++, DirectX)
+$rtAll = @(
+    [pscustomobject]@{ Id = 'Microsoft.VCRedist.2015+.x64'; Name = 'Visual C++ 2015–2022 (64 бита)'; Vital = $true; Installed = $true },
+    [pscustomobject]@{ Id = 'Microsoft.VCRedist.2015+.x86'; Name = 'Visual C++ 2015–2022 (32 бита)'; Vital = $true; Installed = $true },
+    [pscustomobject]@{ Id = 'Microsoft.DirectX'; Name = 'DirectX 9 для старых игр'; Vital = $false; Installed = $true }
+)
+Assert-Check (Get-NovaRuntimeAdvice $rtAll) 'ok' 'на месте' 'все библиотеки есть'
+$rtAll[1].Installed = $false
+$rtAll[2].Installed = $false
+$rtCheck = Get-NovaRuntimeAdvice $rtAll
+Assert-Check $rtCheck 'warn' '32 бита' 'нет Visual C++ x86'
+if ($rtCheck.Fix.Kind -ne 'runtimes' -or ($rtCheck.Fix.Ids -join ',') -ne 'Microsoft.VCRedist.2015+.x86,Microsoft.DirectX') { throw ('исправление для библиотек: {0}' -f ($rtCheck.Fix.Ids -join ',')) }
+foreach ($id in $rtCheck.Fix.Ids) { if (-not (ConvertTo-NovaMoveApp ([pscustomobject]@{ id = $id; source = 'winget' }))) { throw ('id «{0}» не проходит проверку winget' -f $id) } }
+$rtAll[1].Installed = $true
+Assert-Check (Get-NovaRuntimeAdvice $rtAll) 'info' 'DirectX 9' 'нет только DirectX 9'
+$rtReal = @(Get-NovaRuntimeState)
+Write-Host ('i   библиотеки этой машины: {0}' -f (($rtReal | ForEach-Object { '{0}={1}' -f $_.Id, $_.Installed }) -join ', '))
+# id из списка есть в winget (если winget на машине есть)
+$wg = Get-NovaWingetPath
+if ($wg) {
+    foreach ($r in $rtReal) {
+        $show = Invoke-NovaNative $wg @('show', '--id', $r.Id, '--exact', '--source', 'winget', '--accept-source-agreements')
+        $tail = (@($show.Output -split "`n" | Where-Object { $_.Trim() }) | Select-Object -Last 2) -join ' '
+        if ($show.Code -ne 0) { Write-Host ('::warning::winget не нашёл {0}: {1}' -f $r.Id, $tail) } else { Write-Host ('ok  winget знает {0}' -f $r.Id) }
+    }
+}
 
 # Здоровье дисков
 $good = [pscustomobject]@{ Name = 'Samsung 980'; Health = 'Healthy'; Wear = 3; Temperature = 41 }

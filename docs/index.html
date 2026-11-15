@@ -175,6 +175,21 @@
   .release b { color: var(--accent); font-weight: 600; }
   .release a { color: var(--muted); text-underline-offset: 3px; }
   details p a { color: var(--accent); text-underline-offset: 3px; }
+  .cmp-wrap { padding: 0; overflow: hidden; }
+  .cmp { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  .cmp th, .cmp td { padding: 12px 16px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+  .cmp tbody tr:last-child th, .cmp tbody tr:last-child td { border-bottom: 0; }
+  .cmp thead th { font: 600 12px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--dim); background: var(--panel-2); }
+  .cmp thead th.nova { color: var(--accent); }
+  .cmp tbody th { width: 28%; font-weight: 600; color: var(--text); }
+  .cmp td { color: var(--muted); width: 36%; }
+  .cmp td.dash { color: var(--dim); }
+  .cmp td.nova { color: var(--text); background: var(--accent-soft); }
+  .cmp-note { color: var(--dim); font-size: 13px; margin: 12px 2px 0; }
+  @media (max-width: 600px) {
+    .cmp { font-size: 13px; }
+    .cmp th, .cmp td { padding: 10px 8px; }
+  }
 
   /* Поддержка */
   .support { display: grid; grid-template-columns: 1.2fr 1fr; gap: 14px; align-items: stretch; }
@@ -234,6 +249,7 @@
     <nav class="nav">
       <a href="#features">Возможности</a>
       <a href="#new">Новое</a>
+      <a href="#compare">Nova и AtlasOS</a>
       <a href="#demo">Как выглядит</a>
       <a href="#install">Установка</a>
       <a href="#faq">Вопросы</a>
@@ -255,7 +271,7 @@
           <a class="btn" href="#install">Как установить</a>
         </div>
         <div class="stats">
-          <div class="stat"><b id="stat-tweaks">54</b><span>настроек</span></div>
+          <div class="stat"><b id="stat-tweaks">58</b><span>настроек</span></div>
           <div class="stat"><b id="stat-apps">40</b><span>лишних приложений</span></div>
           <div class="stat"><b>1</b><span>клик — отмена</span></div>
           <div class="stat"><b>0 ₽</b><span>навсегда</span></div>
@@ -276,7 +292,7 @@
       <p class="sub">Только проверенные настройки Windows — никаких «ускорителей на +200% FPS». Каждую можно включить или выключить.</p>
       <div class="grid">
         <article class="panel card reveal">
-          <div class="panel-head"><b>01 / приватность</b><span>16 настроек</span></div>
+          <div class="panel-head"><b>01 / приватность</b><span id="cnt-privacy">16 настроек</span></div>
           <div class="body">
             <h3>Меньше слежки</h3>
             <p>Минимум телеметрии, без рекламного идентификатора, истории действий и скрытых задач сбора данных. Copilot и Recall выключены.</p>
@@ -300,7 +316,7 @@
           </div>
         </article>
         <article class="panel card reveal">
-          <div class="panel-head"><b>04 / интерфейс</b><span>14 настроек</span></div>
+          <div class="panel-head"><b>04 / интерфейс</b><span id="cnt-interface">15 настроек</span></div>
           <div class="body">
             <h3>Удобный интерфейс</h3>
             <p>Тёмная тема, полное меню по правому клику, видимые расширения файлов, панель задач без виджетов.</p>
@@ -308,10 +324,10 @@
           </div>
         </article>
         <article class="panel card reveal">
-          <div class="panel-head"><b>05 / игры</b><span>12 настроек</span></div>
+          <div class="panel-head"><b>05 / игры</b><span id="cnt-performance">13 настроек</span></div>
           <div class="body">
             <h3>Игры и скорость</h3>
-            <p>Игровой режим, без фоновой записи Game DVR, планирование GPU, оптимизация игр в окне, мышь без ускорения.</p>
+            <p>Игровой режим, без Game DVR, планирование GPU, игры в приоритете у планировщика, без перезагрузок посреди игры, мышь без ускорения.</p>
             <div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
           </div>
         </article>
@@ -383,7 +399,8 @@
         <div class="panel reveal">
           <div class="panel-head"><b>в программе</b></div>
           <ul class="list new">
-            <li><b>Готовность к играм</b> (пункт 6): драйвер видеокарты, частота монитора (стоит 60 Гц вместо 144 — Nova включит нужную), память, диск, TPM 2.0 и Secure Boot для Valorant и FACEIT.</li>
+            <li><b>Готовность к играм</b> (пункт 6): драйвер видеокарты, частота монитора (стоит 60 Гц вместо 144 — Nova включит нужную), память, здоровье диска, TPM 2.0 и Secure Boot для Valorant и FACEIT, Visual C++ и DirectX — нет, Nova поставит.</li>
+            <li><b>Игры в приоритете</b> у планировщика Windows и <b>без перезагрузок посреди игры</b>; по желанию — драйверы не через Центр обновления и меньше анимаций.</li>
             <li><b>Замер FPS</b> (пункт 7): играешь минуту до Nova и минуту после — и видишь честную разницу.</li>
             <li><b>Голос «Нова, …»</b> (пункт 8) без интернета, а теперь и музыка — «Нова, пауза», «следующий трек», — и ответы вслух: «Нова, который час?» По желанию запускается вместе с Windows.</li>
             <li><b>Освободить место</b> (пункт 9): сначала покажет, сколько займёт каждый пункт, удаляет только мусор.</li>
@@ -395,6 +412,7 @@
           <div class="panel-head"><b>сайт и безопасность</b></div>
           <ul class="list new">
             <li><b>Проверка системы при запуске</b>: Nova предупредит, если антивирус или брандмауэр уже кто-то выключил.</li>
+            <li><b>Готовые сборки</b> в кабинете: «Игровой ПК», «Ноутбук», «Слабый ПК» — одной кнопкой.</li>
             <li><b>Кабинет</b>: вход по коду из письма, профиль, «Забыли пароль?», смена пароля, удаление аккаунта — и конструктор голосовых команд: свои бинды без правки файлов.</li>
             <li><b>Пароль проверяется по базе утечек</b> — наружу уходят только 5 символов его отпечатка, сам пароль никуда не уходит.</li>
             <li><b>Четыре проверки «глазами взломщика»</b>: закрыты подмены файлов, ссылок и программ — всё найденное исправлено и проверяется тестами.</li>
@@ -405,9 +423,34 @@
     </div>
   </section>
 
+  <section id="compare">
+    <div class="wrap">
+      <div class="section-head"><span class="num">03</span><h2>Nova и AtlasOS</h2></div>
+      <p class="sub">AtlasOS — хороший проект с той же целью: Windows без лишнего. Разница — в том, как туда попасть и как вернуться.</p>
+      <div class="panel cmp-wrap reveal">
+        <table class="cmp">
+          <thead><tr><th scope="col"></th><th scope="col">AtlasOS</th><th scope="col" class="nova">Nova</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Как ставится</th><td>Только на чистую, заново установленную Windows</td><td class="nova">На твою Windows, без переустановки</td></tr>
+            <tr><th scope="row">Какие Windows</th><td>Windows 11 24H2 и 25H2, Pro и выше</td><td class="nova">Windows 10 и 11, и Home тоже</td></tr>
+            <tr><th scope="row">Вернуть как было</th><td>Только переустановкой Windows</td><td class="nova">Одна кнопка — точно как было</td></tr>
+            <tr><th scope="row">Что изменится</th><td class="dash">—</td><td class="nova">План до изменений, ничего не меняя</td></tr>
+            <tr><th scope="row">Антивирус и обновления</th><td>Можно выключить</td><td class="nova">Никогда не выключает — предохранитель</td></tr>
+            <tr><th scope="row">Проверка ПК для игр</th><td class="dash">—</td><td class="nova">Драйвер, Гц монитора, XMP, TPM, диск, Visual C++</td></tr>
+            <tr><th scope="row">Замер FPS «до и после»</th><td class="dash">—</td><td class="nova">PresentMon, честное сравнение</td></tr>
+            <tr><th scope="row">Голосовые команды</th><td class="dash">—</td><td class="nova">«Нова, …» без интернета</td></tr>
+            <tr><th scope="row">Переезд программ</th><td class="dash">—</td><td class="nova">Список программ на флешку и обратно</td></tr>
+            <tr><th scope="row">Бесплатно, открытый код</th><td>Да</td><td class="nova">Да</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="cmp-note">По документации AtlasOS на ноябрь 2026. Настройки для игр у Nova похожие: службы, задачи, планирование GPU, приоритет игр, без Game DVR и перезагрузок посреди игры, Visual C++ и DirectX. Прибавку FPS меряй сам — пунктом 7.</p>
+    </div>
+  </section>
+
   <section id="demo">
     <div class="wrap">
-      <div class="section-head"><span class="num">03</span><h2>Как это выглядит</h2></div>
+      <div class="section-head"><span class="num">04</span><h2>Как это выглядит</h2></div>
       <p class="sub">Сначала Nova показывает, что изменит, и только потом спрашивает разрешения.</p>
       <div class="panel terminal reveal">
         <div class="panel-head"><b>powershell — nova</b><button class="replay" id="replay" type="button">↻ повторить</button></div>
@@ -418,7 +461,7 @@
 
   <section id="install">
     <div class="wrap">
-      <div class="section-head"><span class="num">04</span><h2>Установка за минуту</h2></div>
+      <div class="section-head"><span class="num">05</span><h2>Установка за минуту</h2></div>
       <div class="steps">
         <div class="panel step reveal">
           <h3>Скачай</h3>
@@ -438,7 +481,7 @@
 
   <section id="safe">
     <div class="wrap">
-      <div class="section-head"><span class="num">05</span><h2>Честно и безопасно</h2></div>
+      <div class="section-head"><span class="num">06</span><h2>Честно и безопасно</h2></div>
       <div class="two">
         <div class="panel reveal">
           <div class="panel-head"><b>что nova делает</b></div>
@@ -468,7 +511,7 @@
 
   <section id="support">
     <div class="wrap">
-      <div class="section-head"><span class="num">06</span><h2>Поддержать проект</h2></div>
+      <div class="section-head"><span class="num">07</span><h2>Поддержать проект</h2></div>
       <div class="support">
         <div class="panel reveal">
           <div class="panel-head"><b>donate</b><span>спасибо ♥</span></div>
@@ -491,7 +534,7 @@
 
   <section id="faq">
     <div class="wrap">
-      <div class="section-head"><span class="num">07</span><h2>Вопросы</h2></div>
+      <div class="section-head"><span class="num">08</span><h2>Вопросы</h2></div>
       <details>
         <summary>Это пиратская Windows?</summary>
         <p>Нет. Nova не содержит Windows и не активирует её. Это набор настроек, который ты запускаешь на своей обычной, лицензионной Windows 10 или 11.</p>

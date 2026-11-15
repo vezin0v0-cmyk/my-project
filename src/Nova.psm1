@@ -1923,8 +1923,10 @@ function Get-NovaHealth {
     }
 
     # Редакция Home: часть политик работает только на Pro
-    if ($sys.Edition -like 'Core*' -and [bool](Get-NovaProp $toggles 'security-updates-only' $false)) {
-        $checks.Add((New-NovaCheck 'Редакция' 'warn' 'Windows Home: пункт «Только обновления безопасности» здесь не сработает.' 'Он работает на Pro и выше. Выключи его в config.json или просто пропусти — остальное применится.' 'edition'))
+    $proOnly = @(@(@('security-updates-only', 'Только обновления безопасности'), @('wu-no-drivers', 'Драйверы не через Центр обновления')) |
+            Where-Object { [bool](Get-NovaProp $toggles $_[0] $false) } | ForEach-Object { '«{0}»' -f $_[1] })
+    if ($sys.Edition -like 'Core*' -and $proOnly.Count -gt 0) {
+        $checks.Add((New-NovaCheck 'Редакция' 'warn' ('Windows Home: {0} здесь может не сработать.' -f ($proOnly -join ' и ')) 'Это работает на Pro и выше. Выключи в config.json или просто пропусти — остальное применится.' 'edition'))
     }
 
     # Перезагрузка после обновлений

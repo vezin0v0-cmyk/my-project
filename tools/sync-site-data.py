@@ -30,12 +30,23 @@ def numbers() -> list:
     """Числа и версия на главной и в макете: (страница, шаблон, на что заменить)."""
     tweaks = json.loads((ROOT / "src" / "tweaks.json").read_text(encoding="utf-8"))["tweaks"]
     config = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+    per_cat = {}
+    for tweak in tweaks:
+        per_cat[tweak["category"]] = per_cat.get(tweak["category"], 0) + 1
+
+    def settings(n: int) -> str:
+        if n % 100 in (11, 12, 13, 14):
+            return f"{n} настроек"
+        return f"{n} " + {1: "настройка", 2: "настройки", 3: "настройки", 4: "настройки"}.get(n % 10, "настроек")
+
     full = nova_version()
     short = ".".join(full.split(".")[:2])
     index = ROOT / "docs" / "index.html"
     return [
         (index, r'(<b id="stat-tweaks">)\d+(</b>)', rf"\g<1>{len(tweaks)}\g<2>"),
         (index, r'(<b id="stat-apps">)\d+(</b>)', rf"\g<1>{len(config['removeApps'])}\g<2>"),
+        *[(index, rf'(<span id="cnt-{cat}">)[^<]*(</span>)', rf"\g<1>{settings(per_cat.get(cat, 0))}\g<2>")
+          for cat in ("privacy", "interface", "performance")],
         (index, r'(<small id="site-version">v)[\d.]+(</small>)', rf"\g<1>{short}\g<2>"),
         (index, r"(  Nova )\d+\.\d+\.\d+( — твоя Windows)", rf"\g<1>{full}\g<2>"),
         (ROOT / "docs" / "mockup.html", r"(Nova )\d+\.\d+\.\d+( · у тебя последняя версия)", rf"\g<1>{full}\g<2>"),

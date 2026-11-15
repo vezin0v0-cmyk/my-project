@@ -91,6 +91,23 @@ function novaProblems(doc) {
     const T = tag;
     try {
       await register(p);
+      // Готовые сборки в конструкторе
+      await p.$eval('#builder', el => el.scrollIntoView());
+      check(T + ' presets shown', (await p.$$('#presets button')).length === 4);
+      await p.click('#presets [data-preset="gaming"]');
+      await p.waitForTimeout(150);
+      const cfgText = await (async () => { await p.click('[data-show-config]'); await p.waitForSelector('.modal textarea'); const v = await p.$eval('.modal textarea', t => t.value); await p.click('.modal [data-close]'); return v; })();
+      const cfg = JSON.parse(cfgText);
+      check(T + ' gaming preset: power + runtimes', cfg.tweaks['high-performance-power'] === true && cfg.tweaks['game-priority'] === true && cfg.installApps['Microsoft.VCRedist.2015+.x64'] === true && cfg.installApps['Microsoft.DirectX'] === true, cfg.tweaks);
+      check(T + ' gaming preset highlighted', await p.$eval('#presets [data-preset="gaming"]', b => b.classList.contains('active')));
+      await p.click('#presets [data-preset="laptop"]');
+      await p.waitForTimeout(150);
+      const lap = JSON.parse(await (async () => { await p.click('[data-show-config]'); await p.waitForSelector('.modal textarea'); const v = await p.$eval('.modal textarea', t => t.value); await p.click('.modal [data-close]'); return v; })());
+      check(T + ' laptop preset keeps battery', lap.tweaks['high-performance-power'] === false && lap.tweaks['power-throttling-off'] === false && lap.tweaks['background-apps-off'] === true);
+      await p.click('#presets [data-preset="default"]');
+      await p.waitForTimeout(150);
+      check(T + ' default preset resets', (await p.textContent('#changed')).includes('по умолчанию'));
+
       await p.$eval('#voice', el => el.scrollIntoView());
       const builtIn = await p.$$eval('#v-list input[data-vkey]', els => els.length);
       check(T + ' built-in commands listed', builtIn === DEFAULT.commands.length, builtIn);
