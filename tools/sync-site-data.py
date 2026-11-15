@@ -4,7 +4,7 @@
     python tools/sync-site-data.py          # обновить данные на сайте
     python tools/sync-site-data.py --check  # только проверить, что сайт не отстал (для CI)
 
-Источник правды — src/tweaks.json, config.json и версия в src/Nova.psm1. Сайт берёт
+Источник правды — src/tweaks.json, config.json, voice.json и версия в src/Nova.psm1. Сайт берёт
 из них названия, описания и значения по умолчанию, чтобы конструктор всегда совпадал
 с программой, а на главной — число настроек и приложений и номер версии.
 """
@@ -45,12 +45,14 @@ def numbers() -> list:
 def build_data() -> str:
     tweaks = json.loads((ROOT / "src" / "tweaks.json").read_text(encoding="utf-8"))["tweaks"]
     config = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+    voice = json.loads((ROOT / "voice.json").read_text(encoding="utf-8"))
     data = {
         "tweaks": [
             {key: tweak.get(key) for key in ("id", "category", "title", "description")}
             for tweak in tweaks
         ],
         "config": config,
+        "voice": voice,
     }
     blob = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
     # "</" внутри <script> мог бы закрыть тег раньше времени.
@@ -89,7 +91,7 @@ def main() -> int:
             print(f"{name} обновлён.")
     if check:
         if stale:
-            print("Отстали от src/tweaks.json, config.json или версии Nova: " + ", ".join(stale) + ". Запусти: python tools/sync-site-data.py")
+            print("Отстали от src/tweaks.json, config.json, voice.json или версии Nova: " + ", ".join(stale) + ". Запусти: python tools/sync-site-data.py")
             return 1
         print("Данные сайта совпадают с программой.")
         return 0
