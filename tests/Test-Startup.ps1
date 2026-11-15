@@ -122,7 +122,8 @@ try {
     if (-not (Test-NovaVoiceAutostart -Folder $folder)) { throw 'ярлык голоса не появился' }
     $shell = New-Object -ComObject WScript.Shell
     $link = $shell.CreateShortcut($made)
-    if ($link.TargetPath -ne $voiceCmd -or $link.WindowStyle -ne 7) { throw ('ярлык ведёт не туда: {0}, окно {1}' -f $link.TargetPath, $link.WindowStyle) }
+    if ($link.TargetPath -ne $voiceCmd -or $link.WindowStyle -ne 7) { throw ('ярлык {0} ведёт не туда: «{1}», окно {2}' -f $made, $link.TargetPath, $link.WindowStyle) }
+    if ((Get-NovaShortcutTarget $made) -ne $voiceCmd) { throw 'список автозагрузки не видит, куда ведёт ярлык голоса' }
     [void](Add-NovaVoiceAutostart -Target $voiceCmd -Folder $folder)
     Remove-NovaVoiceAutostart -Folder $folder
     if (Test-NovaVoiceAutostart -Folder $folder) { throw 'ярлык голоса не убрался' }

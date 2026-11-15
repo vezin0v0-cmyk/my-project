@@ -166,7 +166,8 @@ function Set-NovaStartupItem {
 
 # Nova Голос вместе с Windows: ярлык в папке «Автозагрузка» этого пользователя, окно свёрнуто.
 # Выключить можно здесь же, в пункте 10 или в Диспетчере задач — это обычная запись автозагрузки.
-$script:VoiceLink = 'Nova Голос.lnk'
+# Имя латиницей: ярлыки с русским именем Windows Script Host на английской Windows не читает.
+$script:VoiceLink = 'Nova Voice.lnk'
 
 function Get-NovaVoiceAutostartPath {
     param([string]$Folder = [Environment]::GetFolderPath('Startup'))
