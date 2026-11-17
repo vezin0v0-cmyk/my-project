@@ -4,7 +4,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-$script:NovaVersion = '0.7.0'
+$script:NovaVersion = '0.8.0'
 $script:Categories = [ordered]@{
     privacy     = 'ПРИВАТНОСТЬ'
     interface   = 'ИНТЕРФЕЙС'

@@ -311,11 +311,11 @@ $xaml = @'
         <ScrollViewer x:Name="PageHome" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel Margin="28,22,28,28">
             <Border CornerRadius="16" Height="236">
-              <Border.Background><ImageBrush x:Name="HeroImg" Stretch="UniformToFill" AlignmentX="Right"/></Border.Background>
+              <Border.Background><ImageBrush x:Name="HeroImg" Stretch="UniformToFill" AlignmentX="Right" Viewbox="0,0.12,0.7,0.76" ViewboxUnits="RelativeToBoundingBox"/></Border.Background>
               <Border CornerRadius="16">
                 <Border.Background>
                   <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                    <GradientStop Color="#F00E1015" Offset="0"/><GradientStop Color="#B30E1015" Offset="0.5"/><GradientStop Color="#200E1015" Offset="1"/>
+                    <GradientStop Color="#F50E1015" Offset="0"/><GradientStop Color="#D90E1015" Offset="0.45"/><GradientStop Color="#400E1015" Offset="0.8"/><GradientStop Color="#100E1015" Offset="1"/>
                   </LinearGradientBrush>
                 </Border.Background>
                 <StackPanel VerticalAlignment="Center" Margin="36,0">
@@ -516,7 +516,7 @@ $xaml = @'
               </ScrollViewer>
             </Border>
             <DockPanel Grid.Row="3" Margin="0,16,0,0">
-              <Button x:Name="RunClose" DockPanel.Dock="Right" Style="{StaticResource Primary}" Content="Готово" IsEnabled="False"/>
+              <Button x:Name="RunClose" DockPanel.Dock="Right" Style="{StaticResource Primary}" Content="Закрыть" IsEnabled="False"/>
               <TextBlock x:Name="RunResult" VerticalAlignment="Center" FontWeight="SemiBold"/>
             </DockPanel>
           </Grid>
@@ -612,7 +612,7 @@ $colors = @{ Green = '#7CE0A3'; Yellow = '#FFC940'; Red = '#FF7A7A'; DarkGray = 
 
 function Add-RunLine([string]$Color, [string]$Text) {
     if (-not $Text.Trim()) { return }
-    $t = New-Text $Text.TrimEnd() 13 ($(if ($colors.ContainsKey($Color)) { $colors[$Color] } else { '#C9CEDA' })) -Wrap
+    $t = New-Text ($Text.TrimEnd() -replace '^  ', '') 13 ($(if ($colors.ContainsKey($Color)) { $colors[$Color] } else { '#C9CEDA' })) -Wrap
     $t.FontFamily = New-Object Windows.Media.FontFamily('Cascadia Mono, Consolas')
     $t.Margin = '0,1,0,1'
     [void]$ui.RunLog.Children.Add($t)
@@ -704,7 +704,7 @@ $runTimer.Add_Tick({
                 $code = $r.P.ExitCode
                 $ok = ($code -eq 0)
                 Stop-BarAnimation $ok
-                $ui.RunResult.Text = $(if ($ok) { 'Готово' } else { 'Есть замечания — подробности выше' })
+                $ui.RunResult.Text = $(if ($ok) { '✓  Всё получилось' } else { 'Есть замечания — подробности выше' })
                 $ui.RunResult.Foreground = Get-Brush ($(if ($ok) { '#7CE0A3' } else { '#FFC940' }))
                 $ui.RunClose.IsEnabled = $true
                 $script:Run = $null
@@ -733,16 +733,26 @@ function Start-NovaConsole([string]$Arguments) {
 #region Настройки и приложения (config.json)
 
 $categoryNames = [ordered]@{ privacy = 'Приватность'; interface = 'Интерфейс'; style = 'Оформление Nova'; performance = 'Скорость и игры'; system = 'Система и фон' }
-$appNames = @{
-    'Microsoft.BingNews' = 'Новости'; 'Microsoft.BingWeather' = 'Погода'; 'Microsoft.BingSearch' = 'Поиск Bing'; 'Microsoft.Getstarted' = 'Советы'; 'Microsoft.MicrosoftOfficeHub' = 'Office (реклама)'
-    'Microsoft.People' = 'Люди'; 'Microsoft.PowerAutomateDesktop' = 'Power Automate'; 'Microsoft.Todos' = 'To Do'; 'Microsoft.WindowsFeedbackHub' = 'Центр отзывов'; 'Microsoft.WindowsMaps' = 'Карты'
-    'Microsoft.549981C3F5F10' = 'Cortana'; 'Microsoft.Copilot' = 'Copilot'; 'Microsoft.Windows.DevHome' = 'Dev Home'; 'Microsoft.MixedReality.Portal' = 'Смешанная реальность'; 'Microsoft.Microsoft3DViewer' = 'Просмотр 3D'
-    'Microsoft.SkypeApp' = 'Skype'; 'MicrosoftTeams' = 'Teams'; 'MicrosoftCorporationII.MicrosoftFamily' = 'Семья'; 'Microsoft.Office.OneNote' = 'OneNote'; 'Microsoft.Wallet' = 'Кошелёк'
-    'microsoft.windowscommunicationsapps' = 'Почта и Календарь'; 'Microsoft.BingFinance' = 'Финансы'; 'Microsoft.BingSports' = 'Спорт'; 'Microsoft.Messaging' = 'Сообщения'; 'Microsoft.Print3D' = 'Print 3D'
-    'Microsoft.OneConnect' = 'Мобильные тарифы'; 'Microsoft.MSPaint' = 'Paint 3D'; 'Clipchamp.Clipchamp' = 'Clipchamp'; 'Microsoft.ZuneMusic' = 'Медиаплеер'; 'Microsoft.ZuneVideo' = 'Кино и ТВ'
-    'Microsoft.XboxApp' = 'Xbox Console Companion'; 'Microsoft.GamingApp' = 'Xbox'; 'Microsoft.MicrosoftSolitaireCollection' = 'Пасьянсы'; 'Microsoft.YourPhone' = 'Связь с телефоном'; 'Microsoft.OutlookForWindows' = 'Outlook (новый)'
-    '7zip.7zip' = '7-Zip'; 'VideoLAN.VLC' = 'VLC'; 'Mozilla.Firefox' = 'Firefox'; 'Google.Chrome' = 'Google Chrome'; 'Valve.Steam' = 'Steam'; 'Discord.Discord' = 'Discord'
-    'Microsoft.VCRedist.2015+.x64' = 'Visual C++ (x64) — для игр'; 'Microsoft.VCRedist.2015+.x86' = 'Visual C++ (x86) — для игр'; 'Microsoft.DirectX' = 'DirectX — для старых игр'
+$appNames = @{  # те же названия, что в кабинете на сайте (docs/app.html, APP_NAMES)
+    'Microsoft.BingNews' = 'Новости'; 'Microsoft.BingWeather' = 'Погода'; 'Microsoft.BingSearch' = 'Поиск Bing'
+    'Microsoft.GetHelp' = 'Техподдержка'; 'Microsoft.Getstarted' = 'Советы'; 'Microsoft.MicrosoftSolitaireCollection' = 'Пасьянсы'
+    'Microsoft.MicrosoftOfficeHub' = 'Microsoft 365 (Office)'; 'Microsoft.People' = 'Люди'; 'Microsoft.PowerAutomateDesktop' = 'Power Automate'
+    'Microsoft.Todos' = 'Microsoft To Do'; 'Microsoft.WindowsFeedbackHub' = 'Центр отзывов'; 'Microsoft.WindowsMaps' = 'Карты'
+    'Microsoft.549981C3F5F10' = 'Cortana'; 'Microsoft.Copilot' = 'Copilot'; 'Microsoft.Windows.DevHome' = 'Dev Home'
+    'Microsoft.MixedReality.Portal' = 'Портал смешанной реальности'; 'Microsoft.Microsoft3DViewer' = 'Просмотр 3D'; 'Microsoft.SkypeApp' = 'Skype'
+    'Clipchamp.Clipchamp' = 'Clipchamp'; 'MSTeams' = 'Teams (новый)'; 'MicrosoftTeams' = 'Teams (старый)'
+    'Microsoft.OutlookForWindows' = 'Outlook (новый)'; 'Microsoft.YourPhone' = 'Связь с телефоном'; 'Microsoft.MicrosoftStickyNotes' = 'Записки'
+    'Microsoft.ZuneMusic' = 'Медиаплеер'; 'Microsoft.GamingApp' = 'Xbox'; 'Microsoft.XboxGamingOverlay' = 'Xbox Game Bar'
+    'MicrosoftCorporationII.MicrosoftFamily' = 'Семья (Microsoft Family)'; 'Microsoft.Office.OneNote' = 'OneNote (старый)'; 'Microsoft.Wallet' = 'Кошелёк'
+    'Microsoft.WindowsSoundRecorder' = 'Диктофон'; 'MicrosoftWindows.CrossDevice' = 'Связь с устройствами'; 'microsoft.windowscommunicationsapps' = 'Почта и Календарь'
+    'Microsoft.ZuneVideo' = 'Кино и ТВ'; 'Microsoft.BingFinance' = 'Финансы'; 'Microsoft.BingSports' = 'Спорт'
+    'Microsoft.Messaging' = 'Сообщения'; 'Microsoft.Print3D' = 'Print 3D'; 'Microsoft.OneConnect' = 'Мобильные тарифы'
+    'Microsoft.MSPaint' = 'Paint 3D'; '7zip.7zip' = '7-Zip'; 'VideoLAN.VLC' = 'VLC'
+    'Mozilla.Firefox' = 'Firefox'; 'Brave.Brave' = 'Brave'; 'Google.Chrome' = 'Chrome'
+    'Valve.Steam' = 'Steam'; 'Discord.Discord' = 'Discord'; 'Telegram.TelegramDesktop' = 'Telegram Desktop'
+    'Notepad++.Notepad++' = 'Notepad++'; 'voidtools.Everything' = 'Everything — быстрый поиск файлов'; 'Microsoft.PowerToys' = 'PowerToys'
+    'OBSProject.OBSStudio' = 'OBS Studio'; 'Microsoft.VCRedist.2015+.x64' = 'Visual C++ для игр (64 бита)'; 'Microsoft.VCRedist.2015+.x86' = 'Visual C++ для игр (32 бита)'
+    'Microsoft.DirectX' = 'DirectX 9 для старых игр'
 }
 $presets = @(
     @{ Name = 'Игровой ПК'; Tweaks = @{ 'high-performance-power' = $true; 'power-throttling-off' = $true; 'mouse-acceleration-off' = $true; 'background-apps-off' = $true; 'hibernation-off' = $true; 'no-forced-restart' = $true; 'edge-quiet' = $true } }
@@ -978,6 +988,14 @@ function Update-UpdatePage([object]$Info) {
     $ui.BtnRollback.Visibility = $(if ($backups.Count -gt 0) { 'Visible' } else { 'Collapsed' })
     if ($backups.Count -gt 0) { $ui.BtnRollback.Content = ('Вернуть прошлую версию — Nova {0}' -f $backups[0].From) }
     if (-not $Info) {
+        $log = Join-Path $projectRoot 'CHANGELOG.md'
+        if (Test-Path -LiteralPath $log) {
+            $rel = @(Read-NovaChangelog ([IO.File]::ReadAllText($log, [Text.Encoding]::UTF8)) | Where-Object { $_.Version }) | Select-Object -First 1
+            if ($rel) {
+                [void]$ui.UpdList.Children.Add((New-Text ('Что нового в версии ' + $rel.Label) 16 '#FFC940' 'SemiBold'))
+                foreach ($item in @($rel.Items)) { $t = New-Text ('✦  ' + $item) 13 '#C9CEDA' -Wrap; $t.Margin = '0,6,0,0'; [void]$ui.UpdList.Children.Add($t) }
+            }
+        }
         $ui.UpdTitle.Text = ('У тебя Nova {0}' -f (Get-NovaVersion))
         $ui.UpdText.Text = 'Нажми «Проверить» — Nova прочитает с GitHub список изменений. О тебе ничего не отправляется.'
         $ui.BtnDoUpd.IsEnabled = $false
@@ -1105,7 +1123,11 @@ if ($logo) { $ui.LogoImg.Source = $logo; $win.Icon = $logo }
 $hero = Get-Image (Join-Path $projectRoot 'assets\wallpaper\nova-dark.jpg')
 if ($hero) { $ui.HeroImg.ImageSource = $hero }
 $ui.VerText.Text = 'v' + (Get-NovaVersion)
-$ui.MailText.Text = Get-NovaSupportEmail
+$mailParts = (Get-NovaSupportEmail).Split('@')
+$ui.MailText.Inlines.Clear()
+$ui.MailText.Inlines.Add((New-Object Windows.Documents.Run $mailParts[0]))
+$ui.MailText.Inlines.Add((New-Object Windows.Documents.LineBreak))
+$ui.MailText.Inlines.Add((New-Object Windows.Documents.Run ('@' + $mailParts[1])))
 $ui.SideStatus.Text = ('Nova {0} · всё можно вернуть' -f (Get-NovaVersion))
 $ui.AboutText.Text = ('Nova {0}. Вопросы, ошибки и идеи: {1}' -f (Get-NovaVersion), (Get-NovaSupportEmail))
 $ui.HealthText.Text = 'Проверяю систему…'; $ui.HealthChip.Background = Get-Brush '#22262F'; $ui.HealthText.Foreground = Get-Brush '#C9CEDA'
@@ -1145,7 +1167,7 @@ if ($Screenshot) {
                 $ui.NavTweaks.IsChecked = $true
                 $ui.RunLog.Children.Clear(); $ui.RunTitle.Text = 'Применяю настройки'; $ui.RunIcon.Text = [string][char]0xE768
                 foreach ($l in @(@('Green', '  + Минимум телеметрии'), @('Green', '  + Без рекламного идентификатора'), @('Green', '  + Тёмная тема'), @('DarkGray', '  Создаю точку восстановления Windows…'), @('Yellow', '  ! Windows ждёт перезагрузки'), @('Green', '  + Игры в приоритете у планировщика'))) { Add-RunLine $l[0] $l[1] }
-                $ui.RunOverlay.Visibility = 'Visible'; Stop-BarAnimation $true; $ui.RunResult.Text = 'Готово'; $ui.RunResult.Foreground = Get-Brush '#7CE0A3'; $ui.RunClose.IsEnabled = $true
+                $ui.RunOverlay.Visibility = 'Visible'; Stop-BarAnimation $true; $ui.RunResult.Text = '✓  Всё получилось'; $ui.RunResult.Foreground = Get-Brush '#7CE0A3'; $ui.RunClose.IsEnabled = $true
             })
     )
     foreach ($s in $shots) {
