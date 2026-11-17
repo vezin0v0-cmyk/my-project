@@ -182,7 +182,12 @@ tools/make-assets.js обои, логотип, значок и превью сс
 .\src\Nova.ps1 -Mode Check            # проверить, готова ли система
 .\src\Nova.ps1 -Mode Fps              # замер FPS в игре (60 секунд)
 .\src\Nova.ps1 -Mode Startup          # что запускается вместе с Windows
-.\src\Nova.ps1 -Mode Update           # есть ли новая версия (читает CHANGELOG.md с GitHub)
+.\src\Nova.ps1 -Mode Update           # есть ли новая версия (читает CHANGELOG.md с GitHub; обновляет только из меню)
+.\src\Nova.ps1 -Mode Heavy            # что тормозит прямо сейчас
+.\src\Nova.ps1 -Mode Net              # интернет для игр: пинг, Wi‑Fi, DNS
+.\src\Nova.ps1 -Mode Report           # отчёт для поддержки на рабочий стол
+.\src\Nova.ps1 -Mode Game             # режим игры: включить, а если включён — выключить
+.\src\Nova.ps1 -Mode Driver           # свежий ли драйвер видеокарты
 ```
 
 **Как добавить настройку.** Добавь объект в `src/tweaks.json` (`id`, `category`, `title`, `description`, `actions`) и строку с её `id` в `config.json`. Типы действий: `registry`, `service`, `powerScheme`, `hibernate`. Отмена работает автоматически: перед изменением Nova записывает прежнее значение. После этого запусти `python tools/sync-site-data.py`, чтобы настройка появилась в конструкторе на сайте (CI проверяет, что это не забыли).

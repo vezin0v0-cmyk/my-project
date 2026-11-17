@@ -337,7 +337,7 @@
           <div class="panel-head"><b>06 / голос</b><span class="live">offline</span></div>
           <div class="body">
             <h3>«Нова, сверни все окна»</h3>
-            <p>Голосовые команды, музыка и свои бинды. «Нова, который час?» — ответит вслух. Речь распознаётся прямо на компьютере, без интернета — звук никуда не уходит.</p>
+            <p>Голосовые команды, музыка, таймер и свои бинды. «Нова, который час?» — ответит вслух. Речь распознаётся прямо на компьютере, без интернета — звук никуда не уходит.</p>
             <div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i></div>
           </div>
         </article>
@@ -369,7 +369,7 @@
           <div class="panel-head"><b>10 / железо</b><span>важнее настроек</span></div>
           <div class="body">
             <h3>Готовность к играм</h3>
-            <p>Найдёт то, что режет FPS сильнее любых твиков: нет драйвера видеокарты, монитор на 60 Гц вместо 144, кабель в материнской плате, память без XMP, Windows на HDD.</p>
+            <p>Найдёт то, что режет FPS сильнее любых твиков: старый драйвер видеокарты (для NVIDIA сверит с сайтом NVIDIA), монитор на 60 Гц вместо 144, кабель в материнской плате, память без XMP, Windows на HDD.</p>
             <div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
           </div>
         </article>
@@ -387,6 +387,30 @@
             <h3>Освободить диск</h3>
             <p>Временные файлы, скачанные обновления, кэши и старые компоненты Windows. Сначала покажет, сколько освободит.</p>
             <div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+          </div>
+        </article>
+        <article class="panel card reveal">
+          <div class="panel-head"><b>13 / режим игры</b><span class="live">на время игры</span></div>
+          <div class="body">
+            <h3>Режим игры</h3>
+            <p>Максимальная мощность, без всплывающих уведомлений, обновления Windows на паузе, лишние программы закрыты. «Нова, игра окончена» — и всё как было. Забыл выключить — обновления вернутся сами.</p>
+            <div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+          </div>
+        </article>
+        <article class="panel card reveal">
+          <div class="panel-head"><b>14 / игры голосом</b><span>steam · epic · riot</span></div>
+          <div class="body">
+            <h3>«Нова, запусти доту»</h3>
+            <p>Nova сама находит игры Steam, Epic Games и Riot и запускает их по названию. «Нова, запусти игру» — последняя, в которую ты играл.</p>
+            <div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></div>
+          </div>
+        </article>
+        <article class="panel card reveal">
+          <div class="panel-head"><b>15 / обновления</b><span>одна кнопка</span></div>
+          <div class="body">
+            <h3>Обновление одной кнопкой</h3>
+            <p>Новая версия скачивается с GitHub, архив проверяется, ставятся только файлы программы. Твои настройки остаются, прошлую версию можно вернуть.</p>
+            <div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></div>
           </div>
         </article>
       </div>
@@ -435,7 +459,7 @@
             <tr><th scope="row">Антивирус и обновления</th><td>Можно выключить</td><td class="nova">Никогда не выключает — предохранитель</td></tr>
             <tr><th scope="row">Проверка ПК для игр</th><td class="dash">—</td><td class="nova">Драйвер, Гц монитора, XMP, TPM, диск, Visual C++</td></tr>
             <tr><th scope="row">Замер FPS «до и после»</th><td class="dash">—</td><td class="nova">PresentMon, честное сравнение</td></tr>
-            <tr><th scope="row">Голосовые команды</th><td class="dash">—</td><td class="nova">«Нова, …» без интернета</td></tr>
+            <tr><th scope="row">Голосовые команды</th><td class="dash">—</td><td class="nova">«Нова, …» без интернета, запуск игр голосом</td></tr>
             <tr><th scope="row">Переезд программ</th><td class="dash">—</td><td class="nova">Список программ на флешку и обратно</td></tr>
             <tr><th scope="row">Бесплатно, открытый код</th><td>Да</td><td class="nova">Да</td></tr>
           </tbody>
@@ -578,7 +602,15 @@
       </details>
       <details>
         <summary>Как узнать, что вышла новая версия?</summary>
-        <p>В меню Nova пункт 12 — «Есть ли новая версия Nova». Nova прочитает с GitHub список изменений и покажет, что нового; сама она ничего не скачивает. Обновиться — скачать новую версию в новую папку и перенести туда свои <code>config.json</code> и <code>voice.json</code>. Всё, что изменилось, — в <a data-link="changelog" href="#">списке изменений</a>.</p>
+        <p>В меню Nova пункт 12 — «Обновить Nova». Nova прочитает с GitHub список изменений, покажет, что нового, и, если ты согласишься, обновится сама: скачает архив оттуда же, проверит его и заменит только файлы программы. Твои <code>config.json</code> и <code>voice.json</code> остаются как есть, а прошлую версию можно вернуть в том же пункте. Всё, что изменилось, — в <a data-link="changelog" href="#">списке изменений</a>.</p>
+      </details>
+      <details>
+        <summary>Режим игры ничего не сломает?</summary>
+        <p>Нет. Он меняет только три вещи и только на время игры: схему питания, всплывающие уведомления и паузу обновлений Windows. Выключаешь (пункт 16 или «Нова, игра окончена») — всё возвращается как было; если что-то из этого ты поменял сам во время игры, Nova оставит твоё. Забыл выключить — обновления вернутся сами максимум через 12 часов. Программы Nova закрывает, только если ты их выбрал, и после игры предложит открыть снова.</p>
+      </details>
+      <details>
+        <summary>Nova ходит в интернет?</summary>
+        <p>Только когда ты сам об этом просишь, и только за конкретным: список изменений и новая версия с GitHub (пункт 12), замер пинга до игровых сервисов и DNS (пункт 14), последний драйвер для видеокарты NVIDIA — на сайт NVIDIA уходит только модель видеокарты (пункт 17), программы через winget, PresentMon и движок голосовых команд. Отчётов, статистики и данных о тебе Nova не отправляет никогда. Подробно — в <a href="privacy.html#program">политике конфиденциальности</a>.</p>
       </details>
       <details>
         <summary>Как вернуть удалённое приложение?</summary>
