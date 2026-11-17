@@ -5,6 +5,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Import-Module (Join-Path $root 'src\Nova.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $root 'src\NovaPlay.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $root 'src\NovaStartup.psm1') -Force -DisableNameChecking
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 
 # Короткая сводка для конца проверки на GitHub (если задан файл NOVA_SUMMARY).
@@ -279,9 +280,9 @@ try {
     if (-not $n.StartsWith('Ярлык на рабочий стол')) { throw ('Экранный диктор прочтёт у плитки ярлыка «{0}»' -f $n) }
     Invoke-Id 'TShortcut'
     [void](Wait-Until { Test-Path -LiteralPath $lnkPath } 10 'ярлык «Nova Центр» на рабочем столе')
-    $lnk = (New-Object -ComObject WScript.Shell).CreateShortcut($lnkPath)
-    if ($lnk.TargetPath -ne (Join-Path $root 'NovaCenter.cmd')) { throw ('Ярлык ведёт не туда: {0}' -f $lnk.TargetPath) }
-    if (-not (Test-Path -LiteralPath ($lnk.IconLocation -replace ',\d+$', ''))) { throw 'У ярлыка нет значка Nova' }
+    $lnk = Read-NovaShortcut -Path $lnkPath
+    if ($lnk.Target -ne (Join-Path $root 'NovaCenter.cmd')) { throw ('Ярлык ведёт не туда: {0}' -f $lnk.Target) }
+    if (-not $lnk.Icon -or -not (Test-Path -LiteralPath $lnk.Icon)) { throw 'У ярлыка нет значка Nova' }
     $script:Done.Add('ok  ярлык «Nova Центр» на рабочем столе ведёт в NovaCenter.cmd, значок Nova')
 
     # 12. Голос: список команд из voice.json.

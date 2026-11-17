@@ -1323,14 +1323,8 @@ $ui.TMenu.Add_Click({ Start-NovaConsole '-Mode Menu' })
 $ui.TShortcut.Add_Click({
         try {
             $desktop = [Environment]::GetFolderPath('Desktop')
-            $shell = New-Object -ComObject WScript.Shell
-            $lnk = $shell.CreateShortcut((Join-Path $desktop 'Nova Центр.lnk'))
-            $lnk.TargetPath = (Join-Path $projectRoot 'NovaCenter.cmd')
-            $lnk.WorkingDirectory = $projectRoot
-            $lnk.IconLocation = (Join-Path $projectRoot 'assets\nova.ico') + ',0'
-            $lnk.WindowStyle = 7
-            $lnk.Description = 'Nova Центр'
-            $lnk.Save()
+            # IShellLinkW, а не WScript.Shell: тот не сохраняет ярлык с русским именем на Windows с английской настройкой.
+            New-NovaShortcut -Path (Join-Path $desktop 'Nova Центр.lnk') -Target (Join-Path $projectRoot 'NovaCenter.cmd') -WorkingDirectory $projectRoot -Icon (Join-Path $projectRoot 'assets\nova.ico') -Description 'Nova Центр' -ShowCmd 7
             Show-Toast 'Ярлык «Nova Центр» — на рабочем столе'
         } catch { Show-Toast ('Не получилось: {0}' -f (Get-NovaPlainText $_.Exception.Message 120)) }
     })

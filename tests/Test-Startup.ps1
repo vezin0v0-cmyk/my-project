@@ -125,8 +125,20 @@ try {
     $shell = New-Object -ComObject WScript.Shell
     $link = $shell.CreateShortcut($made)
     if ($link.TargetPath -ne $voiceCmd -or $link.WindowStyle -ne 7) { throw ('ярлык {0} ведёт не туда: «{1}», окно {2}' -f $made, $link.TargetPath, $link.WindowStyle) }
+    if ($link.Arguments -ne '-Minimized') { throw ('ярлык голоса без -Minimized: «{0}»' -f $link.Arguments) }
     if ((& $state) -ne 'on') { throw ('после включения состояние {0}' -f (& $state)) }
     Write-Host 'ok  голос вместе с Windows: ярлык на NovaVoice.cmd, окно свёрнуто'
+
+    # Ярлык с русскими буквами в пути (как «Nova Центр.lnk» или папка пользователя «Вася») сохраняется и читается
+    # на любой Windows — WScript.Shell здесь падал, если «язык программ без Юникода» не русский.
+    $ru = Join-Path $vdir 'Папка Вася'
+    New-Item -ItemType Directory -Path $ru | Out-Null
+    $ruLink = Join-Path $ru 'Nova Центр.lnk'
+    New-NovaShortcut -Path $ruLink -Target $voiceCmd -Arguments '-Minimized' -WorkingDirectory $root -ShowCmd 7
+    $back = Read-NovaShortcut -Path $ruLink
+    if ($back.Target -ne $voiceCmd -or $back.Arguments -ne '-Minimized' -or $back.ShowCmd -ne 7 -or $back.WorkingDirectory -ne $root) { throw ('ярлык с русским путём прочитался не так: {0} {1} {2}' -f $back.Target, $back.Arguments, $back.ShowCmd) }
+    if ((Get-NovaShortcutTarget $ruLink) -ne $voiceCmd) { throw 'Get-NovaShortcutTarget не читает ярлык с русским путём' }
+    Write-Host 'ok  ярлык с русскими буквами в пути сохраняется и читается'
 
     # Выключили в Диспетчере задач: Nova это видит, а повторное включение снимает отметку.
     Set-NovaRegValue -Path $vkey -Name 'Nova Voice.lnk' -Kind 'Binary' -Value ([byte[]](@(3) + @(0) * 11))

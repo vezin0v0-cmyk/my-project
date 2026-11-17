@@ -77,14 +77,94 @@ function Test-NovaStartupEnabled {
     return (([int]$bytes[0] -band 1) -eq 0)
 }
 
+# Ярлыки — через IShellLinkW, «родной» юникодный способ Windows. Старый WScript.Shell не сохраняет и не читает
+# ярлыки, если в пути есть буквы не из кодировки «для программ без Юникода» (например, «Nova Центр.lnk»
+# или папка пользователя «Вася» на Windows с английской настройкой) — пишет «?????» и падает.
+$script:ShortcutCode = @'
+using System;
+using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+using System.Text;
+namespace NovaLink {
+    [ComImport, Guid("00021401-0000-0000-C000-000000000046")]
+    internal class CShellLink { }
+
+    [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("000214F9-0000-0000-C000-000000000046")]
+    internal interface IShellLinkW {
+        void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszFile, int cch, IntPtr pfd, uint fFlags);
+        void GetIDList(out IntPtr ppidl);
+        void SetIDList(IntPtr pidl);
+        void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszName, int cch);
+        void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string pszName);
+        void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszDir, int cch);
+        void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string pszDir);
+        void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszArgs, int cch);
+        void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string pszArgs);
+        void GetHotkey(out short pwHotkey);
+        void SetHotkey(short wHotkey);
+        void GetShowCmd(out int piShowCmd);
+        void SetShowCmd(int iShowCmd);
+        void GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszIconPath, int cch, out int piIcon);
+        void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string pszIconPath, int iIcon);
+        void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string pszPathRel, uint dwReserved);
+        void Resolve(IntPtr hwnd, uint fFlags);
+        void SetPath([MarshalAs(UnmanagedType.LPWStr)] string pszFile);
+    }
+
+    public static class Shortcut {
+        public static void Save(string path, string target, string arguments, string workDir, string icon, int iconIndex, string description, int showCmd) {
+            IShellLinkW link = (IShellLinkW)new CShellLink();
+            try {
+                link.SetPath(target);
+                link.SetArguments(arguments ?? "");
+                if (!String.IsNullOrEmpty(workDir)) { link.SetWorkingDirectory(workDir); }
+                if (!String.IsNullOrEmpty(icon)) { link.SetIconLocation(icon, iconIndex); }
+                if (!String.IsNullOrEmpty(description)) { link.SetDescription(description); }
+                link.SetShowCmd(showCmd);
+                ((IPersistFile)link).Save(path, true);
+            } finally { Marshal.ReleaseComObject(link); }
+        }
+        // Цель, аргументы, рабочая папка, значок, номер значка, как открывать окно.
+        public static string[] Read(string path) {
+            IShellLinkW link = (IShellLinkW)new CShellLink();
+            try {
+                ((IPersistFile)link).Load(path, 0);
+                StringBuilder target = new StringBuilder(1024), args = new StringBuilder(2048), dir = new StringBuilder(1024), icon = new StringBuilder(1024);
+                int iconIndex, show;
+                link.GetPath(target, target.Capacity, IntPtr.Zero, 0);
+                link.GetArguments(args, args.Capacity);
+                link.GetWorkingDirectory(dir, dir.Capacity);
+                link.GetIconLocation(icon, icon.Capacity, out iconIndex);
+                link.GetShowCmd(out show);
+                return new string[] { target.ToString(), args.ToString(), dir.ToString(), icon.ToString(), iconIndex.ToString(), show.ToString() };
+            } finally { Marshal.ReleaseComObject(link); }
+        }
+    }
+}
+'@
+function Initialize-NovaShortcut { if (-not ('NovaLink.Shortcut' -as [type])) { Add-Type -TypeDefinition $script:ShortcutCode -Language CSharp } }
+
+# Создаёт ярлык. ShowCmd: 1 — обычное окно, 7 — свёрнутое.
+function New-NovaShortcut {
+    param(
+        [Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Target,
+        [string]$Arguments = '', [string]$WorkingDirectory = '', [string]$Icon = '', [int]$IconIndex = 0,
+        [string]$Description = '', [int]$ShowCmd = 1
+    )
+    Initialize-NovaShortcut
+    [NovaLink.Shortcut]::Save($Path, $Target, $Arguments, $WorkingDirectory, $Icon, $IconIndex, $Description, $ShowCmd)
+}
+
+function Read-NovaShortcut {
+    param([Parameter(Mandatory)][string]$Path)
+    Initialize-NovaShortcut
+    $r = [NovaLink.Shortcut]::Read($Path)
+    return [pscustomobject]@{ Target = $r[0]; Arguments = $r[1]; WorkingDirectory = $r[2]; Icon = $r[3]; IconIndex = [int]$r[4]; ShowCmd = [int]$r[5] }
+}
+
 function Get-NovaShortcutTarget {
     param([string]$Path)
-    try {
-        $shell = New-Object -ComObject WScript.Shell
-        try { return [string]$shell.CreateShortcut($Path).TargetPath } finally { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($shell) }
-    } catch {
-        return ''
-    }
+    try { return [string](Read-NovaShortcut -Path $Path).Target } catch { return '' }
 }
 
 function Get-NovaStartupItem {
@@ -216,19 +296,8 @@ function Add-NovaVoiceAutostart {
     Remove-NovaVoiceAutostart -Folder $Folder -ApprovedKey $ApprovedKey
     if (-not (Test-Path -LiteralPath $Folder)) { [void][System.IO.Directory]::CreateDirectory($Folder) }
     $path = Get-NovaVoiceAutostartPath $Folder
-    $shell = New-Object -ComObject WScript.Shell
-    try {
-        $link = $shell.CreateShortcut($path)
-        $link.TargetPath = $Target
-        # Окно Nova Голос при входе в Windows открывается свёрнутым — слушает, но не мешает.
-        $link.Arguments = '-Minimized'
-        $link.WorkingDirectory = Split-Path -Parent $Target
-        $link.WindowStyle = 7
-        $link.Description = 'Nova Голос — голосовые команды «Нова, …»'
-        $link.Save()
-    } finally {
-        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($shell)
-    }
+    # Окно Nova Голос при входе в Windows открывается свёрнутым — слушает, но не мешает.
+    New-NovaShortcut -Path $path -Target $Target -Arguments '-Minimized' -WorkingDirectory (Split-Path -Parent $Target) -Description 'Nova Голос — голосовые команды «Нова, …»' -ShowCmd 7
     return $path
 }
 
