@@ -1,4 +1,4 @@
-# Режим игры и игры для голоса: поиск игр Steam, Epic Games и Riot по подложенным файлам, правила запуска
+﻿# Режим игры и игры для голоса: поиск игр Steam, Epic Games и Riot по подложенным файлам, правила запуска
 # и режим игры на настоящей Windows — включить и вернуть всё как было.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
