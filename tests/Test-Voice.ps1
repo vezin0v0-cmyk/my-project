@@ -218,7 +218,9 @@ try {
 if ($unknown.Count -gt 0) { throw ('В voice.json слова, которых модель не знает: {0}' -f ($unknown -join ', ')) }
 Write-Host 'ok  все слова из voice.json модель знает'
 
-if ($unknownGames.Count -gt 0) { Write-Host ('::warning::В словаре игр слова, которых модель не знает: {0}' -f ($unknownGames -join ', ')) }
+if ($unknownGames.Count -gt 0) { throw ('В словаре игр слова, которых модель не знает: {0}' -f ($unknownGames -join ', ')) }
+if ($deadGames.Count -gt 0) { throw ('Игры, которые нельзя назвать голосом: {0}' -f ($deadGames -join ' | ')) }
+Write-Host 'ok  все названия игр модель знает'
 $expected = [ordered]@{
     'game'         = 'game'
     'game-mode'    = 'gameMode'

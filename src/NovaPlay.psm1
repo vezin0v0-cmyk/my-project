@@ -208,6 +208,8 @@ function Restore-NovaGameToasts {
 # Если обновления уже на паузе дольше — не трогаем. Возвращает $true, если поставили паузу.
 function Set-NovaGameUpdatesPause {
     param([datetime]$Now = (Get-Date), [int]$Hours = $script:PauseHours)
+    # Сначала — папка данных Nova: если её создал кто-то другой, Nova отложит её и начнёт с чистой.
+    [void](Get-NovaDataDir)
     $backupPath = Get-NovaPauseBackupPath
     if (Test-Path -LiteralPath $backupPath -PathType Leaf) { return $false }
     $until = $Now.ToUniversalTime().AddHours($Hours)
@@ -224,7 +226,6 @@ function Set-NovaGameUpdatesPause {
     $start = Get-NovaUtcText $Now
     $end = Get-NovaUtcText $until
     $doc = [ordered]@{ created = $start; set = $end; before = $before }
-    [void](Get-NovaDataDir)
     Write-NovaNewFile -Path $backupPath -Bytes ([Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $doc -Depth 5)))
     foreach ($name in $script:PauseNames) {
         $value = $end
@@ -239,7 +240,9 @@ function Restore-NovaGameUpdatesPause {
     $backupPath = Get-NovaPauseBackupPath
     if (-not (Test-Path -LiteralPath $backupPath -PathType Leaf)) { return 'none' }
     if (-not (Test-NovaAdmin)) { return 'failed' }
-    # Файл — в папке Nova, куда пишут только администраторы. И всё равно каждое значение проверяем.
+    # Файл — в папке Nova, куда пишут только администраторы (это проверяется здесь же). И всё равно каждое значение проверяем.
+    [void](Get-NovaDataDir)
+    if (-not (Test-Path -LiteralPath $backupPath -PathType Leaf)) { return 'none' }
     $doc = $null
     try { $doc = ConvertFrom-Json ([IO.File]::ReadAllText($backupPath, [Text.Encoding]::UTF8)) } catch { $doc = $null }
     $result = 'restored'
