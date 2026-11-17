@@ -153,6 +153,10 @@ try {
     if (-not $threw) { throw 'та же версия поставлена как обновление' }
 
     # Злые архивы: каждый должен быть отвергнут целиком, а папка Nova — остаться как была.
+    # Ключи в @{} не различают регистр — для «A.ps1» и «a.ps1» нужен словарь, который различает.
+    $twins = New-Object System.Collections.Specialized.OrderedDictionary ([StringComparer]::Ordinal)
+    $twins.Add('my-project-x/src/A.ps1', 'x')
+    $twins.Add('my-project-x/src/a.ps1', 'y')
     $evil = [ordered]@{
         'выход из папки'      = [ordered]@{ '../evil.txt' = 'x'; 'my-project-x/src/Nova.psm1' = "`$script:NovaVersion = '9.9.9'" }
         'выход через src'     = [ordered]@{ 'my-project-x/src/../../evil.ps1' = 'x' }
@@ -161,7 +165,7 @@ try {
         'две верхние папки'   = [ordered]@{ 'a/src/Nova.psm1' = 'x'; 'b/src/Nova.ps1' = 'x' }
         'без движка'          = [ordered]@{ 'my-project-x/Nova.cmd' = 'x'; 'my-project-x/src/Nova.ps1' = 'x' }
         'без версии'          = [ordered]@{ 'my-project-x/Nova.cmd' = 'x'; 'my-project-x/src/Nova.ps1' = 'x'; 'my-project-x/src/Nova.psm1' = 'no version' }
-        'одно имя дважды'     = [ordered]@{ 'my-project-x/src/A.ps1' = 'x'; 'my-project-x/src/a.ps1' = 'y' }
+        'одно имя дважды'     = $twins
         'бомба из нулей'      = [ordered]@{ 'my-project-x/src/zeros.bin' = 25 }
         'управляющий символ'  = [ordered]@{ ('my-project-x/src/ev' + [char]27 + 'il.ps1') = 'x' }
         'точка в конце имени' = [ordered]@{ 'my-project-x/src/evil.ps1.' = 'x' }
