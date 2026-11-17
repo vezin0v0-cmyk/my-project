@@ -92,18 +92,23 @@ function Wait-Run([string]$What, [double]$Seconds = 300) {
 function Confirm-Dialog([string]$What) {
     $cond = New-And @((New-Cond $AE::ClassNameProperty '#32770'), (New-Cond $AE::ProcessIdProperty $script:AppPid))
     $dlg = Wait-Until { $d = $AE::RootElement.FindFirst($TS::Children, $cond); if (-not $d) { $d = $script:Win.FindFirst($TS::Descendants, $cond) }; $d } 20 ('вопрос: ' + $What)
-    # «Да» в стандартном окне Windows — кнопка с номером 6 (IDYES); ищем именно кнопку.
-    $btnCond = New-And @((New-Cond $AE::ControlTypeProperty ([Windows.Automation.ControlType]::Button)), (New-Cond $AE::AutomationIdProperty '6'))
+    # «Да» в стандартном окне Windows — элемент с номером 6 (IDYES). На новых Windows UI Automation показывает его
+    # просто панелью, без «нажатия», — поэтому нажимаем как сама Windows: сообщение «клик» (BM_CLICK) прямо кнопке.
     $yes = $null
-    try { $yes = Wait-Until { $dlg.FindFirst($TS::Descendants, $btnCond) } 10 'кнопка «Да»' } catch {
+    try { $yes = Wait-Until { $dlg.FindFirst($TS::Descendants, (New-Cond $AE::AutomationIdProperty '6')) } 10 'кнопка «Да»' } catch {
         foreach ($el in @($dlg.FindAll($TS::Descendants, [Windows.Automation.Condition]::TrueCondition))) { Write-Host ('  в окне вопроса: {0} «{1}» id={2}' -f $el.Current.ControlType.ProgrammaticName, $el.Current.Name, $el.Current.AutomationId) }
         throw
     }
     $pattern = $null
+    $hwnd = [IntPtr]$yes.Current.NativeWindowHandle
     if ($yes.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
         $pattern.Invoke()
+    } elseif ($hwnd -ne [IntPtr]::Zero) {
+        if (-not ('NovaTest.Win' -as [type])) {
+            Add-Type -Namespace NovaTest -Name Win -MemberDefinition '[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool PostMessage(System.IntPtr hWnd, uint msg, System.IntPtr w, System.IntPtr l);'
+        }
+        [void][NovaTest.Win]::PostMessage($hwnd, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero)
     } else {
-        # Кнопка без «нажатия» через UI Automation — как человек: фокус на «Да» и пробел.
         $yes.SetFocus()
         Add-Type -AssemblyName System.Windows.Forms
         [Windows.Forms.SendKeys]::SendWait(' ')
