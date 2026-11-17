@@ -613,7 +613,8 @@ function Write-NovaUpdateFile {
     $temp = $Target + '.nova-new'
     if (Test-Path -LiteralPath $temp) { [IO.File]::Delete($temp) }
     [IO.File]::WriteAllBytes($temp, $Bytes)
-    try { [IO.File]::Replace($temp, $Target, $null) } catch { [IO.File]::Delete($temp); throw }
+    # [NullString]::Value — «без резервной копии»: обычный $null PowerShell передал бы как пустую строку.
+    try { [IO.File]::Replace($temp, $Target, [NullString]::Value) } catch { [IO.File]::Delete($temp); throw }
 }
 
 # Ставит новую версию в папку Root. Сначала сохраняет всё, что поменяется, в BackupRoot\update-<версия>-<время>
