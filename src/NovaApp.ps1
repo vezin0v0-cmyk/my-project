@@ -935,6 +935,24 @@ function Update-Health {
     }
 }
 
+# Пункт списка изменений: звёздочка, жирное начало и полный текст с переносами.
+function Add-ReleaseItem([Windows.Controls.Panel]$Panel, [object]$Release, [int]$Index, [string]$Top = '0,6,0,0') {
+    $full = ''; $head = ''
+    if ($Release.Full -and $Index -lt $Release.Full.Count) { $full = [string]$Release.Full[$Index] } else { $full = [string]$Release.Items[$Index] }
+    if ($Release.Heads -and $Index -lt $Release.Heads.Count) { $head = [string]$Release.Heads[$Index] }
+    $row = New-Object Windows.Controls.DockPanel; $row.Margin = $Top
+    $dot = New-Text '✦' 12 '#FFC940'; $dot.Margin = '0,2,10,0'; [Windows.Controls.DockPanel]::SetDock($dot, 'Left')
+    [void]$row.Children.Add($dot)
+    $t = New-Text '' 13 '#C9CEDA' -Wrap
+    if ($head -and $full.StartsWith($head)) {
+        $b = New-Object Windows.Documents.Run $head; $b.FontWeight = [Windows.FontWeights]::SemiBold; $b.Foreground = Get-Brush '#FFFFFF'
+        [void]$t.Inlines.Add($b)
+        [void]$t.Inlines.Add((New-Object Windows.Documents.Run $full.Substring($head.Length)))
+    } else { $t.Text = $full }
+    [void]$row.Children.Add($t)
+    [void]$Panel.Children.Add($row)
+}
+
 function Update-News {
     $ui.NewsList.Children.Clear()
     $log = Join-Path $projectRoot 'CHANGELOG.md'
@@ -942,15 +960,7 @@ function Update-News {
     $rel = @(Read-NovaChangelog ([IO.File]::ReadAllText($log, [Text.Encoding]::UTF8)) | Where-Object { $_.Version }) | Select-Object -First 1
     if (-not $rel) { return }
     $ui.NewsVer.Text = 'v' + $rel.Label
-    foreach ($item in @($rel.Items | Select-Object -First 5)) {
-        $row = New-Object Windows.Controls.DockPanel; $row.Margin = '0,6,0,0'
-        $dot = New-Text '✦' 12 '#FFC940'; $dot.Margin = '0,2,10,0'; [Windows.Controls.DockPanel]::SetDock($dot, 'Left')
-        [void]$row.Children.Add($dot)
-        $txt = $item
-        if ($txt.Length -gt 220) { $txt = $txt.Substring(0, 219) + '…' }
-        [void]$row.Children.Add((New-Text $txt 13 '#C9CEDA' -Wrap))
-        [void]$ui.NewsList.Children.Add($row)
-    }
+    for ($i = 0; $i -lt [Math]::Min(5, $rel.Items.Count); $i++) { Add-ReleaseItem $ui.NewsList $rel $i }
 }
 
 $voiceLabels = @{
@@ -993,7 +1003,7 @@ function Update-UpdatePage([object]$Info) {
             $rel = @(Read-NovaChangelog ([IO.File]::ReadAllText($log, [Text.Encoding]::UTF8)) | Where-Object { $_.Version }) | Select-Object -First 1
             if ($rel) {
                 [void]$ui.UpdList.Children.Add((New-Text ('Что нового в версии ' + $rel.Label) 16 '#FFC940' 'SemiBold'))
-                foreach ($item in @($rel.Items)) { $t = New-Text ('✦  ' + $item) 13 '#C9CEDA' -Wrap; $t.Margin = '0,6,0,0'; [void]$ui.UpdList.Children.Add($t) }
+                for ($i = 0; $i -lt $rel.Items.Count; $i++) { Add-ReleaseItem $ui.UpdList $rel $i '0,8,0,0' }
             }
         }
         $ui.UpdTitle.Text = ('У тебя Nova {0}' -f (Get-NovaVersion))
@@ -1007,7 +1017,7 @@ function Update-UpdatePage([object]$Info) {
         $ui.BtnDoUpd.IsEnabled = $true
         foreach ($rel in $Info.Releases) {
             [void]$ui.UpdList.Children.Add((New-Text ('Версия ' + $rel.Label) 16 '#FFC940' 'SemiBold'))
-            foreach ($item in @($rel.Items | Select-Object -First 8)) { $t = New-Text ('✦  ' + $item) 13 '#C9CEDA' -Wrap; $t.Margin = '0,5,0,0'; [void]$ui.UpdList.Children.Add($t) }
+            for ($i = 0; $i -lt [Math]::Min(8, $rel.Items.Count); $i++) { Add-ReleaseItem $ui.UpdList $rel $i '0,8,0,0' }
         }
     } else {
         $ui.UpdTitle.Text = ('У тебя последняя версия — Nova {0}' -f $Info.Current)

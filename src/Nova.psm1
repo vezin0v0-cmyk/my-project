@@ -2444,20 +2444,33 @@ function Get-NovaPlainText {
 }
 
 # Версии из CHANGELOG.md («## 0.5 — 15 ноября 2026») и пункты каждой («- …»).
+# Items — коротко, для консоли; Full — целиком, для окна; Heads — жирное начало пункта («**…**») или пусто.
 function Read-NovaChangelog {
     param([string]$Text)
     $releases = New-Object System.Collections.Generic.List[object]
     $current = $null
     foreach ($line in ([string]$Text -split '\r?\n')) {
         if ($line -match '^## +([0-9]{1,4}\.[0-9]{1,4}(?:\.[0-9]{1,4})?)(?:\s|\z)') {
-            $current = [pscustomobject]@{ Version = (ConvertTo-NovaVersion $Matches[1]); Label = $Matches[1]; Items = New-Object System.Collections.Generic.List[string] }
+            $current = [pscustomobject]@{
+                Version = (ConvertTo-NovaVersion $Matches[1]); Label = $Matches[1]
+                Items = New-Object System.Collections.Generic.List[string]
+                Full  = New-Object System.Collections.Generic.List[string]
+                Heads = New-Object System.Collections.Generic.List[string]
+            }
             $releases.Add($current)
             continue
         }
         if ($line -match '^## ') { $current = $null; continue }
         if ($current -and $line -match '^- +(.+)$') {
-            $item = Get-NovaPlainText $Matches[1]
-            if ($item) { $current.Items.Add($item) }
+            $raw = $Matches[1]
+            $item = Get-NovaPlainText $raw
+            if ($item) {
+                $current.Items.Add($item)
+                $current.Full.Add((Get-NovaPlainText $raw 600))
+                $head = ''
+                if ($raw -match '^\*\*(.+?)\*\*') { $head = Get-NovaPlainText $Matches[1] 120 }
+                $current.Heads.Add($head)
+            }
         }
     }
     return $releases.ToArray()

@@ -20,6 +20,15 @@ $releases = @(Read-NovaChangelog $own)
 if ($releases.Count -lt 2) { throw ('в CHANGELOG.md нашлось версий: {0}' -f $releases.Count) }
 if ($releases[0].Version -ne (ConvertTo-NovaVersion (Get-NovaVersion))) { throw ('CHANGELOG.md начинается с {0}, а у программы {1} — допиши список изменений' -f $releases[0].Label, (Get-NovaVersion)) }
 if ($releases[0].Items.Count -eq 0) { throw 'у последней версии в CHANGELOG.md нет пунктов' }
+# Для окна Nova Центр: полный текст пункта и жирное начало — столько же, сколько пунктов.
+if ($releases[0].Full.Count -ne $releases[0].Items.Count -or $releases[0].Heads.Count -ne $releases[0].Items.Count) { throw 'Full/Heads не совпадают с Items' }
+for ($i = 0; $i -lt $releases[0].Items.Count; $i++) {
+    $f = $releases[0].Full[$i]; $h = $releases[0].Heads[$i]
+    if ($f.Length -lt $releases[0].Items[$i].TrimEnd([char]0x2026).Length) { throw ('полный текст короче краткого: ' + $f) }
+    if ($h -and -not $f.StartsWith($h)) { throw ('жирное начало не с начала пункта: ' + $h) }
+}
+$probe = @(Read-NovaChangelog "## 9.9`n- **Жирно.** Дальше $('x' * 300)`n- без жирного")[0]
+if ($probe.Heads[0] -ne 'Жирно.' -or $probe.Heads[1] -ne '' -or $probe.Full[0].Length -lt 300 -or $probe.Items[0].Length -gt 160) { throw 'Read-NovaChangelog: Heads/Full/Items разобраны не так' }
 $same = Get-NovaUpdateInfo -Changelog $own
 if ($same.IsNewer) { throw 'свой же CHANGELOG.md считается «новой версией»' }
 Write-Host ('ok  CHANGELOG.md совпадает с программой: {0}, пунктов {1}' -f $releases[0].Label, $releases[0].Items.Count)
