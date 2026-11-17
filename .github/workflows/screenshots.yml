@@ -52,3 +52,25 @@ jobs:
           name: nova-screenshots
           path: screenshots/
           retention-days: 14
+
+      - name: Миниатюра Nova Центра в журнал (главная и ход работы)
+        shell: powershell
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $files = @('nova-center-01-glavnaya.png', 'nova-center-09-hod-raboty.png')
+          $w = 640; $h = 400
+          $sheet = New-Object System.Drawing.Bitmap -ArgumentList $w, ($h * $files.Count)
+          $g = [System.Drawing.Graphics]::FromImage($sheet)
+          $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+          for ($i = 0; $i -lt $files.Count; $i++) {
+            $img = [System.Drawing.Image]::FromFile((Join-Path (Get-Location) ('screenshots\' + $files[$i])))
+            $g.DrawImage($img, 0, $i * $h, $w, $h); $img.Dispose()
+          }
+          $codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }
+          $ep = New-Object System.Drawing.Imaging.EncoderParameters 1
+          $ep.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter ([System.Drawing.Imaging.Encoder]::Quality), 55L
+          $ms = New-Object IO.MemoryStream
+          $sheet.Save($ms, $codec, $ep)
+          $b64 = [Convert]::ToBase64String($ms.ToArray())
+          "B64LEN $($b64.Length)"
+          for ($k = 0; $k -lt $b64.Length; $k += 8000) { 'B64 ' + $b64.Substring($k, [math]::Min(8000, $b64.Length - $k)) }
