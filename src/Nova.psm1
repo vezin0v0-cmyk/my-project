@@ -858,6 +858,8 @@ function Write-NovaNewFile {
             [System.IO.File]::Delete($real)
             throw ('Файл {0} уводят в другое место ({1}) — Nova остановилась.' -f $expected, $real)
         }
+        # Файл создали мы (CreateNew), но дописать не смогли — пустой или неполный файл не оставляем.
+        try { [System.IO.File]::Delete($expected) } catch { Write-Verbose ('Не удалось убрать недописанный файл {0}' -f $expected) }
         throw
     }
     $fs.Dispose()

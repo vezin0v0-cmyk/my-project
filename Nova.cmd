@@ -37,6 +37,5 @@ exit /b 1
 
 :run
 cd /d "%~dp0"
-"%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0src\Nova.ps1"
-if errorlevel 1 pause
-endlocal
+rem One line on purpose: an update may replace this file while it runs, and cmd.exe reads it line by line.
+"%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0src\Nova.ps1" || pause & exit /b

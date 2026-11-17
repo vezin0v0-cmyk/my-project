@@ -58,18 +58,43 @@ try {
     if (@($epicGames[0].Words) -notcontains 'фортнайт') { throw 'Epic: у Fortnite нет фразы' }
     Write-Host 'ok  Epic Games: Fortnite найден; дополнения, движок, недокачанное, сломанное и чужие символы в адресе — нет'
 
-    # --- Riot ---
-    $riot = Join-Path $tmp 'Riot Games'
+    # --- Riot: путь к клиенту только из «Удаления программ» и только с подписью Riot Games ---
     $client = Join-Path $tmp 'Riot Client\RiotClientServices.exe'
     Set-TestText $client 'fake'
-    New-Item -ItemType Directory -Path (Join-Path $riot 'Metadata\valorant.live') -Force | Out-Null
-    Set-TestText (Join-Path $riot 'RiotClientInstalls.json') ('{{"rc_default":"{0}"}}' -f $client.Replace('\', '/'))
-    $riotGames = @(Get-NovaRiotGames -RiotData $riot)
+    $only = { param($p) if ($p -eq 'valorant') { $client } else { '' } }.GetNewClosure()
+    $riotGames = @(Get-NovaRiotGames -ExeFor $only -Signed { param($p) $true })
     if ($riotGames.Count -ne 1 -or $riotGames[0].Exe -ne $client -or $riotGames[0].Arguments -ne '--launch-product=valorant --launch-patchline=live') { throw 'Riot: Valorant не найден' }
     if ((Get-NovaGameLaunchProblem $riotGames[0]) -ne '') { throw 'Riot: правильный запуск отклонён' }
-    Set-TestText (Join-Path $riot 'RiotClientInstalls.json') '{"rc_default":"C:/Windows/System32/cmd.exe"}'
-    if (@(Get-NovaRiotGames -RiotData $riot).Count -ne 0) { throw 'Riot: вместо Riot Client подсунули cmd.exe — и он принят' }
-    Write-Host 'ok  Riot: Valorant найден, подменённый путь к клиенту не принят'
+    if (@(Get-NovaRiotGames -ExeFor $only -Signed { param($p) $false }).Count -ne 0) { throw 'Riot: клиент без подписи Riot Games принят' }
+    if (Test-NovaRiotSignature $client) { throw 'Riot: поддельный файл прошёл проверку подписи' }
+    if (Test-NovaRiotSignature (Join-Path $env:SystemRoot 'System32\cmd.exe')) { throw 'Riot: подпись Microsoft принята за подпись Riot Games' }
+    foreach ($bad in @('C:\Windows\System32\cmd.exe', 'C:/Riot Games/Riot Client/RiotClientServices.exe', 'C:\x\..\RiotClientServices.exe', '\\evil\share\RiotClientServices.exe')) {
+        if ((Get-NovaRiotExeProblem $bad) -eq '') { throw ('Riot: принят путь {0}' -f $bad) }
+    }
+    $threw = $false
+    try { Start-NovaGame -Game $riotGames[0] } catch { $threw = $true }
+    if (-not $threw) { throw 'Riot: неподписанный клиент запущен' }
+    Write-Host ('ok  Riot: путь из «Удаления программ», только с подписью Riot Games; на этой машине найдено: {0}' -f @(Get-NovaRiotGames).Count)
+
+    # --- Файлы Steam, которые пытаются подвесить Nova ---
+    $slow = Join-Path $tmp 'Slow\steamapps'
+    New-Item -ItemType Directory -Path $slow -Force | Out-Null
+    Set-TestText (Join-Path $slow 'appmanifest_1.acf') ("`n" * 60000)
+    Set-TestText (Join-Path $slow 'appmanifest_2.acf') (' ' * 60000 + '"appid" "2"')
+    Set-TestText (Join-Path $slow 'appmanifest_3.acf') ('x' * 300000)
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    $slowGames = @(Get-NovaSteamGames -SteamPath (Split-Path -Parent $slow))
+    $watch.Stop()
+    if ($slowGames.Count -ne 0 -or $watch.Elapsed.TotalSeconds -gt 5) { throw ('Steam: испорченные файлы разбирались {0:N1} с' -f $watch.Elapsed.TotalSeconds) }
+    if ($null -ne (Read-NovaSmallText (Join-Path $slow 'appmanifest_3.acf') 65536)) { throw 'Steam: слишком большой файл прочитан' }
+    # Библиотека — ссылка на другое место: Nova в неё не заходит.
+    $linkLib = Join-Path $tmp 'LinkLib'
+    New-Item -ItemType Junction -Path $linkLib -Target (Split-Path -Parent $slow) | Out-Null
+    Set-TestText (Join-Path $steam 'steamapps\libraryfolders.vdf') ("`"libraryfolders`"`n{{`n`t`"0`"`n`t{{`n`t`t`"path`"`t`t`"{0}`"`n`t}}`n}}`n" -f $linkLib.Replace('\', '\\'))
+    $viaLink = @(Get-NovaSteamGames -SteamPath $steam | Where-Object { $_.Manifest -like ($linkLib + '*') })
+    [IO.Directory]::Delete($linkLib)
+    if ($viaLink.Count -ne 0) { throw 'Steam: библиотека-ссылка открыта' }
+    Write-Host ('ok  Steam: файл из пустых строк, из пробелов и огромный — за {0:N2} с, библиотека-ссылка не открывается' -f $watch.Elapsed.TotalSeconds)
 
     # --- Правила запуска ---
     foreach ($good in @('steam://rungameid/570', $epicGames[0].Uri)) {

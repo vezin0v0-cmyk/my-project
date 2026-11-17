@@ -150,6 +150,25 @@ try {
     if (@(Get-NovaUpdateBackups -BackupRoot $backups).Count -ne 0) { throw 'копию после отката можно вернуть второй раз' }
     Write-Host 'ok  откат: папка Nova снова байт в байт как до обновления'
 
+    # Копии — по времени: копия «update-0.10.0» новее «update-0.9.0», хотя по имени стоит ниже.
+    $sortRoot = Join-Path $work 'sort'
+    foreach ($pair in @(@('0.9.0', '2026-11-01 10:00:00'), @('0.10.0', '2026-11-20 10:00:00'))) {
+        $d = Join-Path $sortRoot ('update-{0}-x' -f $pair[0]); New-Item -ItemType Directory -Path $d -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $d 'update.json'), ('{{"from":"{0}","to":"9.9.9","created":"{1}","added":[],"replaced":[],"removed":[]}}' -f $pair[0], $pair[1]))
+    }
+    $sorted = @(Get-NovaUpdateBackups -BackupRoot $sortRoot)
+    if ($sorted[0].From -ne '0.10.0') { throw ('копии: сверху {0}, а должна быть самая свежая 0.10.0' -f $sorted[0].From) }
+    Write-Host 'ok  копии прошлых версий — по времени, 0.10 новее 0.9'
+
+    # Сбой посередине обновления — Nova сама возвращает прежнюю версию.
+    $locked = Join-Path $project 'src\Nova.ps1'
+    $lock = [IO.File]::Open($locked, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    $threw = $false
+    try { [void](Install-NovaUpdate -Package $package -Root $project -BackupRoot $backups -Current '0.7.0') } catch { $threw = $true; Write-Host ('    сбой: {0}' -f $_.Exception.Message) } finally { $lock.Dispose() }
+    if (-not $threw) { throw 'обновление с занятым файлом прошло без ошибки' }
+    if ((Get-TreeHash $project) -ne $original) { throw 'после сбоя посередине папка Nova не такая, как была' }
+    Write-Host 'ok  сбой посередине обновления: прежняя версия вернулась сама'
+
     # Не новее своей — не ставим.
     $threw = $false
     try { [void](Install-NovaUpdate -Package $package -Root $project -BackupRoot $backups -Current '9.9.9') } catch { $threw = $true }

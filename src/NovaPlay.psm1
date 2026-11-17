@@ -227,10 +227,21 @@ function Set-NovaGameUpdatesPause {
     $end = Get-NovaUtcText $until
     $doc = [ordered]@{ created = $start; set = $end; before = $before }
     Write-NovaNewFile -Path $backupPath -Bytes ([Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $doc -Depth 5)))
-    foreach ($name in $script:PauseNames) {
-        $value = $end
-        if ($name -like '*StartTime') { $value = $start }
-        Set-NovaRegValue -Path $script:PauseKey -Name $name -Value $value -Kind 'String'
+    try {
+        foreach ($name in $script:PauseNames) {
+            $value = $end
+            if ($name -like '*StartTime') { $value = $start }
+            Set-NovaRegValue -Path $script:PauseKey -Name $name -Value $value -Kind 'String'
+        }
+    } catch {
+        foreach ($name in $script:PauseNames) {
+            try {
+                if ($before[$name].exists) { Set-NovaRegValue -Path $script:PauseKey -Name $name -Value $before[$name].value -Kind 'String' }
+                else { Remove-NovaRegValue -Path $script:PauseKey -Name $name }
+            } catch { Write-Verbose ('Пауза обновлений: {0}' -f $_.Exception.Message) }
+        }
+        [IO.File]::Delete($backupPath)
+        throw
     }
     return $true
 }
@@ -312,18 +323,33 @@ function Start-NovaGameMode {
     $state = [ordered]@{ started = (Get-NovaUtcText (Get-Date)); power = $null; toasts = $null; apps = @() }
     if ($old) { foreach ($k in @('started', 'power', 'toasts', 'apps')) { $v = Get-NovaProp $old $k; if ($null -ne $v) { $state[$k] = $v } } }
     $result = [ordered]@{ Power = 'already'; Toasts = 'skip'; ToastsApplied = $true; Updates = 'skip' }
+    Save-NovaGameModeState $state
     if ($null -eq $state['power']) {
         $power = Set-NovaGamePower
-        if ($power -is [string]) { $result.Power = $power } else { $state['power'] = $power; $result.Power = 'set' }
+        if ($power -is [string]) { $result.Power = $power } else { $state['power'] = $power; $result.Power = 'set'; Save-NovaGameModeState $state }
     } else { $result.Power = 'set' }
     if ($Toasts) {
         if ($null -eq $state['toasts']) {
-            $t = Set-NovaGameToasts
-            if ($t) { $state['toasts'] = $t; $result.Toasts = 'set'; $result.ToastsApplied = [bool]$t.applied } else { $result.Toasts = 'already' }
+            # Сначала запоминаем, как было, и только потом выключаем — выключатель тут простой: 1 или его нет.
+            $now = Get-NovaRegValue -Path $script:ToastKey -Name $script:ToastName
+            $off = $false
+            try { $off = $now.Exists -and [int]$now.Value -eq 0 } catch { $off = $false }
+            if ($off) { $result.Toasts = 'already' }
+            else {
+                $state['toasts'] = [pscustomobject]@{ exists = [bool]$now.Exists; value = 1; applied = $false }
+                Save-NovaGameModeState $state
+                $t = Set-NovaGameToasts
+                if ($t) { $state['toasts'] = $t; $result.ToastsApplied = [bool]$t.applied }
+                $result.Toasts = 'set'
+            }
         } else { $result.Toasts = 'set' }
     }
     if ($Updates -and (Test-NovaAdmin)) {
-        if (Set-NovaGameUpdatesPause) { $result.Updates = 'set' } elseif (Test-Path -LiteralPath (Get-NovaPauseBackupPath)) { $result.Updates = 'set' } else { $result.Updates = 'already' }
+        try {
+            if (Set-NovaGameUpdatesPause) { $result.Updates = 'set' } elseif (Test-Path -LiteralPath (Get-NovaPauseBackupPath)) { $result.Updates = 'set' } else { $result.Updates = 'already' }
+        } catch {
+            $result.Updates = 'failed'
+        }
     }
     $apps = @(@($state['apps']) + @($ClosedApps) | Where-Object { $_ -and (Test-NovaReopenPath ([string](Get-NovaProp $_ 'path' ''))) })
     $state['apps'] = @($apps | Select-Object -First 20)
@@ -471,23 +497,47 @@ function New-NovaGame {
 }
 
 # Небольшой текстовый файл лаунчера (не больше MaxBytes) — или $null.
+# Читаем одним потоком и не больше MaxBytes: файл, который растёт прямо во время чтения, память не съест.
 function Read-NovaSmallText {
     param([string]$Path, [int]$MaxBytes = 262144)
+    $fs = $null
     try {
-        $info = New-Object System.IO.FileInfo($Path)
-        if (-not $info.Exists -or $info.Length -gt $MaxBytes) { return $null }
-        return [IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8)
+        $fs = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        $buffer = New-Object byte[] ($MaxBytes + 1)
+        $total = 0
+        while ($total -le $MaxBytes) {
+            $n = $fs.Read($buffer, $total, $buffer.Length - $total)
+            if ($n -le 0) { break }
+            $total += $n
+        }
+        if ($total -gt $MaxBytes) { return $null }
+        return [Text.Encoding]::UTF8.GetString($buffer, 0, $total)
     } catch {
         return $null
+    } finally {
+        if ($fs) { $fs.Dispose() }
+    }
+}
+
+# Регулярные выражения для файлов лаунчеров — с ограничением времени: хитро составленный файл не подвесит Nova.
+function Get-NovaRegexMatches {
+    param([string]$Text, [string]$Pattern)
+    try {
+        $rx = New-Object System.Text.RegularExpressions.Regex($Pattern, [Text.RegularExpressions.RegexOptions]'IgnoreCase, Multiline', [TimeSpan]::FromMilliseconds(250))
+        return @($rx.Matches([string]$Text) | ForEach-Object { $_ })
+    } catch {
+        return @()
     }
 }
 
 # Значение «"ключ"  "значение"» из файла Steam (.acf, .vdf). Обратные косые в Steam удвоены.
+# Пробелы — только пробел и табуляция: «\s» захватывал бы и переводы строк, и файл из одних пустых строк
+# разбирался бы часами.
 function Get-NovaVdfValue {
     param([string]$Text, [string]$Key)
-    $m = [regex]::Match([string]$Text, ('(?m)^\s*"{0}"\s+"((?:[^"\\]|\\.)*)"' -f [regex]::Escape($Key)), 'IgnoreCase')
-    if (-not $m.Success) { return $null }
-    return ($m.Groups[1].Value -replace '\\\\', '\')
+    $m = @(Get-NovaRegexMatches $Text ('^[ \t]*"{0}"[ \t]+"((?:[^"\\\r\n]|\\.)*)"' -f [regex]::Escape($Key)) | Select-Object -First 1)
+    if ($m.Count -eq 0) { return $null }
+    return ($m[0].Groups[1].Value -replace '\\\\', '\')
 }
 
 function Get-NovaSteamPath {
@@ -510,17 +560,26 @@ function Get-NovaSteamGames {
     foreach ($vdf in @((Join-Path $SteamPath 'steamapps\libraryfolders.vdf'), (Join-Path $SteamPath 'config\libraryfolders.vdf'))) {
         $text = Read-NovaSmallText $vdf
         if (-not $text) { continue }
-        foreach ($m in [regex]::Matches($text, '(?m)^\s*"(?:path|\d+)"\s+"((?:[^"\\]|\\.)*)"')) {
+        foreach ($m in (Get-NovaRegexMatches $text '^[ \t]*"(?:path|\d+)"[ \t]+"((?:[^"\\\r\n]|\\.)*)"')) {
             $p = ($m.Groups[1].Value -replace '\\\\', '\').TrimEnd('\')
-            if ($p -match '^[A-Za-z]:\\' -and -not ($libraries -contains $p)) { $libraries.Add($p) }
+            if ($p -match '^[A-Za-z]:\\' -and -not ($libraries -contains $p) -and $libraries.Count -lt 16) { $libraries.Add($p) }
         }
     }
     $games = New-Object System.Collections.Generic.List[object]
     $ids = @{}
+    $seenFiles = 0
     foreach ($lib in $libraries) {
         $apps = Join-Path $lib 'steamapps'
-        if (-not (Test-Path -LiteralPath $apps -PathType Container)) { continue }
+        # Сетевые диски и ссылки (junction, symlink) не открываем: ссылка на чужой сервер заставила бы Windows
+        # отправить ему данные для входа. Атрибуты читаем у самой ссылки, не проходя по ней.
+        try {
+            if ((New-Object System.IO.DriveInfo($lib.Substring(0, 1))).DriveType -eq [System.IO.DriveType]::Network) { continue }
+            $libInfo = New-Object System.IO.DirectoryInfo($lib); $appsInfo = New-Object System.IO.DirectoryInfo($apps)
+            if (-not $libInfo.Exists -or -not $appsInfo.Exists) { continue }
+            if (($libInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) -or ($appsInfo.Attributes -band [IO.FileAttributes]::ReparsePoint)) { continue }
+        } catch { continue }
         foreach ($file in @(Get-ChildItem -LiteralPath $apps -Filter 'appmanifest_*.acf' -File -ErrorAction SilentlyContinue | Select-Object -First 500)) {
+            if (++$seenFiles -gt 800) { break }
             $text = Read-NovaSmallText $file.FullName 65536
             if (-not $text) { continue }
             $id = Get-NovaVdfValue $text 'appid'
@@ -564,21 +623,39 @@ function Get-NovaEpicGames {
     return $games.ToArray()
 }
 
-# Riot Client и его игры (Valorant, League of Legends). Где лежит клиент — из файла самого Riot.
-function Get-NovaRiotGames {
-    param([string]$RiotData = (Join-Path $env:ProgramData 'Riot Games'))
-    if (-not $RiotData -or -not (Test-Path -LiteralPath $RiotData -PathType Container)) { return @() }
-    $doc = $null
-    try { $doc = ConvertFrom-Json (Read-NovaSmallText (Join-Path $RiotData 'RiotClientInstalls.json') 65536) } catch { $doc = $null }
-    $exe = ''
-    foreach ($key in @('rc_default', 'rc_live')) {
-        $p = ([string](Get-NovaProp $doc $key '')) -replace '/', '\'
-        if ((Get-NovaRiotExeProblem $p) -eq '') { $exe = $p; break }
+# Riot Client и его игры (Valorant, League of Legends). Где лежит клиент — из записи «Установка и удаление
+# программ», которую делает установщик Riot: у тебя (HKCU) или администратор (HKLM). Файлу в C:\ProgramData
+# не доверяем — его может создать любой пользователь компьютера. И запускаем только файл с подписью Riot Games.
+$script:RiotProducts = @(@('valorant', 'VALORANT'), @('league_of_legends', 'League of Legends'))
+function Get-NovaRiotUninstallExe {
+    param([string]$Product)
+    foreach ($root in @('HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall')) {
+        $v = Get-NovaRegValue -Path ('{0}\Riot Game {1}.live' -f $root, $Product) -Name 'UninstallString'
+        if (-not $v.Exists) { continue }
+        if ([string]$v.Value -match '^\s*"([^"]+\\RiotClientServices\.exe)"') { return $Matches[1] }
     }
-    if (-not $exe) { return @() }
+    return ''
+}
+
+function Test-NovaRiotSignature {
+    param([string]$Path)
+    try {
+        $sig = Get-AuthenticodeSignature -LiteralPath $Path -ErrorAction Stop
+        return ($sig.Status -eq 'Valid' -and [string]$sig.SignerCertificate.Subject -match 'O="?Riot Games')
+    } catch {
+        return $false
+    }
+}
+
+function Get-NovaRiotGames {
+    param([scriptblock]$ExeFor = { param($p) Get-NovaRiotUninstallExe $p }, [scriptblock]$Signed = { param($p) Test-NovaRiotSignature $p })
     $games = New-Object System.Collections.Generic.List[object]
-    foreach ($product in @(@('valorant', 'VALORANT'), @('league_of_legends', 'League of Legends'))) {
-        if (-not (Test-Path -LiteralPath (Join-Path $RiotData ('Metadata\{0}.live' -f $product[0])) -PathType Container)) { continue }
+    $checked = @{}
+    foreach ($product in $script:RiotProducts) {
+        $exe = [string](& $ExeFor $product[0])
+        if (-not $exe -or (Get-NovaRiotExeProblem $exe) -ne '') { continue }
+        if (-not $checked.ContainsKey($exe)) { $checked[$exe] = [bool](& $Signed $exe) }
+        if (-not $checked[$exe]) { continue }
         $games.Add((New-NovaGame -Name $product[1] -Store 'Riot' -Id $product[0] -Exe $exe -Arguments ('--launch-product={0} --launch-patchline=live' -f $product[0])))
     }
     return $games.ToArray()
@@ -586,7 +663,7 @@ function Get-NovaRiotGames {
 
 function Get-NovaRiotExeProblem {
     param([string]$Path)
-    if (-not $Path -or $Path.Length -gt 260 -or $Path -match '[\p{Cc}\p{Cf}"<>|*?%~]') { return 'непонятный путь' }
+    if (-not $Path -or $Path.Length -gt 260 -or $Path -match '[\p{Cc}\p{Cf}"<>|*?%~/]') { return 'непонятный путь' }
     if ($Path -notmatch '^[A-Za-z]:\\.+\\RiotClientServices\.exe\z' -or $Path -match '(^|\\)\.{1,2}(\\|\z)' -or $Path.IndexOf(':', 2) -ge 0) { return 'это не Riot Client' }
     try {
         if ((New-Object System.IO.DriveInfo($Path.Substring(0, 1))).DriveType -eq [System.IO.DriveType]::Network) { return 'сетевой диск' }
@@ -655,6 +732,7 @@ function Start-NovaGame {
         return
     }
     if ($AsUser) { throw 'Riot-игры открой сам — из Nova с правами администратора их не запускаю.' }
+    if (-not (Test-NovaRiotSignature $Game.Exe)) { throw 'у Riot Client нет подписи Riot Games — не запускаю' }
     Start-Process -FilePath $Game.Exe -ArgumentList $Game.Arguments
 }
 

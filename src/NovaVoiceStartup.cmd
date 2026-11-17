@@ -10,9 +10,8 @@ set "PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 if exist "%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe" set "PS=%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
 
 if not exist "%~dp0NovaVoice.ps1" goto nofiles
-"%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0NovaVoice.ps1" -Startup
-pause
-exit /b
+rem One line on purpose: an update may replace this file while it runs, and cmd.exe reads it line by line.
+"%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0NovaVoice.ps1" -Startup & pause & exit /b
 
 :nofiles
 set "NOVA_MSG=Tm92YSDQvdC1INC90LDRiNC70LAg0YHQstC+0Lgg0YTQsNC50LvRiyDRgNGP0LTQvtC8INGBIE5vdmFWb2ljZS5jbWQuCtCh0L3QsNGH0LDQu9CwINGA0LDRgdC/0LDQutGD0Lkg0LDRgNGF0LjQsjog0L/RgNCw0LLQvtC5INC60L3QvtC/0LrQvtC5INC/0L4g0LDRgNGF0LjQstGDIOKGkiDCq9CY0LfQstC70LXRh9GMINCy0YHRkeKApsK7LArQv9C+0YLQvtC8INC+0YLQutGA0L7QuSDRgNCw0YHQv9Cw0LrQvtCy0LDQvdC90YPRjiDQv9Cw0L/QutGDINC4INC30LDQv9GD0YHRgtC4IE5vdmFWb2ljZS5jbWQg0L7RgtGC0YPQtNCwLg=="

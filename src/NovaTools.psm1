@@ -606,10 +606,14 @@ function Write-NovaUpdateFile {
     param([string]$Target, [byte[]]$Bytes)
     $dir = Split-Path -Parent $Target
     if (-not (Test-Path -LiteralPath $dir)) { [void][IO.Directory]::CreateDirectory($dir) }
-    if (Test-Path -LiteralPath $Target) {
-        [IO.File]::SetAttributes($Target, ([IO.File]::GetAttributes($Target) -band (-bnot [IO.FileAttributes]::ReadOnly)))
-    }
-    [IO.File]::WriteAllBytes($Target, $Bytes)
+    if (-not (Test-Path -LiteralPath $Target)) { [IO.File]::WriteAllBytes($Target, $Bytes); return }
+    [IO.File]::SetAttributes($Target, ([IO.File]::GetAttributes($Target) -band (-bnot [IO.FileAttributes]::ReadOnly)))
+    # Новый файл рядом и замена целиком: если на месте старого файла была жёсткая ссылка на чужой файл,
+    # запись туда не уйдёт — ссылка просто перестанет быть частью папки Nova.
+    $temp = $Target + '.nova-new'
+    if (Test-Path -LiteralPath $temp) { [IO.File]::Delete($temp) }
+    [IO.File]::WriteAllBytes($temp, $Bytes)
+    try { [IO.File]::Replace($temp, $Target, $null) } catch { [IO.File]::Delete($temp); throw }
 }
 
 # Ставит новую версию в папку Root. Сначала сохраняет всё, что поменяется, в BackupRoot\update-<версия>-<время>
@@ -635,6 +639,8 @@ function Install-NovaUpdate {
     # Старые файлы программы, которых в новой версии нет (только в src — в assets могут быть твои обои).
     foreach ($rel in (Get-NovaRelativeFiles -Root $Root -Sub 'src')) {
         if ($inPackage.ContainsKey($rel.ToLowerInvariant())) { continue }
+        # Имя, которое не прошло бы проверку при откате, не трогаем: удалить его — значит не суметь вернуть.
+        if (-not (Test-NovaUpdatePath $rel)) { continue }
         $plan.Add([pscustomobject]@{ Op = 'remove'; Path = $rel; Target = (Get-NovaUpdateTarget -Root $Root -Path $rel); Bytes = $null })
     }
     $backup = Join-Path $BackupRoot ('update-{0}-{1}' -f $Current, (Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -654,8 +660,19 @@ function Install-NovaUpdate {
         removed  = @($plan | Where-Object { $_.Op -eq 'remove' } | ForEach-Object { $_.Path })
     }
     Write-NovaNewFile -Path (Join-Path $backup 'update.json') -Bytes ([Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $manifest -Depth 4)))
-    foreach ($step in $plan) {
-        if ($step.Op -eq 'remove') { [IO.File]::Delete($step.Target) } else { Write-NovaUpdateFile -Target $step.Target -Bytes $step.Bytes }
+    try {
+        foreach ($step in $plan) {
+            if ($step.Op -eq 'remove') { [IO.File]::Delete($step.Target) } else { Write-NovaUpdateFile -Target $step.Target -Bytes $step.Bytes }
+        }
+    } catch {
+        # Половина новых файлов и половина старых — хуже всего. Возвращаем прежнюю версию целиком.
+        $why = $_.Exception.Message
+        try {
+            [void](Restore-NovaUpdate -Backup ([pscustomobject]@{ Path = $backup; Manifest = (ConvertFrom-Json (ConvertTo-Json -InputObject $manifest -Depth 4)) }) -Root $Root)
+        } catch {
+            throw ('Обновление прервалось ({0}), и вернуть прежнюю версию не получилось ({1}). Копия старых файлов — в {2}' -f $why, $_.Exception.Message, $backup)
+        }
+        throw ('Обновление прервалось ({0}) — Nova вернула прежнюю версию, ничего не изменилось.' -f $why)
     }
     return [pscustomobject]@{ From = $Current; To = $Package.Version; Added = $manifest.added.Count; Replaced = $manifest.replaced.Count; Removed = $manifest.removed.Count; Backup = $backup }
 }
@@ -665,14 +682,15 @@ function Get-NovaUpdateBackups {
     param([string]$BackupRoot = (Join-Path (Get-NovaDataDir) 'backups'))
     if (-not (Test-Path -LiteralPath $BackupRoot -PathType Container)) { return @() }
     $list = New-Object System.Collections.Generic.List[object]
-    foreach ($dir in @(Get-ChildItem -LiteralPath $BackupRoot -Directory -Filter 'update-*' -ErrorAction SilentlyContinue | Sort-Object Name -Descending)) {
+    foreach ($dir in @(Get-ChildItem -LiteralPath $BackupRoot -Directory -Filter 'update-*' -ErrorAction SilentlyContinue)) {
         $manifestPath = Join-Path $dir.FullName 'update.json'
         if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { continue }
         try { $m = ConvertFrom-Json ([IO.File]::ReadAllText($manifestPath, [Text.Encoding]::UTF8)) } catch { continue }
         if ($null -eq (ConvertTo-NovaVersion ([string]$m.from)) -or $null -eq (ConvertTo-NovaVersion ([string]$m.to))) { continue }
-        $list.Add([pscustomobject]@{ Path = $dir.FullName; From = [string]$m.from; To = [string]$m.to; Created = [string]$m.created; Manifest = $m })
+        $list.Add([pscustomobject]@{ Path = $dir.FullName; From = [string]$m.from; To = [string]$m.to; Created = [string]$m.created; Manifest = $m; Time = $dir.CreationTimeUtc })
     }
-    return $list.ToArray()
+    # Самая свежая — сверху. По имени сортировать нельзя: «update-0.9.0» оказалась бы выше «update-0.10.0».
+    return @($list.ToArray() | Sort-Object -Property @{ Expression = { $_.Created } ; Descending = $true }, @{ Expression = { $_.Time }; Descending = $true })
 }
 
 # Возвращает прошлую версию из копии: новые файлы убирает, заменённые и удалённые кладёт обратно.
@@ -689,7 +707,11 @@ function Restore-NovaUpdate {
     foreach ($rel in @(@($m.replaced) + @($m.removed))) {
         $copy = Join-Path $Backup.Path ('files\' + ($rel -replace '/', '\'))
         if (-not (Test-Path -LiteralPath $copy -PathType Leaf)) { throw ('В копии нет файла {0}' -f $rel) }
-        Write-NovaUpdateFile -Target (Get-NovaUpdateTarget -Root $Root -Path $rel) -Bytes ([IO.File]::ReadAllBytes($copy))
+        $target = Get-NovaUpdateTarget -Root $Root -Path $rel
+        $bytes = [IO.File]::ReadAllBytes($copy)
+        # Файл и так как в копии (например, его не успели заменить) — не трогаем.
+        if ((Test-Path -LiteralPath $target -PathType Leaf) -and [Convert]::ToBase64String([IO.File]::ReadAllBytes($target)) -eq [Convert]::ToBase64String($bytes)) { continue }
+        Write-NovaUpdateFile -Target $target -Bytes $bytes
     }
     # Копия больше не нужна: переименовываем, чтобы не вернуть её второй раз.
     Rename-Item -LiteralPath $Backup.Path -NewName ('restored-' + (Split-Path -Leaf $Backup.Path))

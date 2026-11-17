@@ -721,7 +721,7 @@ function Invoke-NovaUpdateFlow {
     try {
         $info = Get-NovaUpdateInfo
     } catch {
-        Write-Nova ('Не получилось проверить: {0}' -f $_.Exception.Message) warn
+        Write-Nova ('Не получилось проверить: {0}' -f (Get-NovaPlainText $_.Exception.Message 200)) warn
         Write-Nova ('Проверь интернет или загляни на сайт Nova: {0}' -f $source.DownloadPage) dim
         return 2
     }
@@ -781,8 +781,7 @@ function Invoke-NovaSelfUpdate {
     $backupRoot = Join-Path (Get-NovaDataDir) 'backups'
     $result = Install-NovaUpdate -Package $package -Root $projectRoot -BackupRoot $backupRoot
     # Храним пять последних копий — этого хватит, чтобы вернуться.
-    Get-ChildItem -LiteralPath $backupRoot -Directory -Filter 'update-*' -ErrorAction SilentlyContinue | Sort-Object Name -Descending |
-        Select-Object -Skip 5 | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+    @(Get-NovaUpdateBackups -BackupRoot $backupRoot) | Select-Object -Skip 5 | ForEach-Object { Remove-Item -LiteralPath $_.Path -Recurse -Force -ErrorAction SilentlyContinue }
     Write-Host ''
     Write-Nova ('Готово: Nova {0}! Обновлено файлов: {1}, новых: {2}, убрано старых: {3}.' -f $result.To, $result.Replaced, $result.Added, $result.Removed) ok
     Write-Nova 'Твои config.json и voice.json не тронуты. Вернуть прошлую версию — снова пункт 12.' dim
@@ -865,21 +864,10 @@ function Invoke-NovaGameModeFlow {
     switch ($r.Updates) {
         'set' { Write-Nova 'Обновления Windows на паузе — сами вернутся максимум через 12 часов, даже если забудешь.' ok }
         'already' { Write-Nova 'Обновления Windows и так на паузе.' ok }
+        'failed' { Write-Nova 'Поставить обновления на паузу не получилось — остальное включено, можно играть.' warn }
     }
     Write-Nova 'Наиграешься — снова пункт 16 или скажи «Нова, игра окончена» (в Nova Голос).' dim
-    if (-not (Test-NovaInteractive)) { return 0 }
-    $games = @(Get-NovaGames | Where-Object { $_.Uri })
-    if ($games.Count -eq 0) { return 0 }
-    Write-Host ''
-    Write-Nova 'Игры на этом компьютере:' info
-    $shown = @($games | Select-Object -First 20)
-    for ($i = 0; $i -lt $shown.Count; $i++) { Write-Host ('{0,4}  {1}  ({2})' -f ($i + 1), $shown[$i].Name, $shown[$i].Store) -ForegroundColor White }
-    $answer = (Read-Host '  Номер — запустить игру, Enter — запущу сам').Trim()
-    $n = 0
-    if ([int]::TryParse($answer, [ref]$n) -and $n -ge 1 -and $n -le $shown.Count) {
-        Start-NovaGame -Game $shown[$n - 1] -AsUser
-        Write-Nova ('Запускаю {0}. Удачной игры!' -f $shown[$n - 1].Name) ok
-    }
+    Write-Nova 'Запускай игру как обычно — или голосом: «Нова, запусти игру» (последняя, в которую ты играл).' dim
     return 0
 }
 
@@ -904,7 +892,7 @@ function Invoke-NovaDriverFlow {
         $lookupError = ''
         if ($vendor -eq 'NVIDIA') {
             Write-Nova ('Спрашиваю у сайта NVIDIA, какой драйвер последний для {0}. Отправляется только модель видеокарты.' -f $gpu.Name) dim
-            try { $latest = Get-NovaNvidiaLatest -Name $gpu.Name } catch { $lookupError = $_.Exception.Message }
+            try { $latest = Get-NovaNvidiaLatest -Name $gpu.Name } catch { $lookupError = Get-NovaPlainText $_.Exception.Message 120 }
         }
         $check = Get-NovaDriverFreshAdvice -Gpu $gpu -Latest $latest -LookupError $lookupError
         $checks.Add($check)
@@ -1133,7 +1121,7 @@ function Start-NovaMenu {
                 '0' { return }
             }
         } catch {
-            Write-Nova ('Ошибка: {0}' -f $_.Exception.Message) err
+            Write-Nova ('Ошибка: {0}' -f (Get-NovaPlainText $_.Exception.Message 400)) err
             Write-Nova ('Не получается? Напиши в поддержку: {0}' -f (Get-NovaSupportEmail)) dim
             Wait-NovaKey
         }
@@ -1182,7 +1170,7 @@ try {
         'Driver' { Show-NovaBanner; $exitCode = Invoke-NovaDriverFlow }
     }
 } catch {
-    Write-Nova ('Ошибка: {0}' -f $_.Exception.Message) err
+    Write-Nova ('Ошибка: {0}' -f (Get-NovaPlainText $_.Exception.Message 400)) err
     Write-Nova ('Не получается? Напиши в поддержку: {0} — приложи снимок экрана и лог: {1}' -f (Get-NovaSupportEmail), $logPath) dim
     $exitCode = 1
 } finally {
