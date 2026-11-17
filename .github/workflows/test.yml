@@ -189,8 +189,10 @@ jobs:
           Set-Content -LiteralPath $in -Value @('', '16', '', '16', '', '17', '', '13', '', '12', '', '0') -Encoding Ascii
           $p = Start-Process -FilePath cmd.exe -ArgumentList ('/c ""{0}""' -f (Join-Path $root 'Nova.cmd')) -RedirectStandardInput $in -RedirectStandardOutput $out -NoNewWindow -PassThru
           if (-not $p.WaitForExit(300000)) { & taskkill.exe /T /F /PID $p.Id | Out-Null; throw 'Menu walk hung.' }
-          $text = [IO.File]::ReadAllText($out, [Text.Encoding]::UTF8)
-          Write-Host $text
+          Write-Host ([IO.File]::ReadAllText($out))
+          # The console output here is in the OEM code page; Nova's own log (transcript) keeps the real text.
+          $log = Get-ChildItem -LiteralPath (Join-Path $env:ProgramData 'Nova\logs') -Filter 'nova-*.log' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          $text = [IO.File]::ReadAllText($log.FullName, [Text.Encoding]::UTF8)
           $err = [regex]::Matches($text, '\u041e\u0448\u0438\u0431\u043a\u0430:').Count
           $gm = [regex]::Matches($text, '\u0420\u0415\u0416\u0418\u041c \u0418\u0413\u0420\u042b').Count
           $drv = [regex]::Matches($text, '\u0421\u0412\u0415\u0416\u0418\u0419 \u041b\u0418 \u0414\u0420\u0410\u0419\u0412\u0415\u0420').Count
