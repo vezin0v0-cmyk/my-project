@@ -744,25 +744,27 @@ function Start-NovaRun {
 function Read-RunOutput {
     $r = $script:Run
     if (-not $r -or -not (Test-Path -LiteralPath $r.Out)) { return }
+    $chunk = $null
     $fs = [IO.File]::Open($r.Out, 'Open', 'Read', 'ReadWrite')
     try {
-        if ($fs.Length -le $r.Pos) { return }
-        [void]$fs.Seek($r.Pos, 'Begin')
-        $buf = New-Object byte[] ([int][math]::Min(1048576, $fs.Length - $r.Pos))
-        $n = $fs.Read($buf, 0, $buf.Length)
-        $r.Pos += $n
-        # Декодер помнит половинку русской буквы, если чтение пришлось на середину символа.
-        $chars = New-Object char[] ($r.Decoder.GetCharCount($buf, 0, $n))
-        [void]$r.Decoder.GetChars($buf, 0, $n, $chars, 0)
-        $lines = ($r.Rest + (-join $chars)) -split "`n"
-        $r.Rest = $lines[-1]
-        if ($lines.Count -lt 2) { return }
-        foreach ($line in $lines[0..($lines.Count - 2)]) {
-            $parts = $line.Split("`t", 2)
-            if ($parts.Count -lt 2) { continue }
-            Add-RunLine $parts[0] $parts[1]
+        if ($fs.Length -gt $r.Pos) {
+            [void]$fs.Seek($r.Pos, 'Begin')
+            $buf = New-Object byte[] ([int][math]::Min(1048576, $fs.Length - $r.Pos))
+            $n = $fs.Read($buf, 0, $buf.Length)
+            $r.Pos += $n
+            # Декодер помнит половинку русской буквы, если чтение пришлось на середину символа.
+            $chars = New-Object char[] ($r.Decoder.GetCharCount($buf, 0, $n))
+            [void]$r.Decoder.GetChars($buf, 0, $n, $chars, 0)
+            $chunk = -join $chars
         }
     } finally { $fs.Dispose() }
+    if ($null -eq $chunk) { return }
+    $lines = ($r.Rest + $chunk) -split "`n"
+    $r.Rest = $lines[-1]
+    for ($i = 0; $i -lt $lines.Count - 1; $i++) {
+        $parts = $lines[$i].Split("`t", 2)
+        if ($parts.Count -ge 2) { Add-RunLine $parts[0] $parts[1] }
+    }
 }
 
 function Complete-NovaRun([bool]$Ok, [string]$Text) {
@@ -833,23 +835,43 @@ function Start-NovaBackground([string]$Code, [object[]]$Arguments, [scriptblock]
     $script:Jobs.Add(@{ Ps = $ps; Rs = $rs; Handle = $ps.BeginInvoke(); OnDone = $OnDone; Until = [DateTime]::UtcNow.AddSeconds(90) })
     $jobTimer.Start()
 }
+function Get-NovaErrorText($ErrorRecord) {
+    $text = Get-NovaPlainText $ErrorRecord.Exception.Message 200
+    if ($ErrorRecord.InvocationInfo -and $ErrorRecord.InvocationInfo.ScriptLineNumber) { $text = '{0} (строка {1})' -f $text, $ErrorRecord.InvocationInfo.ScriptLineNumber }
+    return $text
+}
+function Complete-NovaJob($Job) {
+    $out = $null
+    $err = ''
+    if ($Job.Handle.IsCompleted) {
+        try { $out = $Job.Ps.EndInvoke($Job.Handle) } catch { $err = Get-NovaErrorText $_ }
+        if (-not $err -and $Job.Ps.Streams.Error.Count -gt 0) { $err = [string]$Job.Ps.Streams.Error[0].Exception.Message }
+        try { $Job.Ps.Dispose(); $Job.Rs.Dispose() } catch { Write-Verbose 'Поток уже убран.' }
+    } else {
+        $err = 'не ответила за полторы минуты'
+        try { [void]$Job.Ps.BeginStop($null, $null) } catch { Write-Verbose 'Поток уже остановлен.' }
+    }
+    & $Job.OnDone @($out) $err
+}
+function Invoke-NovaJobs {
+    $now = [DateTime]::UtcNow
+    $ready = @($script:Jobs | Where-Object { $_.Handle.IsCompleted -or $now -gt $_.Until })
+    foreach ($job in $ready) {
+        [void]$script:Jobs.Remove($job)
+        Complete-NovaJob $job
+    }
+    if ($script:Jobs.Count -eq 0) { $jobTimer.Stop() }
+}
 $jobTimer.Add_Tick({
-        foreach ($job in @($script:Jobs)) {
-            $late = [DateTime]::UtcNow -gt $job.Until
-            if (-not $job.Handle.IsCompleted -and -not $late) { continue }
-            [void]$script:Jobs.Remove($job)
-            $out = $null; $err = ''
-            if ($job.Handle.IsCompleted) {
-                try { $out = $job.Ps.EndInvoke($job.Handle) } catch { $err = $(if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }) }
-                if (-not $err -and $job.Ps.Streams.Error.Count -gt 0) { $err = $job.Ps.Streams.Error[0].Exception.Message }
-            } else {
-                $err = 'не ответила за полторы минуты'
-                try { $job.Ps.BeginStop($null, $null) | Out-Null } catch { Write-Verbose 'Поток уже остановлен.' }
-            }
-            if ($job.Handle.IsCompleted) { try { $job.Ps.Dispose(); $job.Rs.Dispose() } catch { Write-Verbose 'Поток уже убран.' } }
-            try { & $job.OnDone @($out) $err } catch { Show-Toast ('Ошибка: {0}' -f (Get-NovaPlainText $_.Exception.Message 160)) }
+        try { Invoke-NovaJobs } catch {
+            # Разбор сломался — не оставляем проверки «вечно идущими»: каждой сообщаем причину.
+            $jobTimer.Stop()
+            $why = Get-NovaErrorText $_
+            $left = @($script:Jobs)
+            $script:Jobs.Clear()
+            foreach ($job in $left) { & $job.OnDone $null $why }
+            Show-Toast ('Фоновая проверка: {0}' -f $why)
         }
-        if ($script:Jobs.Count -eq 0) { $jobTimer.Stop() }
     })
 
 #endregion
@@ -898,7 +920,7 @@ function Import-ConfigState([string]$Text) {
     }
     foreach ($t in $script:Tweaks) { if (-not $state.tweaks.ContainsKey([string]$t.id)) { $state.tweaks[[string]$t.id] = $false } }
     # Что человек уже переключил в окне, но ещё не сохранил, — остаётся как в окне.
-    foreach ($key in @($script:Touched.Keys)) { $sk = $key.Split('|', 2); $state[$sk[0]][$sk[1]] = $script:State[$sk[0]][$sk[1]] }
+    foreach ($key in @($script:Touched.Keys)) { $sk = $key -split '\|', 2; $state[$sk[0]][$sk[1]] = $script:State[$sk[0]][$sk[1]] }
     $script:State = $state
     $script:ConfigText = $Text
 }
@@ -1252,8 +1274,13 @@ $win.Dispatcher.Add_UnhandledException({
         param($s, $e)
         $e.Handled = $true
         $inner = $e.Exception
-        while ($inner.InnerException) { $inner = $inner.InnerException }
-        Show-Toast ('Что-то пошло не так: {0}' -f (Get-NovaPlainText $inner.Message 160))
+        $line = ''
+        while ($inner.InnerException) {
+            if (-not $line -and $inner.PSObject.Properties['ErrorRecord'] -and $inner.ErrorRecord.InvocationInfo) { $line = [string]$inner.ErrorRecord.InvocationInfo.ScriptLineNumber }
+            $inner = $inner.InnerException
+        }
+        if (-not $line -and $inner.PSObject.Properties['ErrorRecord'] -and $inner.ErrorRecord.InvocationInfo) { $line = [string]$inner.ErrorRecord.InvocationInfo.ScriptLineNumber }
+        Show-Toast ('Что-то пошло не так: {0}{1}' -f (Get-NovaPlainText $inner.Message 160), $(if ($line) { ' (строка ' + $line + ')' } else { '' }))
     })
 $win.Add_Activated({ Sync-ConfigFromDisk })
 
@@ -1384,7 +1411,7 @@ Update-UpdatePage $null
 # Окно появляется плавно.
 $win.Opacity = 0
 $win.Add_ContentRendered({
-        Update-Health
+        try { Update-Health } catch { Show-Health $null ('не запустилась: {0}' -f (Get-NovaErrorText $_)) }
         $a = New-Object Windows.Media.Animation.DoubleAnimation -ArgumentList @([double]0, [double]1, (New-Object Windows.Duration ([TimeSpan]::FromMilliseconds(260))))
         $win.BeginAnimation([Windows.Window]::OpacityProperty, $a)
     })
