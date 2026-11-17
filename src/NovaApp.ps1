@@ -279,9 +279,9 @@ $xaml = @'
             </Border>
           </StackPanel>
           <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button x:Name="BtnMin" Style="{StaticResource Caption}" Content="&#xE921;"/>
-            <Button x:Name="BtnMax" Style="{StaticResource Caption}" Content="&#xE922;"/>
-            <Button x:Name="BtnClose" Style="{StaticResource CaptionClose}" Content="&#xE8BB;"/>
+            <Button x:Name="BtnMin" Style="{StaticResource Caption}" Content="&#xE921;" AutomationProperties.Name="Свернуть"/>
+            <Button x:Name="BtnMax" Style="{StaticResource Caption}" Content="&#xE922;" AutomationProperties.Name="Развернуть"/>
+            <Button x:Name="BtnClose" Style="{StaticResource CaptionClose}" Content="&#xE8BB;" AutomationProperties.Name="Закрыть"/>
           </StackPanel>
         </Grid>
       </Border>
@@ -586,6 +586,15 @@ function Open-AsUser([string]$Target) {
     if (-not (Start-NovaAsUser $Target)) { Show-Toast ('Открой сам: {0}' -f $Target) }
 }
 
+# Плитки (кнопка со значком, заголовком и подписью): экранный диктор читает заголовок и подпись, без значка.
+$icoStyle = $win.FindResource('Ico')
+function Set-TileName([Windows.Controls.Button]$Button) {
+    if (-not ($Button.Content -is [Windows.Controls.Panel])) { return }
+    $texts = @($Button.Content.Children | Where-Object { $_ -is [Windows.Controls.TextBlock] -and -not [object]::ReferenceEquals($_.Style, $icoStyle) } |
+            ForEach-Object { ($_.Text -replace '\r?\n', '').Trim() } | Where-Object { $_ })
+    [Windows.Automation.AutomationProperties]::SetName($Button, ($texts -join '. '))
+}
+
 # Плавное появление страницы.
 function Show-Page($Page) {
     foreach ($p in @($ui.PageHome, $ui.PageTweaks, $ui.PageGames, $ui.PageVoice, $ui.PageTools, $ui.PageUpdate, $ui.PageAbout)) { $p.Visibility = 'Collapsed' }
@@ -829,7 +838,11 @@ function New-Row([string]$Title, [string]$Text, [string]$Sec, [string]$Key, [str
     $sw.Style = $win.FindResource('Switch')
     $sw.IsChecked = [bool]$script:State[$Sec][$Key]
     $sw.Tag = @($Sec, $Key)
-    $sw.Add_Click({ param($s) $script:State[$s.Tag[0]][$s.Tag[1]] = [bool]$s.IsChecked; Set-Dirty $true })
+    [Windows.Automation.AutomationProperties]::SetName($sw, $Title)
+    [Windows.Automation.AutomationProperties]::SetAutomationId($sw, ('sw-' + $Key))
+    # Checked/Unchecked, а не Click: так переключатель срабатывает и от экранного диктора, а не только от мыши и пробела.
+    $onSwitch = { param($s) $script:State[$s.Tag[0]][$s.Tag[1]] = [bool]$s.IsChecked; Set-Dirty $true }
+    $sw.Add_Checked($onSwitch); $sw.Add_Unchecked($onSwitch)
     [Windows.Controls.Grid]::SetColumn($sw, 1)
     [void]$grid.Children.Add($sw)
     $card.Child = $grid
@@ -897,7 +910,8 @@ foreach ($pr in $presets) {
     $b.Add_Click({
             param($s)
             $changed = 0
-            foreach ($k in $s.Tag.Tweaks.Keys) { if ($script:State.tweaks.ContainsKey($k) -and $script:State.tweaks[$k] -ne $s.Tag.Tweaks[$k]) { $script:State.tweaks[$k] = $s.Tag.Tweaks[$k]; $changed++ } }
+            $known = @{}; foreach ($t in $script:Tweaks) { $known[[string]$t.id] = $true }
+            foreach ($k in $s.Tag.Tweaks.Keys) { if ($known.ContainsKey($k) -and [bool]$script:State.tweaks[$k] -ne $s.Tag.Tweaks[$k]) { $script:State.tweaks[$k] = $s.Tag.Tweaks[$k]; $changed++ } }
             Set-Dirty ($script:Dirty -or $changed -gt 0); Update-CatTabs; Update-TweakList
             Show-Toast ('Сборка «{0}»: изменено пунктов — {1}' -f $s.Tag.Name, $changed)
         })
@@ -917,6 +931,7 @@ function Update-State {
             $ui.GameModeState.Text = 'выключен'; $ui.GameModeChip.Background = Get-Brush '#2A2F3C'; $ui.GameModeState.Foreground = Get-Brush '#C9CEDA'
             $ui.BtnGameMode.Content = 'Включить'; $ui.QGameTitle.Text = 'Режим игры'; $ui.QGameText.Text = 'Максимум мощности, без уведомлений'
         }
+        Set-TileName $ui.QGame
     } catch { Write-Verbose 'Режим игры: состояние неизвестно.' }
 }
 
@@ -1141,6 +1156,7 @@ $ui.MailText.Inlines.Add((New-Object Windows.Documents.Run ('@' + $mailParts[1])
 $ui.SideStatus.Text = ('Nova {0} · всё можно вернуть' -f (Get-NovaVersion))
 $ui.AboutText.Text = ('Nova {0}. Вопросы, ошибки и идеи: {1}' -f (Get-NovaVersion), (Get-NovaSupportEmail))
 $ui.HealthText.Text = 'Проверяю систему…'; $ui.HealthChip.Background = Get-Brush '#22262F'; $ui.HealthText.Foreground = Get-Brush '#C9CEDA'
+foreach ($tile in @('QApply', 'QCheck', 'QClean', 'LSite', 'LCabinet', 'LGitHub', 'LMail', 'GDriver', 'GReady', 'GHeavy', 'GNet', 'GFps', 'GVoice', 'TClean', 'TUndo', 'TCheck', 'TStartup', 'TReport', 'TMenu', 'TShortcut')) { Set-TileName $ui[$tile] }
 Update-State
 Update-News
 Update-UpdatePage $null

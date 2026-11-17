@@ -178,6 +178,10 @@ jobs:
           ./src/Nova.ps1 -Mode Driver -EchoFile $evil
           if (Test-Path -LiteralPath $evil) { throw 'Echo went outside the Nova build folder.' }
 
+      - name: Nova Центр как у пользователя (кнопки в окне нажимаются по-настоящему)
+        shell: powershell
+        run: ./tests/Test-Center.ps1
+
       - name: Как у пользователя — скачать с сайта, распаковать, пройти меню
         shell: powershell
         # Only ASCII inside: GitHub saves this script without BOM, and Windows PowerShell 5.1 would misread Cyrillic.
