@@ -22,10 +22,12 @@
     .\Nova.ps1 -Mode Report       # отчёт для поддержки на рабочий стол
     .\Nova.ps1 -Mode Game         # режим игры: включить, а если включён — выключить
     .\Nova.ps1 -Mode Driver       # свежий ли драйвер видеокарты
+    .\Nova.ps1 -Mode SelfUpdate   # обновиться до новой версии без вопросов (для Nova Центра)
+    .\Nova.ps1 -Mode Rollback     # вернуть прошлую версию без вопросов (для Nova Центра)
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Menu', 'Preview', 'Apply', 'Undo', 'Measure', 'Check', 'Fps', 'Clean', 'Startup', 'Update', 'Heavy', 'Net', 'Report', 'Game', 'Driver')]
+    [ValidateSet('Menu', 'Preview', 'Apply', 'Undo', 'Measure', 'Check', 'Fps', 'Clean', 'Startup', 'Update', 'Heavy', 'Net', 'Report', 'Game', 'Driver', 'SelfUpdate', 'Rollback')]
     [string]$Mode = 'Menu',
     [string]$ConfigPath,
     [switch]$Yes,
@@ -35,7 +37,9 @@ param(
     [ValidateRange(5, 600)][int]$Seconds = 60,
     [ValidateRange(0, 120)][int]$Delay = 10,
     # Очистка без долгих шагов (DISM) — для проверки.
-    [switch]$Quick
+    [switch]$Quick,
+    # Nova Центр: куда дублировать вывод, чтобы показать его в окне. Только файл в папке Nova для временных файлов.
+    [string]$EchoFile
 )
 
 $ErrorActionPreference = 'Stop'
@@ -62,6 +66,24 @@ Import-Module (Join-Path $PSScriptRoot 'NovaStartup.psm1') -Force -DisableNameCh
 Import-Module (Join-Path $PSScriptRoot 'NovaMove.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaTools.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaPlay.psm1') -Force -DisableNameChecking
+
+# Nova Центр показывает ход работы в своём окне: всё, что Nova печатает, дублируется в файл вместе с цветом.
+# Файл — только внутри папки Nova для временных файлов (её могут менять лишь администраторы).
+function Enable-NovaEcho {
+    param([string]$Path)
+    if (-not $Path -or -not (Test-NovaAdmin)) { return }
+    try { $build = Get-NovaBuildDir } catch { return }
+    if (-not (Test-NovaPathInside -Path $Path -Folder $build) -or $Path -notmatch '\\app-run-\d+\.log\z') { return }
+    $global:NovaEchoPath = [IO.Path]::GetFullPath($Path)
+    function global:Write-Host {
+        [CmdletBinding()]
+        param([Parameter(Position = 0, ValueFromRemainingArguments = $true)]$Object, [switch]$NoNewline, $Separator = ' ', [ConsoleColor]$ForegroundColor = [ConsoleColor]::Gray, [ConsoleColor]$BackgroundColor = [ConsoleColor]::Black)
+        $text = (@($Object) | ForEach-Object { [string]$_ }) -join [string]$Separator
+        $params = @{ Object = $text; NoNewline = $NoNewline; ForegroundColor = $ForegroundColor }
+        Microsoft.PowerShell.Utility\Write-Host @params
+        try { [IO.File]::AppendAllText($global:NovaEchoPath, ("{0}`t{1}`n" -f $ForegroundColor, ($text -replace '[\r\n]+', ' ')), (New-Object Text.UTF8Encoding($false))) } catch { Write-Verbose 'Окно Nova Центр не получит строку.' }
+    }
+}
 
 # Без прав администратора Windows не даст менять системные настройки — перезапускаемся с ними.
 if (-not (Test-NovaAdmin)) {
@@ -771,7 +793,7 @@ function Restart-NovaSelf {
 }
 
 function Invoke-NovaSelfUpdate {
-    param([string]$Expected)
+    param([string]$Expected, [switch]$NoRestart)
     Write-Nova 'Скачиваю новую версию с GitHub (около 1,5 МБ)...' dim
     $zip = Save-NovaUpdateZip
     try { $package = Read-NovaUpdatePackage -ZipPath $zip } finally { Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue }
@@ -785,9 +807,33 @@ function Invoke-NovaSelfUpdate {
     Write-Host ''
     Write-Nova ('Готово: Nova {0}! Обновлено файлов: {1}, новых: {2}, убрано старых: {3}.' -f $result.To, $result.Replaced, $result.Added, $result.Removed) ok
     Write-Nova 'Твои config.json и voice.json не тронуты. Вернуть прошлую версию — снова пункт 12.' dim
+    if ($NoRestart) { return }
     Write-Nova 'Открываю новую Nova в новом окне...' info
     Start-Sleep -Seconds 2
     Restart-NovaSelf
+}
+
+# Без вопросов: обновиться, если есть новая версия (Nova Центр, кнопка «Обновить»).
+function Invoke-NovaSelfUpdateMode {
+    $info = Get-NovaUpdateInfo
+    if (-not $info.IsNewer) { Write-Nova ('У тебя последняя версия — Nova {0}.' -f $info.Current) ok; return 0 }
+    Write-Nova ('Обновляю Nova {0} → {1}' -f $info.Current, $info.Latest) info
+    Invoke-NovaSelfUpdate -Expected $info.Latest -NoRestart
+    return 0
+}
+
+# Без вопросов: вернуть версию из самой свежей копии (Nova Центр, кнопка «Вернуть прошлую версию»).
+function Invoke-NovaRollbackMode {
+    $backups = @(Get-NovaUpdateBackups)
+    if ($backups.Count -eq 0) { Write-Nova 'Копий прошлых версий нет — возвращать нечего.' dim; return 0 }
+    $b = $backups[0]
+    if ((ConvertTo-NovaVersion (Get-NovaVersion)) -ne (ConvertTo-NovaVersion $b.To)) {
+        Write-Nova ('Копия сделана при обновлении до {0}, а у тебя {1} — возвращать её не буду.' -f $b.To, (Get-NovaVersion)) warn
+        return 1
+    }
+    $result = Restore-NovaUpdate -Backup $b -Root $projectRoot
+    Write-Nova ('Готово: вернулась Nova {0}.' -f $result.Version) ok
+    return 0
 }
 
 function Invoke-NovaRollbackFlow {
@@ -1086,6 +1132,7 @@ function Start-NovaMenu {
             Write-Host ' 16  Режим игры: максимум мощности, без уведомлений и обновлений' -ForegroundColor White
         }
         Write-Host ' 17  Свежий ли драйвер видеокарты' -ForegroundColor White
+        Write-Host ' 18  Nova Центр — то же самое в красивом окне' -ForegroundColor Yellow
         Write-Host ('      Вопросы и ошибки: {0}' -f (Get-NovaSupportEmail)) -ForegroundColor DarkGray
         Write-Host '  0  Выход' -ForegroundColor White
         Write-Host ''
@@ -1118,6 +1165,13 @@ function Start-NovaMenu {
                 '15' { [void](Invoke-NovaReportFlow); Wait-NovaKey }
                 '16' { [void](Invoke-NovaGameModeFlow); Wait-NovaKey }
                 '17' { [void](Invoke-NovaDriverFlow); Wait-NovaKey }
+                '18' {
+                    $app = Join-Path $PSScriptRoot 'NovaApp.ps1'
+                    $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+                    Start-Process -FilePath $ps -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', ('"{0}"' -f $app))
+                    Write-Nova 'Открываю Nova Центр…' ok
+                    Start-Sleep -Seconds 1
+                }
                 '0' { return }
             }
         } catch {
@@ -1133,6 +1187,7 @@ try {
     # Сначала проверяем саму папку Nova и только потом трогаем что-либо с правами администратора.
     Assert-NovaProjectFolder
     $dataDir = Get-NovaDataDir
+    if ($EchoFile) { Enable-NovaEcho -Path $EchoFile }
 } catch {
     Write-Host ''
     Write-Nova ('Ошибка: {0}' -f $_.Exception.Message) err
@@ -1168,6 +1223,8 @@ try {
         'Report' { Show-NovaBanner; $exitCode = Invoke-NovaReportFlow }
         'Game' { Show-NovaBanner; $exitCode = Invoke-NovaGameModeFlow }
         'Driver' { Show-NovaBanner; $exitCode = Invoke-NovaDriverFlow }
+        'SelfUpdate' { Show-NovaBanner; $exitCode = Invoke-NovaSelfUpdateMode }
+        'Rollback' { Show-NovaBanner; $exitCode = Invoke-NovaRollbackMode }
     }
 } catch {
     Write-Nova ('Ошибка: {0}' -f (Get-NovaPlainText $_.Exception.Message 400)) err

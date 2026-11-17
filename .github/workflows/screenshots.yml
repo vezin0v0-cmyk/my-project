@@ -6,6 +6,7 @@ on:
       - 'src/**'
       - 'config.json'
       - 'tests/Take-Screenshots.ps1'
+      - 'assets/**'
       - '.github/workflows/screenshots.yml'
   workflow_dispatch:
 
@@ -41,6 +42,10 @@ jobs:
       - name: Снимки после Nova
         shell: powershell
         run: ./tests/Take-Screenshots.ps1 -Prefix after
+
+      - name: Снимки Nova Центра
+        shell: powershell
+        run: ./src/NovaApp.ps1 -Screenshot (Join-Path (Get-Location) 'screenshots')
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

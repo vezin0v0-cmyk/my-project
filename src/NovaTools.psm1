@@ -491,7 +491,7 @@ $script:UpdateZip = @{
     MaxUnpacked = 62914560
     MaxEntries  = 3000
 }
-$script:UpdateFiles = @('Nova.cmd', 'NovaVoice.cmd', 'CHANGELOG.md', 'README.md', 'LICENSE', 'docs/CLEAN-INSTALL.md')
+$script:UpdateFiles = @('Nova.cmd', 'NovaCenter.cmd', 'NovaVoice.cmd', 'CHANGELOG.md', 'README.md', 'LICENSE', 'docs/CLEAN-INSTALL.md')
 $script:UpdateDirs = @('src/', 'assets/')
 $script:UpdateNever = @('config.json', 'voice.json')
 

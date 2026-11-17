@@ -159,6 +159,25 @@ jobs:
           ./src/Nova.ps1 -Mode Undo -Yes
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Nova Центр (окно открывается, все страницы рисуются)
+        shell: powershell
+        run: |
+          $shots = Join-Path $env:RUNNER_TEMP 'nova-center'
+          ./src/NovaApp.ps1 -Screenshot $shots
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $files = @(Get-ChildItem -LiteralPath $shots -Filter '*.png')
+          $files | ForEach-Object { '{0}  {1:N0} bytes' -f $_.Name, $_.Length }
+          if ($files.Count -lt 9) { throw 'Not every page of Nova Center was drawn.' }
+          # The window shows Nova's output through an echo file in the admin-only build folder.
+          $echo = Join-Path $env:ProgramData ('Nova\build\app-run-{0}.log' -f [DateTime]::UtcNow.Ticks)
+          ./src/Nova.ps1 -Mode Driver -EchoFile $echo
+          $lines = @(Get-Content -LiteralPath $echo -Encoding UTF8)
+          "echo lines: $($lines.Count)"; $lines | Select-Object -First 6
+          if ($lines.Count -lt 3 -or $lines[0] -notmatch "^\w+`t") { throw 'Echo for Nova Center is empty or has no colors.' }
+          $evil = Join-Path $env:RUNNER_TEMP 'app-run-1.log'
+          ./src/Nova.ps1 -Mode Driver -EchoFile $evil
+          if (Test-Path -LiteralPath $evil) { throw 'Echo went outside the Nova build folder.' }
+
       - name: Как у пользователя — скачать с сайта, распаковать, пройти меню
         shell: powershell
         # Only ASCII inside: GitHub saves this script without BOM, and Windows PowerShell 5.1 would misread Cyrillic.
@@ -176,7 +195,7 @@ jobs:
           $dir = Join-Path $env:RUNNER_TEMP 'user-download'
           Expand-Archive -LiteralPath $zip -DestinationPath $dir -Force
           $root = (Get-ChildItem -LiteralPath $dir -Directory | Select-Object -First 1).FullName
-          foreach ($f in @('Nova.cmd', 'NovaVoice.cmd', 'config.json', 'voice.json', 'CHANGELOG.md', 'src\Nova.ps1', 'src\Nova.psm1', 'src\NovaPlay.psm1', 'src\NovaTools.psm1', 'src\NovaVoiceStartup.cmd', 'assets')) {
+          foreach ($f in @('Nova.cmd', 'NovaCenter.cmd', 'src\NovaApp.ps1', 'assets\nova.ico', 'NovaVoice.cmd', 'config.json', 'voice.json', 'CHANGELOG.md', 'src\Nova.ps1', 'src\Nova.psm1', 'src\NovaPlay.psm1', 'src\NovaTools.psm1', 'src\NovaVoiceStartup.cmd', 'assets')) {
             if (-not (Test-Path -LiteralPath (Join-Path $root $f))) { throw "Missing in the download: $f" }
           }
           $mine = [regex]::Match((Get-Content -LiteralPath 'src/Nova.psm1' -Raw), "NovaVersion = '([0-9.]+)'").Groups[1].Value
