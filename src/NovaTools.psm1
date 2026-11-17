@@ -410,11 +410,11 @@ function Select-NovaBetterDns {
 
 # Убираем из отчёта то, что не нужно поддержке: имя пользователя, имя компьютера, папку профиля, почту.
 function Protect-NovaReportText {
-    param([string]$Text, [string]$UserName = $env:USERNAME, [string]$ComputerName = $env:COMPUTERNAME, [string]$UserProfile = [Environment]::GetFolderPath('UserProfile'))
+    param([string]$Text, [string]$UserName = $env:USERNAME, [string]$Machine = $env:COMPUTERNAME, [string]$UserProfile = [Environment]::GetFolderPath('UserProfile'))
     $t = [string]$Text
     if ($UserProfile -and $UserProfile.Length -ge 4) { $t = $t -ireplace [regex]::Escape($UserProfile), '%USERPROFILE%' }
     if ($UserName -and $UserName.Length -ge 2) { $t = $t -ireplace [regex]::Escape($UserName), '<пользователь>' }
-    if ($ComputerName -and $ComputerName.Length -ge 2) { $t = $t -ireplace [regex]::Escape($ComputerName), '<компьютер>' }
+    if ($Machine -and $Machine.Length -ge 2) { $t = $t -ireplace [regex]::Escape($Machine), '<компьютер>' }
     $t = $t -replace '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', '<почта>'
     return $t
 }

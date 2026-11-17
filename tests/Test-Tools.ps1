@@ -92,7 +92,7 @@ if ($real.Count -lt 10) { throw ('процессов подозрительно 
 Write-Host ('ok  снимок нагрузки на этой машине: программ {0}, память {1}%' -f $real.Count, (Get-NovaMemoryLoad).Percent)
 
 # --- Отчёт для поддержки: без имени пользователя, компьютера и почты
-$t = Protect-NovaReportText -Text 'C:\Users\Vadim\Desktop vadim@mail.ru VADIM-PC user Vadim' -UserName 'Vadim' -ComputerName 'VADIM-PC' -UserProfile 'C:\Users\Vadim'
+$t = Protect-NovaReportText -Text 'C:\Users\Vadim\Desktop vadim@mail.ru VADIM-PC user Vadim' -UserName 'Vadim' -Machine 'VADIM-PC' -UserProfile 'C:\Users\Vadim'
 if ($t -match 'Vadim|VADIM|mail\.ru') { throw ('в отчёте осталось личное: {0}' -f $t) }
 $dir = Join-Path $env:TEMP ('nova-report-' + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $dir | Out-Null
