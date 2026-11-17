@@ -21,6 +21,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Файл сводки
+        shell: pwsh
+        run: Add-Content -LiteralPath $env:GITHUB_ENV -Value ('NOVA_SUMMARY=' + (Join-Path $env:RUNNER_TEMP 'nova-summary.txt'))
+
       - name: Конструктор на сайте совпадает с программой
         shell: pwsh
         run: python tools/sync-site-data.py --check
@@ -154,3 +158,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./src/Nova.ps1 -Mode Undo -Yes
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Сводка
+        if: always()
+        shell: pwsh
+        run: if (Test-Path -LiteralPath $env:NOVA_SUMMARY) { Get-Content -LiteralPath $env:NOVA_SUMMARY -Encoding utf8 } else { 'no summary' }

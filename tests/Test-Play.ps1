@@ -5,6 +5,9 @@ $root = Split-Path -Parent $PSScriptRoot
 Import-Module (Join-Path $root 'src\Nova.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $root 'src\NovaPlay.psm1') -Force -DisableNameChecking
 
+# Короткая сводка для конца проверки на GitHub (если задан файл NOVA_SUMMARY).
+function Write-Summary([string]$Text) { Write-Host $Text; if ($env:NOVA_SUMMARY) { Add-Content -LiteralPath $env:NOVA_SUMMARY -Value $Text -Encoding UTF8 } }
+
 function Set-TestText([string]$Path, [string]$Text) {
     $dir = Split-Path -Parent $Path
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
@@ -106,11 +109,11 @@ function Get-Snapshot {
 if (Test-NovaGameModeActive) { [void](Stop-NovaGameMode) }
 $before = Get-Snapshot
 Write-Host ('до режима игры: {0}' -f $before)
-Write-Host ('уведомления до: {0}' -f (Get-NovaToastSetting))
+Write-Summary ('режим игры: уведомления до — {0}' -f (Get-NovaToastSetting))
 
 $r = Start-NovaGameMode -Updates
-Write-Host ('включено: питание {0}, уведомления {1} (применились: {2}), обновления {3}' -f $r.Power, $r.Toasts, $r.ToastsApplied, $r.Updates)
-Write-Host ('уведомления во время игры: {0}' -f (Get-NovaToastSetting))
+Write-Summary ('режим игры включён: питание {0}, уведомления {1} (применились: {2}), обновления {3}' -f $r.Power, $r.Toasts, $r.ToastsApplied, $r.Updates)
+Write-Summary ('режим игры: уведомления во время игры — {0}' -f (Get-NovaToastSetting))
 if (-not (Test-NovaGameModeActive)) { throw 'Режим игры: не включился' }
 if ([int](Get-NovaRegValue -Path $toastKey -Name 'NOC_GLOBAL_SETTING_TOASTS_ENABLED').Value -ne 0) { throw 'Режим игры: уведомления не выключены' }
 $expiry = ConvertFrom-NovaUtcText ([string](Get-NovaRegValue -Path $pauseKey -Name 'PauseUpdatesExpiryTime').Value)
@@ -121,7 +124,7 @@ Write-Host ('во время игры: {0}' -f (Get-Snapshot))
 $again = Start-NovaGameMode -Updates
 if ($again.Power -ne $r.Power) { throw 'Режим игры: повторное включение изменило запись о питании' }
 $off = Stop-NovaGameMode
-Write-Host ('выключено: питание {0}, уведомления {1}, обновления {2}' -f $off.Power, $off.Toasts, $off.Updates)
+Write-Summary ('режим игры выключен: питание {0}, уведомления {1}, обновления {2}' -f $off.Power, $off.Toasts, $off.Updates)
 $after = Get-Snapshot
 if ($after -ne $before) { throw ("Режим игры: после выключения не как было.`nдо:    {0}`nпосле: {1}" -f $before, $after) }
 if (Test-NovaGameModeActive) { throw 'Режим игры: после выключения остались записи' }
@@ -165,4 +168,4 @@ Write-Host 'ok  режим игры: подделанные записи (чуж
 
 $apps = @(Get-NovaBackgroundApps)
 Write-Host ('фоновых программ сейчас: {0}' -f $apps.Count)
-Write-Host 'ТЕСТ РЕЖИМА ИГРЫ ПРОЙДЕН'
+Write-Summary 'ok  тест режима игры и поиска игр пройден'

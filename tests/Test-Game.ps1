@@ -6,6 +6,9 @@ Import-Module (Join-Path $root 'src\Nova.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $root 'src\NovaGame.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $root 'src\NovaMove.psm1') -Force -DisableNameChecking
 
+# Короткая сводка для конца проверки на GitHub (если задан файл NOVA_SUMMARY).
+function Write-Summary([string]$Text) { Write-Host $Text; if ($env:NOVA_SUMMARY) { Add-Content -LiteralPath $env:NOVA_SUMMARY -Value $Text -Encoding UTF8 } }
+
 function Assert-Check {
     param($Check, [string]$Status, [string]$Contains, [string]$What)
     if (-not $Check) { throw ('{0}: совета нет' -f $What) }
@@ -207,8 +210,8 @@ Write-Host 'ok  совет «свежий ли драйвер»: последн�
 # Настоящий сайт NVIDIA: спрашиваем про популярную видеокарту. Без сети тест не падает.
 try {
     $live = Get-NovaNvidiaLatest -Name 'NVIDIA GeForce RTX 3060'
-    Write-Host ('ok  сайт NVIDIA: последний драйвер для RTX 3060 — {0} от {1:yyyy-MM-dd}, страница {2}' -f $live.Version, $live.Date, $live.Page)
+    Write-Summary ('ok  сайт NVIDIA: последний драйвер для RTX 3060 — {0} от {1:yyyy-MM-dd}, страница {2}' -f $live.Version, $live.Date, $live.Page)
 } catch {
-    Write-Host ('::warning::Сайт NVIDIA не ответил: {0}' -f $_.Exception.Message)
+    Write-Summary ('::warning::Сайт NVIDIA не ответил: {0}' -f $_.Exception.Message)
 }
 Write-Host 'ТЕСТ ГОТОВНОСТИ К ИГРАМ ПРОЙДЕН'

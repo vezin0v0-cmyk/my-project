@@ -83,6 +83,9 @@ try {
 # --- Обновление одной кнопкой ---
 Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
 $utf8 = New-Object Text.UTF8Encoding($false)
+# Короткая сводка для конца проверки на GitHub (если задан файл NOVA_SUMMARY).
+function Write-Summary([string]$Text) { Write-Host $Text; if ($env:NOVA_SUMMARY) { Add-Content -LiteralPath $env:NOVA_SUMMARY -Value $Text -Encoding UTF8 } }
+
 function New-TestZip([string]$Path, [System.Collections.IDictionary]$Entries) {
     $fs = [IO.File]::Open($Path, [IO.FileMode]::CreateNew)
     $zip = New-Object System.IO.Compression.ZipArchive($fs, [System.IO.Compression.ZipArchiveMode]::Create)
@@ -186,7 +189,7 @@ try {
         if (-not $threw) { throw ('злой архив «{0}» принят' -f $name) }
     }
     if ((Get-TreeHash $project) -ne $original) { throw 'злые архивы что-то поменяли в папке Nova' }
-    Write-Host ('ok  злые архивы отвергнуты целиком: {0}' -f ($evil.Keys -join ', '))
+    Write-Summary ('ok  злые архивы отвергнуты целиком: {0}' -f ($evil.Keys -join ', '))
 
     # Папка src подменена ссылкой на другое место — обновлять туда Nova не будет.
     $elsewhere = Join-Path $work 'elsewhere'
@@ -209,7 +212,7 @@ try {
 try {
     $zip = Save-NovaUpdateZip
     try { $live = Read-NovaUpdatePackage -ZipPath $zip } finally { Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue }
-    Write-Host ('ok  архив с GitHub: Nova {0}, файлов программы {1}' -f $live.Version, @($live.Files).Count)
+    Write-Summary ('ok  архив с GitHub: Nova {0}, файлов программы {1}' -f $live.Version, @($live.Files).Count)
     if (@($live.Files | Where-Object { $_.Path -eq 'config.json' -or $_.Path -eq 'voice.json' }).Count -gt 0) { throw 'из настоящего архива взяты бы config.json или voice.json' }
     if ((ConvertTo-NovaVersion $live.Version) -le (ConvertTo-NovaVersion (Get-NovaVersion))) {
         $threw = $false
@@ -218,6 +221,6 @@ try {
     }
 } catch {
     if ($_.Exception.Message -like '*взяты бы*' -or $_.Exception.Message -like '*поставлен*') { throw }
-    Write-Host ('::warning::Скачать архив с GitHub не получилось: {0}' -f $_.Exception.Message)
+    Write-Summary ('::warning::Скачать архив с GitHub не получилось: {0}' -f $_.Exception.Message)
 }
 Write-Host 'ТЕСТ ОБНОВЛЕНИЙ ПРОЙДЕН'
