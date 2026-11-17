@@ -820,21 +820,33 @@ function Start-NovaConsole([string]$Arguments) {
 $script:Jobs = New-Object System.Collections.Generic.List[object]
 $jobTimer = New-Object Windows.Threading.DispatcherTimer
 $jobTimer.Interval = [TimeSpan]::FromMilliseconds(150)
-function Start-NovaBackground([string]$Script, [object[]]$Arguments, [scriptblock]$OnDone) {
+# Свой поток (runspace) создаём явно: [powershell]::Create() без него внутри окна мог встать в очередь
+# за самим окном и не закончиться никогда. Дольше полутора минут не ждём.
+function Start-NovaBackground([string]$Code, [object[]]$Arguments, [scriptblock]$OnDone) {
+    $rs = [runspacefactory]::CreateRunspace()
+    $rs.ApartmentState = 'STA'
+    $rs.Open()
     $ps = [powershell]::Create()
-    [void]$ps.AddScript($Script)
+    $ps.Runspace = $rs
+    [void]$ps.AddScript($Code)
     foreach ($a in $Arguments) { [void]$ps.AddArgument($a) }
-    $script:Jobs.Add(@{ Ps = $ps; Handle = $ps.BeginInvoke(); OnDone = $OnDone })
+    $script:Jobs.Add(@{ Ps = $ps; Rs = $rs; Handle = $ps.BeginInvoke(); OnDone = $OnDone; Until = [DateTime]::UtcNow.AddSeconds(90) })
     $jobTimer.Start()
 }
 $jobTimer.Add_Tick({
         foreach ($job in @($script:Jobs)) {
-            if (-not $job.Handle.IsCompleted) { continue }
+            $late = [DateTime]::UtcNow -gt $job.Until
+            if (-not $job.Handle.IsCompleted -and -not $late) { continue }
             [void]$script:Jobs.Remove($job)
             $out = $null; $err = ''
-            try { $out = $job.Ps.EndInvoke($job.Handle) } catch { $err = $(if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }) }
-            if (-not $err -and $job.Ps.Streams.Error.Count -gt 0) { $err = $job.Ps.Streams.Error[0].Exception.Message }
-            $job.Ps.Dispose()
+            if ($job.Handle.IsCompleted) {
+                try { $out = $job.Ps.EndInvoke($job.Handle) } catch { $err = $(if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }) }
+                if (-not $err -and $job.Ps.Streams.Error.Count -gt 0) { $err = $job.Ps.Streams.Error[0].Exception.Message }
+            } else {
+                $err = 'не ответила за полторы минуты'
+                try { $job.Ps.BeginStop($null, $null) | Out-Null } catch { Write-Verbose 'Поток уже остановлен.' }
+            }
+            if ($job.Handle.IsCompleted) { try { $job.Ps.Dispose(); $job.Rs.Dispose() } catch { Write-Verbose 'Поток уже убран.' } }
             try { & $job.OnDone @($out) $err } catch { Show-Toast ('Ошибка: {0}' -f (Get-NovaPlainText $_.Exception.Message 160)) }
         }
         if ($script:Jobs.Count -eq 0) { $jobTimer.Stop() }
@@ -1085,6 +1097,7 @@ function Update-State {
 }
 
 function Show-Health([object]$Result, [string]$Problem) {
+    $ui.HealthText.ToolTip = $(if ($Problem) { Get-NovaPlainText $Problem 300 } else { $null })
     if (-not $Result) { $ui.HealthText.Text = 'Проверка системы — в «Обслуживании»'; $ui.HealthChip.Background = Get-Brush '#22262F'; $ui.HealthText.Foreground = Get-Brush '#C9CEDA'; return }
     $ui.SysText.Text = $Result.Sys
     if ($Result.Stop -gt 0) { $ui.HealthText.Text = 'Есть проблемы — «Проверить систему»'; $ui.HealthChip.Background = Get-Brush '#3A1C1C'; $ui.HealthText.Foreground = Get-Brush '#FF9A9A' }

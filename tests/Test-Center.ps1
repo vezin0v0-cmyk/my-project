@@ -119,7 +119,7 @@ try {
     $ver = Get-Name 'VerText'
     if ($ver -ne ('v' + (Get-NovaVersion))) { throw ('В окне версия «{0}», а у Nova {1}' -f $ver, (Get-NovaVersion)) }
     $health = Wait-Until { $h = Get-Name 'HealthText'; if ($h -and $h -ne 'Проверяю систему…') { $h } } 120 'проверка системы на главной'
-    if ($health -like 'Проверка системы — в*') { throw 'Проверка системы на главной не сработала' }
+    if ($health -like 'Проверка системы — в*') { throw ('Проверка системы на главной не сработала: {0}' -f (Find-Id 'HealthText').Current.HelpText) }
     $script:Done.Add(('ok  главная: версия {0}, проверка системы — «{1}»' -f $ver, $health))
     foreach ($tile in @(@('QCheck', 'Проверить систему'), @('QGame', 'Режим игры'), @('BtnClose', 'Закрыть'))) {
         $n = [string](Get-Id $tile[0]).Current.Name
@@ -285,6 +285,13 @@ try {
     if ($p -and -not $p.WaitForExit(20000)) { throw 'Окно не закрылось крестиком' }
     $appPid = $null
     $script:Done.Add('ok  окно закрылось крестиком без вопросов')
+} catch {
+    # Что окно успело показать: всплывающее сообщение и подсказку проверки системы — для разбора на GitHub.
+    if ($script:Win) {
+        try { Write-Host ('сообщение в окне: {0}' -f (Get-Name 'ToastText')) } catch { Write-Host 'сообщения в окне нет' }
+        try { Write-Host ('проверка системы: {0} / {1}' -f (Get-Name 'HealthText'), (Find-Id 'HealthText').Current.HelpText) } catch { Write-Host 'проверка системы не видна' }
+    }
+    throw
 } finally {
     if ($appPid) { Stop-Process -Id $appPid -Force -ErrorAction SilentlyContinue }
     [IO.File]::WriteAllBytes($script:ConfigPath, $configBackup)
