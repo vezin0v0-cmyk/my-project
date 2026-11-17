@@ -161,4 +161,54 @@ foreach ($v in @('NVIDIA', 'AMD', 'Intel')) {
         Write-Host ('::warning::{0}: не удалось открыть {1}: {2}' -f $v, $url, $_.Exception.Message)
     }
 }
+# --- Свежий ли драйвер ---
+$versions = [ordered]@{ '32.0.15.6636' = '566.36'; '31.0.15.5222' = '552.22'; '27.21.14.5671' = '456.71'; '30.0.15.1179' = '511.79'; '32.0.15.7283' = '572.83' }
+foreach ($v in $versions.Keys) { if ((ConvertTo-NovaNvidiaVersion $v) -ne $versions[$v]) { throw ('Версия NVIDIA {0} → {1}, а не {2}' -f $v, (ConvertTo-NovaNvidiaVersion $v), $versions[$v]) } }
+foreach ($bad in @('', 'abc', '1.2.3', '32.0.15.66x6', '1.2.3.4.5')) { if ($null -ne (ConvertTo-NovaNvidiaVersion $bad)) { throw ('Версия NVIDIA из «{0}» не должна получаться' -f $bad) } }
+Write-Host 'ok  версия драйвера NVIDIA: 32.0.15.6636 → 566.36'
+
+$xml = '<?xml version="1.0" encoding="utf-8"?><LookupValueSearch><LookupValues><LookupValue ParentID="120" RequiresProduct="True"><Name>GeForce RTX 3060</Name><Value>929</Value></LookupValue><LookupValue ParentID="123"><Name>GeForce RTX 3060 Laptop GPU</Name><Value>942</Value></LookupValue><LookupValue ParentID="101"><Name>GeForce GTX 1060</Name><Value>815</Value></LookupValue><LookupValue ParentID="x"><Name>GeForce Evil</Name><Value>1;2</Value></LookupValue></LookupValues></LookupValueSearch>'
+$found = [ordered]@{ 'NVIDIA GeForce RTX 3060' = '929/120'; 'NVIDIA GeForce RTX 3060 Laptop GPU' = '942/123'; 'NVIDIA GeForce GTX 1060 6GB' = '815/101'; 'NVIDIA GeForce RTX 9999' = ''; 'NVIDIA GeForce Evil' = '' }
+foreach ($name in $found.Keys) {
+    $p = Find-NovaNvidiaProduct -Xml $xml -Name $name
+    $got = ''
+    if ($p) { $got = '{0}/{1}' -f $p.Pfid, $p.Psid }
+    if ($got -ne $found[$name]) { throw ('Видеокарта «{0}» на сайте NVIDIA: {1}, а ждали {2}' -f $name, $got, $found[$name]) }
+}
+$bomb = '<?xml version="1.0"?><!DOCTYPE x [<!ENTITY a "aaaaaaaaaa"><!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">]><LookupValueSearch><LookupValue ParentID="1"><Name>&b;</Name><Value>1</Value></LookupValue></LookupValueSearch>'
+$threw = $false
+try { [void](Find-NovaNvidiaProduct -Xml $bomb -Name 'x') } catch { $threw = $true }
+if (-not $threw) { throw 'XML с DTD (entity-бомба) принят' }
+Write-Host 'ok  список видеокарт NVIDIA: точное имя, ноутбучная, «6GB» в конце; DTD-бомба отвергнута'
+
+$json = '{"Success":"1","IDS":[{"downloadInfo":{"Success":"1","ID":"237922","Version":"566.36","ReleaseDateTime":"Thu Dec 05, 2024","DownloadURL":"https://us.download.nvidia.com/x.exe"}}]}'
+$latest = ConvertFrom-NovaNvidiaDriverJson $json
+if ($latest.Version -ne '566.36' -or $latest.Date -ne [datetime]'2024-12-05' -or $latest.Page -ne 'https://www.nvidia.com/en-us/drivers/details/237922/') { throw ('Ответ NVIDIA разобран неверно: {0} {1} {2}' -f $latest.Version, $latest.Date, $latest.Page) }
+if ($null -ne (ConvertFrom-NovaNvidiaDriverJson '{"IDS":[{"downloadInfo":{"Version":"566.36<script>","ID":"1"}}]}')) { throw 'Странная версия из ответа NVIDIA принята' }
+if ((ConvertFrom-NovaNvidiaDriverJson '{"IDS":[{"downloadInfo":{"Version":"566.36","ID":"../evil"}}]}').Page -ne '') { throw 'Странный номер страницы драйвера принят' }
+Write-Host 'ok  ответ NVIDIA: версия, дата и страница драйвера; мусор не принимается'
+
+$now = [datetime]'2026-11-17'
+$nv = [pscustomobject]@{ Name = 'NVIDIA GeForce RTX 3060'; PnpId = 'PCI\VEN_10DE&DEV_2503'; DriverVersion = '32.0.15.6636'; DriverDate = [datetime]'2024-12-05'; ErrorCode = 0 }
+Assert-Check (Get-NovaDriverFreshAdvice -Gpu $nv -Latest $latest -Now $now) 'ok' 'последний' 'NVIDIA: драйвер последний'
+$newer = [pscustomobject]@{ Version = '581.80'; Date = [datetime]'2026-11-04'; Page = 'https://www.nvidia.com/en-us/drivers/details/1/' }
+$c = Get-NovaDriverFreshAdvice -Gpu $nv -Latest $newer -Now $now
+Assert-Check $c 'warn' '581.80' 'NVIDIA: вышел новый драйвер'
+if ($c.Hint -notlike '*drivers/details/1/*') { throw 'NVIDIA: в совете нет ссылки на страницу драйвера' }
+Assert-Check (Get-NovaDriverFreshAdvice -Gpu $nv -Latest $null -Now $now -LookupError 'нет сети') 'warn' 'полугода' 'NVIDIA без ответа сайта, старый драйвер'
+$amd = [pscustomobject]@{ Name = 'AMD Radeon RX 7800 XT'; PnpId = 'PCI\VEN_1002&DEV_747E'; DriverVersion = '32.0.12011.1036'; DriverDate = [datetime]'2026-10-20'; ErrorCode = 0 }
+Assert-Check (Get-NovaDriverFreshAdvice -Gpu $amd -Latest $null -Now $now) 'info' '32.0.12011.1036' 'AMD: свежий по дате'
+$amd.DriverDate = [datetime]'2025-12-01'
+Assert-Check (Get-NovaDriverFreshAdvice -Gpu $amd -Latest $null -Now $now) 'warn' 'полугода' 'AMD: старый по дате'
+$basic = [pscustomobject]@{ Name = 'Microsoft Basic Display Adapter'; PnpId = 'PCI\VEN_10DE&DEV_2503'; DriverVersion = '10.0.1'; DriverDate = $null; ErrorCode = 0 }
+Assert-Check (Get-NovaDriverFreshAdvice -Gpu $basic -Latest $null -Now $now) 'warn' 'не установлен' 'NVIDIA на базовом драйвере'
+Write-Host 'ok  совет «свежий ли драйвер»: последний, вышел новый, нет ответа сайта, AMD по дате, базовый драйвер'
+
+# Настоящий сайт NVIDIA: спрашиваем про популярную видеокарту. Без сети тест не падает.
+try {
+    $live = Get-NovaNvidiaLatest -Name 'NVIDIA GeForce RTX 3060'
+    Write-Host ('ok  сайт NVIDIA: последний драйвер для RTX 3060 — {0} от {1:yyyy-MM-dd}, страница {2}' -f $live.Version, $live.Date, $live.Page)
+} catch {
+    Write-Host ('::warning::Сайт NVIDIA не ответил: {0}' -f $_.Exception.Message)
+}
 Write-Host 'ТЕСТ ГОТОВНОСТИ К ИГРАМ ПРОЙДЕН'

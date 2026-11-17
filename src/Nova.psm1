@@ -4,7 +4,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-$script:NovaVersion = '0.6.0'
+$script:NovaVersion = '0.7.0'
 $script:Categories = [ordered]@{
     privacy     = 'ПРИВАТНОСТЬ'
     interface   = 'ИНТЕРФЕЙС'
@@ -2412,9 +2412,9 @@ function Show-NovaHealth {
 
 #region Обновления
 
-# Nova ничего не скачивает и не ставит сама. Только когда пользователь попросит (пункт 12),
-# она читает с GitHub один небольшой файл — CHANGELOG.md — и сравнивает версии.
-# Ссылка на скачивание — своя, из этого файла, а не из ответа сервера.
+# В интернет за обновлением Nova идёт только по просьбе (пункт 12): сначала читает с GitHub один небольшой
+# файл — CHANGELOG.md — и сравнивает версии. Архив новой версии скачивается, только если ты согласишься.
+# Адреса — свои, вшитые в программу, а не из ответа сервера.
 $script:NovaUpdate = @{
     ChangelogUrl = 'https://raw.githubusercontent.com/vezin0v0-cmyk/my-project/claude/hello-973j4n/CHANGELOG.md'
     DownloadPage = 'https://vezin0v0-cmyk.github.io/my-project/docs/'
@@ -2488,6 +2488,56 @@ function Get-NovaRemoteChangelog {
     } finally {
         $response.Close()
     }
+}
+
+# Скачивает по HTTPS только с перечисленных сайтов: не больше MaxBytes и не дольше TimeoutSeconds.
+# Переадресации проверяются так же — увести загрузку на другой сайт нельзя.
+function Get-NovaHttpBytes {
+    param([Parameter(Mandatory)][string]$Url, [Parameter(Mandatory)][string[]]$AllowedHosts, [int]$MaxBytes = 1048576, [int]$TimeoutSeconds = 30)
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    $current = $Url
+    for ($hop = 0; $hop -lt 4; $hop++) {
+        $uri = [Uri]$current
+        if ($uri.Scheme -ne 'https' -or $AllowedHosts -notcontains $uri.Host.ToLowerInvariant() -or -not $uri.IsDefaultPort) { throw ('Nova не скачивает с {0}' -f $uri.Host) }
+        $request = [System.Net.HttpWebRequest]::Create($uri)
+        $request.Timeout = $TimeoutSeconds * 1000
+        $request.ReadWriteTimeout = $TimeoutSeconds * 1000
+        $request.AllowAutoRedirect = $false
+        $request.UserAgent = 'Nova'
+        $response = $null
+        try {
+            $response = $request.GetResponse()
+        } catch [System.Net.WebException] {
+            $response = $_.Exception.Response
+            if ($null -eq $response) { throw }
+        }
+        try {
+            $code = [int]$response.StatusCode
+            if (@(301, 302, 303, 307, 308) -contains $code) {
+                $location = [string]$response.Headers['Location']
+                if (-not $location) { throw 'Сайт ответил переадресацией без адреса.' }
+                $current = ([Uri]::new($uri, $location)).AbsoluteUri
+                continue
+            }
+            if ($code -ne 200) { throw ('Сайт ответил кодом {0}.' -f $code) }
+            if ($response.ContentLength -gt $MaxBytes) { throw 'Ответ сайта слишком большой.' }
+            $stream = $response.GetResponseStream()
+            $buffer = New-Object byte[] ([math]::Min($MaxBytes + 1, 65536))
+            $data = New-Object System.IO.MemoryStream
+            while ($true) {
+                if ($watch.Elapsed.TotalSeconds -gt $TimeoutSeconds) { throw 'Сайт отвечает слишком долго.' }
+                $read = $stream.Read($buffer, 0, $buffer.Length)
+                if ($read -le 0) { break }
+                $data.Write($buffer, 0, $read)
+                if ($data.Length -gt $MaxBytes) { throw 'Ответ сайта слишком большой.' }
+            }
+            return , $data.ToArray()
+        } finally {
+            $response.Close()
+        }
+    }
+    throw 'Слишком много переадресаций.'
 }
 
 # Что нового с версии, которую человек видел в прошлый раз: версии новее $Seen, но не новее своей.

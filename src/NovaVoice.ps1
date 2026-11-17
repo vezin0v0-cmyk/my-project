@@ -83,6 +83,27 @@ function Invoke-NovaVoiceStartupFlow {
     }
 }
 
+# Найденные игры: какие запускаются голосом и что сказать. Для остальных — готовая строка для voice.json.
+function Show-NovaVoiceGames {
+    param($Config)
+    $gameCommands = @($Config.Commands | Where-Object { $_.Do -eq 'game' })
+    if ($gameCommands.Count -eq 0) { return }
+    $prefix = ($gameCommands[0].Say[0] -split ' ')[0]
+    Write-Nova ('«{0}, {1}» — последняя игра, в которую ты играл в Steam' -f $Config.WakeWord, $gameCommands[0].Say[0]) info
+    $games = @($Config.Games)
+    if ($games.Count -eq 0) { Write-Nova 'Игр Steam, Epic Games и Riot на этом компьютере не нашла.' dim; return }
+    $named = @($gameCommands | Where-Object { $_.Game })
+    foreach ($c in $named) { Write-Nova ('«{0}, {1}» → {2}' -f $Config.WakeWord, $c.Say[0], $c.Game.Name) info }
+    $silent = @($games | Where-Object { @($_.Words).Count -eq 0 -and $_.Uri })
+    if ($silent.Count -gt 0) {
+        Write-Nova ('Эти игры я знаю только по-английски — добавь им свою фразу в voice.json:') dim
+        foreach ($g in @($silent | Select-Object -First 8)) {
+            Write-Nova ('  {0}: {{ "say": ["{1} …"], "run": "{2}" }}' -f $g.Name, $prefix, $g.Uri) dim
+        }
+        if ($silent.Count -gt 8) { Write-Nova ('  …и ещё {0}' -f ($silent.Count - 8)) dim }
+    }
+}
+
 try { $Host.UI.RawUI.WindowTitle = 'Nova Голос' } catch { Write-Verbose 'Заголовок окна не меняется.' }
 Write-Host ''
 Write-Nova 'NOVA ГОЛОС' title
@@ -164,12 +185,20 @@ try {
     } else {
         Write-Host ''
         Write-Nova 'Команды:' title
+        $shownTimer = $false
         foreach ($command in $config.Commands) {
+            if ($command.Do -eq 'game') { continue }
+            if ($command.Do -eq 'timer') {
+                if (-not $shownTimer) { Write-Nova ('«{0}, {1} на пять минут» — от десяти секунд до часа' -f $config.WakeWord, $command.Say[0].Split(' ')[0]) info }
+                $shownTimer = $true
+                continue
+            }
             # Свои команды — с тем, что именно они откроют или нажмут: чужой voice.json сразу виден.
             $what = ''
             if ($command.Run) { $what = ' → откроет ' + $command.Run } elseif ($command.Keys) { $what = ' → нажмёт ' + $command.Keys }
             Write-Nova ('«{0}, {1}»{2}' -f $config.WakeWord, ($command.Say -join '» / «'), $what) info
         }
+        Show-NovaVoiceGames -Config $config
         Write-Host ''
         Start-NovaVoiceListener -Config $config
     }

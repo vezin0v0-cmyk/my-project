@@ -1,8 +1,10 @@
-﻿# Проверка обновлений: Nova читает только CHANGELOG.md и ничего не скачивает сама.
-# Здесь — разбор списка изменений без интернета и сверка с версией программы; в конце — настоящий запрос, если есть сеть.
+﻿# Проверка обновлений: список изменений (CHANGELOG.md) и обновление одной кнопкой.
+# Здесь — разбор списка изменений без интернета, установка из подложенных архивов (в том числе злых) во временную
+# папку и откат назад; в конце — настоящие запросы к GitHub, если есть сеть.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Import-Module (Join-Path $root 'src\Nova.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $root 'src\NovaTools.psm1') -Force -DisableNameChecking
 
 # Номера версий: «0.5» и «0.5.0» равны, мусор не принимается.
 if ((ConvertTo-NovaVersion '0.5') -ne (ConvertTo-NovaVersion '0.5.0')) { throw '0.5 и 0.5.0 должны быть одной версией' }
@@ -77,5 +79,135 @@ try {
     Write-Host ('ok  GitHub: последняя версия {0}, у нас {1}' -f $live.Latest, $live.Current)
 } catch {
     Write-Host ('::warning::Проверить обновления на GitHub не получилось: {0}' -f $_.Exception.Message)
+}
+# --- Обновление одной кнопкой ---
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+$utf8 = New-Object Text.UTF8Encoding($false)
+function New-TestZip([string]$Path, [System.Collections.IDictionary]$Entries) {
+    $fs = [IO.File]::Open($Path, [IO.FileMode]::CreateNew)
+    $zip = New-Object System.IO.Compression.ZipArchive($fs, [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($name in $Entries.Keys) {
+            $entry = $zip.CreateEntry($name)
+            $stream = $entry.Open()
+            try {
+                $value = $Entries[$name]
+                if ($value -is [int]) {
+                    # Столько мегабайт нулей: в архиве почти ничего не весят.
+                    $chunk = New-Object byte[] 1048576
+                    for ($i = 0; $i -lt $value; $i++) { $stream.Write($chunk, 0, $chunk.Length) }
+                } else {
+                    $bytes = $utf8.GetBytes([string]$value)
+                    $stream.Write($bytes, 0, $bytes.Length)
+                }
+            } finally { $stream.Dispose() }
+        }
+    } finally { $zip.Dispose(); $fs.Dispose() }
+}
+function Get-TreeHash([string]$Dir) {
+    $full = (Resolve-Path -LiteralPath $Dir).Path.TrimEnd('\')
+    return ((Get-ChildItem -LiteralPath $Dir -Recurse -File | Sort-Object FullName | ForEach-Object { '{0}={1}' -f $_.FullName.Substring($full.Length), (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }) -join "`n")
+}
+
+$work = Join-Path ([IO.Path]::GetTempPath()) ('nova-upd-' + [Guid]::NewGuid().ToString('N'))
+$project = Join-Path $work 'Nova'
+$backups = Join-Path $work 'backups'
+New-Item -ItemType Directory -Path (Join-Path $project 'src'), (Join-Path $project 'assets'), $backups -Force | Out-Null
+try {
+    $files = [ordered]@{
+        'Nova.cmd' = 'old cmd'; 'README.md' = 'same readme'; 'config.json' = '{"mine":true}'; 'voice.json' = '{"mine":true}'
+        'src\Nova.ps1' = 'old ps1'; 'src\Nova.psm1' = "`$script:NovaVersion = '0.7.0'"; 'src\Old.psm1' = 'stale'; 'assets\wall.jpg' = 'my wallpaper'
+    }
+    foreach ($k in $files.Keys) { [IO.File]::WriteAllText((Join-Path $project $k), $files[$k], $utf8) }
+    $original = Get-TreeHash $project
+
+    $good = Join-Path $work 'good.zip'
+    New-TestZip $good ([ordered]@{
+            'my-project-x/' = ''; 'my-project-x/Nova.cmd' = 'new cmd'; 'my-project-x/README.md' = 'same readme'
+            'my-project-x/src/' = ''; 'my-project-x/src/Nova.ps1' = 'new ps1'; 'my-project-x/src/Nova.psm1' = "# engine`r`n`$script:NovaVersion = '9.9.9'`r`n"
+            'my-project-x/src/New.psm1' = 'new module'; 'my-project-x/assets/new.png' = 'png'
+            'my-project-x/config.json' = '{"theirs":true}'; 'my-project-x/voice.json' = '{"theirs":true}'; 'my-project-x/tests/Evil.ps1' = 'not needed'
+        })
+    $package = Read-NovaUpdatePackage -ZipPath $good
+    $paths = (@($package.Files | ForEach-Object { $_.Path } | Sort-Object) -join ',')
+    if ($package.Version -ne '9.9.9') { throw ('версия из архива: {0}' -f $package.Version) }
+    if ($paths -ne 'assets/new.png,Nova.cmd,README.md,src/New.psm1,src/Nova.ps1,src/Nova.psm1') { throw ('из архива взяты не те файлы: {0}' -f $paths) }
+    $result = Install-NovaUpdate -Package $package -Root $project -BackupRoot $backups -Current '0.7.0'
+    if ($result.Added -ne 2 -or $result.Replaced -ne 3 -or $result.Removed -ne 1) { throw ('обновление: новых {0}, заменено {1}, убрано {2}' -f $result.Added, $result.Replaced, $result.Removed) }
+    if ([IO.File]::ReadAllText((Join-Path $project 'config.json')) -ne '{"mine":true}' -or [IO.File]::ReadAllText((Join-Path $project 'voice.json')) -ne '{"mine":true}') { throw 'обновление тронуло config.json или voice.json' }
+    if ((Test-Path (Join-Path $project 'src\Old.psm1')) -or -not (Test-Path (Join-Path $project 'src\New.psm1')) -or (Test-Path (Join-Path $project 'tests'))) { throw 'обновление: не те файлы в src или лишняя папка tests' }
+    if ([IO.File]::ReadAllText((Join-Path $project 'assets\wall.jpg')) -ne 'my wallpaper') { throw 'обновление тронуло твои файлы в assets' }
+    if ([IO.File]::ReadAllText((Join-Path $project 'Nova.cmd')) -ne 'new cmd') { throw 'Nova.cmd не обновился' }
+    Write-Host 'ok  обновление из архива: файлы программы новые, config.json, voice.json и твои обои не тронуты, лишнее не распаковано'
+
+    $saved = @(Get-NovaUpdateBackups -BackupRoot $backups)
+    if ($saved.Count -ne 1 -or $saved[0].From -ne '0.7.0' -or $saved[0].To -ne '9.9.9') { throw 'копия прошлой версии не найдена' }
+    [void](Restore-NovaUpdate -Backup $saved[0] -Root $project)
+    if ((Get-TreeHash $project) -ne $original) { throw 'после отката папка Nova не такая, как была' }
+    if (@(Get-NovaUpdateBackups -BackupRoot $backups).Count -ne 0) { throw 'копию после отката можно вернуть второй раз' }
+    Write-Host 'ok  откат: папка Nova снова байт в байт как до обновления'
+
+    # Не новее своей — не ставим.
+    $threw = $false
+    try { [void](Install-NovaUpdate -Package $package -Root $project -BackupRoot $backups -Current '9.9.9') } catch { $threw = $true }
+    if (-not $threw) { throw 'та же версия поставлена как обновление' }
+
+    # Злые архивы: каждый должен быть отвергнут целиком, а папка Nova — остаться как была.
+    $evil = [ordered]@{
+        'выход из папки'      = [ordered]@{ '../evil.txt' = 'x'; 'my-project-x/src/Nova.psm1' = "`$script:NovaVersion = '9.9.9'" }
+        'выход через src'     = [ordered]@{ 'my-project-x/src/../../evil.ps1' = 'x' }
+        'обратная косая'      = [ordered]@{ 'my-project-x/src\evil.ps1' = 'x' }
+        'двоеточие'           = [ordered]@{ 'my-project-x/src/evil.ps1:stream' = 'x' }
+        'две верхние папки'   = [ordered]@{ 'a/src/Nova.psm1' = 'x'; 'b/src/Nova.ps1' = 'x' }
+        'без движка'          = [ordered]@{ 'my-project-x/Nova.cmd' = 'x'; 'my-project-x/src/Nova.ps1' = 'x' }
+        'без версии'          = [ordered]@{ 'my-project-x/Nova.cmd' = 'x'; 'my-project-x/src/Nova.ps1' = 'x'; 'my-project-x/src/Nova.psm1' = 'no version' }
+        'одно имя дважды'     = [ordered]@{ 'my-project-x/src/A.ps1' = 'x'; 'my-project-x/src/a.ps1' = 'y' }
+        'бомба из нулей'      = [ordered]@{ 'my-project-x/src/zeros.bin' = 25 }
+        'управляющий символ'  = [ordered]@{ ('my-project-x/src/ev' + [char]27 + 'il.ps1') = 'x' }
+        'точка в конце имени' = [ordered]@{ 'my-project-x/src/evil.ps1.' = 'x' }
+    }
+    $n = 0
+    foreach ($name in $evil.Keys) {
+        $n++
+        $zipPath = Join-Path $work ('evil{0}.zip' -f $n)
+        New-TestZip $zipPath $evil[$name]
+        $threw = $false
+        try { [void](Read-NovaUpdatePackage -ZipPath $zipPath) } catch { $threw = $true; Write-Host ('    {0}: {1}' -f $name, $_.Exception.Message) }
+        if (-not $threw) { throw ('злой архив «{0}» принят' -f $name) }
+    }
+    if ((Get-TreeHash $project) -ne $original) { throw 'злые архивы что-то поменяли в папке Nova' }
+    Write-Host ('ok  злые архивы отвергнуты целиком: {0}' -f ($evil.Keys -join ', '))
+
+    # Папка src подменена ссылкой на другое место — обновлять туда Nova не будет.
+    $elsewhere = Join-Path $work 'elsewhere'
+    Rename-Item -LiteralPath (Join-Path $project 'src') -NewName 'src-real'
+    New-Item -ItemType Directory -Path $elsewhere | Out-Null
+    New-Item -ItemType Junction -Path (Join-Path $project 'src') -Target $elsewhere | Out-Null
+    $threw = $false
+    try { [void](Install-NovaUpdate -Package $package -Root $project -BackupRoot $backups -Current '0.7.0') } catch { $threw = $true; Write-Host ('    ссылка: {0}' -f $_.Exception.Message) }
+    if (-not $threw -or @(Get-ChildItem -LiteralPath $elsewhere).Count -ne 0) { throw 'обновление прошло сквозь ссылку' }
+    [IO.Directory]::Delete((Join-Path $project 'src'))
+    Rename-Item -LiteralPath (Join-Path $project 'src-real') -NewName 'src'
+    Write-Host 'ok  ссылка вместо папки src: обновление отказалось, в чужое место ничего не записано'
+} finally {
+    $link = Join-Path $project 'src'
+    if ((Test-Path -LiteralPath $link) -and ((Get-Item -LiteralPath $link -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { [IO.Directory]::Delete($link) }
+    Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# Настоящий архив с GitHub: скачивается, проходит проверку, версия в нём — как у программы (ставить нечего).
+try {
+    $zip = Save-NovaUpdateZip
+    try { $live = Read-NovaUpdatePackage -ZipPath $zip } finally { Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue }
+    Write-Host ('ok  архив с GitHub: Nova {0}, файлов программы {1}' -f $live.Version, @($live.Files).Count)
+    if (@($live.Files | Where-Object { $_.Path -eq 'config.json' -or $_.Path -eq 'voice.json' }).Count -gt 0) { throw 'из настоящего архива взяты бы config.json или voice.json' }
+    if ((ConvertTo-NovaVersion $live.Version) -le (ConvertTo-NovaVersion (Get-NovaVersion))) {
+        $threw = $false
+        try { [void](Install-NovaUpdate -Package $live -Root $root -BackupRoot $env:TEMP) } catch { $threw = $true }
+        if (-not $threw) { throw 'архив той же версии поставлен как обновление' }
+    }
+} catch {
+    if ($_.Exception.Message -like '*взяты бы*' -or $_.Exception.Message -like '*поставлен*') { throw }
+    Write-Host ('::warning::Скачать архив с GitHub не получилось: {0}' -f $_.Exception.Message)
 }
 Write-Host 'ТЕСТ ОБНОВЛЕНИЙ ПРОЙДЕН'

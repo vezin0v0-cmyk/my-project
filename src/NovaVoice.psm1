@@ -4,6 +4,7 @@
 
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Nova.psm1') -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'NovaPlay.psm1') -DisableNameChecking
 
 # Движок Vosk (Apache 2.0) и русская модель. Версии и контрольные суммы закреплены:
 # скачанный файл должен совпасть байт в байт, иначе Nova его удалит.
@@ -21,7 +22,7 @@ $script:Vosk = @{
         'libwinpthread-1.dll' = '92CAEB8A4EA281C674003462A233F3B445B685B0A6F93EB11254FEDA2DDA9CDE'
     }
 }
-$script:VoiceActions = @('shutdown', 'restart', 'cancel', 'minimizeAll', 'restoreAll', 'closeWindow', 'closeAll', 'lock', 'volumeUp', 'volumeDown', 'mute', 'playPause', 'nextTrack', 'prevTrack', 'time', 'date', 'battery', 'hello', 'timer', 'timerLeft')
+$script:VoiceActions = @('shutdown', 'restart', 'cancel', 'minimizeAll', 'restoreAll', 'closeWindow', 'closeAll', 'lock', 'volumeUp', 'volumeDown', 'mute', 'playPause', 'nextTrack', 'prevTrack', 'time', 'date', 'battery', 'hello', 'timer', 'timerLeft', 'game', 'gameMode', 'gameModeOff')
 $script:Pending = $null
 $script:Timer = $null
 $script:Speaker = $null
@@ -418,7 +419,8 @@ function Get-NovaVoiceTimerLeftText {
 }
 
 function Read-NovaVoiceConfig {
-    param([Parameter(Mandatory)][string]$Path)
+    # Games — найденные игры (для проверок можно передать свой список); без него Nova ищет игры сама.
+    param([Parameter(Mandatory)][string]$Path, [object[]]$Games)
     $doc = Read-NovaJson $Path
     $problems = New-Object System.Collections.Generic.List[string]
     $wake = ([string](Get-NovaProp $doc 'wakeWord' 'нова')).Trim().ToLowerInvariant()
@@ -455,17 +457,34 @@ function Read-NovaVoiceConfig {
             if ($why) { $problems.Add(('voice.json: у «{0}» в run — {1}' -f $label, $why)) }
         }
         if ($problems.Count -gt $before) { continue }
+        if ($do -eq 'game') {
+            # «запусти» — начало фразы: «запусти доту», «запусти игру» (последняя, в которую играли).
+            if (-not $PSBoundParameters.ContainsKey('Games')) {
+                try { $Games = @(Get-NovaGames) } catch { $Games = @() }
+                $PSBoundParameters['Games'] = $Games
+            }
+            $phrases = @($say | ForEach-Object { '{0} игру' -f $_ })
+            $commands.Add([pscustomobject]@{ Say = $phrases; Do = 'game'; Run = ''; Keys = ''; Label = $phrases[0]; Game = $null; Auto = $true })
+            foreach ($game in @($Games)) {
+                if (@($game.Words).Count -eq 0) { continue }
+                $phrases = @(foreach ($prefix in $say) { foreach ($word in $game.Words) { '{0} {1}' -f $prefix, $word } })
+                $commands.Add([pscustomobject]@{ Say = $phrases; Do = 'game'; Run = ''; Keys = ''; Label = $phrases[0]; Game = $game; Auto = $true })
+            }
+            continue
+        }
         if ($do -eq 'timer') {
             # «таймер» — начало фразы: «таймер на пять минут», «таймер на полчаса» и так далее.
             foreach ($choice in (Get-NovaVoiceTimerChoices)) {
                 $phrases = @($say | ForEach-Object { '{0} на {1}' -f $_, $choice.Words })
-                $commands.Add([pscustomobject]@{ Say = $phrases; Do = 'timer'; Run = ''; Keys = ''; Label = $phrases[0]; Seconds = $choice.Seconds })
+                $commands.Add([pscustomobject]@{ Say = $phrases; Do = 'timer'; Run = ''; Keys = ''; Label = $phrases[0]; Seconds = $choice.Seconds; Auto = $true })
             }
             continue
         }
         $commands.Add([pscustomobject]@{ Say = $say; Do = $do; Run = $run; Keys = $keys; Label = $say[0] })
     }
-    return [pscustomobject]@{ WakeWord = $wake; Delay = $delay; PushToTalk = $pushToTalk; PushKeys = $pushKeys; Speak = $speak; Commands = $commands.ToArray(); Problems = $problems.ToArray(); Fatal = $fatal }
+    $found = @()
+    if ($PSBoundParameters.ContainsKey('Games')) { $found = @($Games) }
+    return [pscustomobject]@{ WakeWord = $wake; Delay = $delay; PushToTalk = $pushToTalk; PushKeys = $pushKeys; Speak = $speak; Commands = $commands.ToArray(); Problems = $problems.ToArray(); Fatal = $fatal; Games = $found }
 }
 
 # Все фразы, которые слушает распознаватель. Фразы без «Нова» тоже в списке — чтобы распознать
@@ -651,6 +670,30 @@ function Invoke-NovaVoiceCommand {
             }
             return ('таймер на {0} — скажу, когда время выйдет. «{1}, сколько осталось» — узнать, «{1}, отмена» — отменить' -f $text, $Config.WakeWord)
         }
+        'game' {
+            $game = Get-NovaProp $Command 'Game'
+            if (-not $game) {
+                $game = Get-NovaLastGame -Games @($Config.Games)
+                if (-not $game) { return 'не знаю, во что ты играл последним — скажи название игры' }
+            }
+            if (-not $DryRun) {
+                Start-NovaGame -Game $game
+                if ($Config.Speak) { [void](Invoke-NovaVoiceSpeak ('Запускаю {0}' -f $game.Name)) }
+            }
+            return ('запускаю {0}' -f $game.Name)
+        }
+        'gameMode' {
+            if ($DryRun) { return 'включаю режим игры' }
+            $text = Get-NovaGameModeText (Start-NovaGameMode)
+            if ($Config.Speak) { [void](Invoke-NovaVoiceSpeak 'Режим игры включён. Удачной игры!') }
+            return $text
+        }
+        'gameModeOff' {
+            if ($DryRun) { return 'выключаю режим игры' }
+            $text = Get-NovaGameModeText (Stop-NovaGameMode) -Off
+            if ($Config.Speak) { [void](Invoke-NovaVoiceSpeak 'Режим игры выключен. Всё как было.') }
+            return $text
+        }
         'closeAll' {
             if (-not $DryRun) { Set-NovaVoicePending 'closeAll' $delay }
             return ('закрою все окна через {0} с — «{1}, отмена» отменит. Несохранённое программы спросят сохранить' -f $delay, $Config.WakeWord)
@@ -752,7 +795,9 @@ function New-NovaVoiceRecognizer {
     $grammar = ConvertTo-Json -InputObject $phrases -Compress
     $rec = [NovaVoice.Vosk]::vosk_recognizer_new_grm($model, 16000.0, [NovaVoice.Vosk]::Utf8Z($grammar))
     if ($rec -eq [IntPtr]::Zero) { [NovaVoice.Vosk]::vosk_model_free($model); throw 'Не удалось запустить распознавание.' }
-    return [pscustomobject]@{ Model = $model; Rec = $rec; Unknown = $unknown }
+    $own = @($Config.WakeWord) + @($Config.Commands | Where-Object { -not (Get-NovaProp $_ 'Auto' $false) } | ForEach-Object { $_.Say } | ForEach-Object { $_ -split ' ' })
+    $unknownOwn = @($unknown | Where-Object { $own -contains $_ })
+    return [pscustomobject]@{ Model = $model; Rec = $rec; Unknown = $unknown; UnknownOwn = $unknownOwn }
 }
 
 function Remove-NovaVoiceRecognizer {
@@ -805,8 +850,8 @@ function Start-NovaVoiceListener {
     Initialize-NovaVoiceNative
     if ([NovaVoice.Mic]::waveInGetNumDevs() -eq 0) { throw 'Не найден микрофон. Подключи его и запусти снова.' }
     $r = New-NovaVoiceRecognizer $Config
-    if ($r.Unknown.Count -gt 0) {
-        Write-Nova ('Модель не знает слова: {0}. Фразы с ними не сработают — замени их в voice.json.' -f ($r.Unknown -join ', ')) warn
+    if ($r.UnknownOwn.Count -gt 0) {
+        Write-Nova ('Модель не знает слова: {0}. Фразы с ними не сработают — замени их в voice.json.' -f ($r.UnknownOwn -join ', ')) warn
     }
     $mic = $null
     try {

@@ -1,4 +1,5 @@
-﻿# NovaTools.psm1 — помощники на каждый день: что тормозит прямо сейчас, интернет для игр, отчёт для поддержки.
+﻿# NovaTools.psm1 — помощники на каждый день: что тормозит прямо сейчас, интернет для игр, отчёт для поддержки,
+# обновление Nova одной кнопкой.
 # Здесь Nova в основном смотрит и советует. Сама она может только закрыть программу, которую ты выбрал,
 # и сменить DNS — и то после вопроса и с пунктом «вернуть как было».
 
@@ -474,6 +475,225 @@ function New-NovaSupportReport {
     $bytes = (New-Object System.Text.UTF8Encoding($true)).GetPreamble() + [Text.Encoding]::UTF8.GetBytes($text)
     Write-NovaNewFile -Path $path -Bytes ([byte[]]$bytes)
     return $path
+}
+
+#endregion
+
+#region Обновление одной кнопкой
+
+# Новая версия скачивается одним архивом с GitHub — оттуда же, откуда ты скачал Nova. Адрес вшит в программу.
+# Обновляются только файлы программы. Твои config.json и voice.json Nova не трогает никогда.
+# Перед обновлением старые файлы сохраняются в C:\ProgramData\Nova\backups — вернуть прошлую версию можно в пункте 12.
+$script:UpdateZip = @{
+    Url         = 'https://codeload.github.com/vezin0v0-cmyk/my-project/zip/refs/heads/claude/hello-973j4n'
+    Hosts       = @('codeload.github.com')
+    MaxBytes    = 20971520
+    MaxUnpacked = 62914560
+    MaxEntries  = 3000
+}
+$script:UpdateFiles = @('Nova.cmd', 'NovaVoice.cmd', 'CHANGELOG.md', 'README.md', 'LICENSE', 'docs/CLEAN-INSTALL.md')
+$script:UpdateDirs = @('src/', 'assets/')
+$script:UpdateNever = @('config.json', 'voice.json')
+
+# Скачивает архив новой версии в папку Nova для временных файлов. Возвращает путь к архиву.
+function Save-NovaUpdateZip {
+    $bytes = Get-NovaHttpBytes -Url $script:UpdateZip.Url -AllowedHosts $script:UpdateZip.Hosts -MaxBytes $script:UpdateZip.MaxBytes -TimeoutSeconds 120
+    $path = Join-Path (Get-NovaBuildDir) ('nova-update-{0}.zip' -f [DateTime]::UtcNow.Ticks)
+    Write-NovaNewFile -Path $path -Bytes $bytes
+    return $path
+}
+
+# Относительный путь из архива: только обычные имена, без «..», двоеточий и странных символов.
+function Test-NovaUpdatePath {
+    param([string]$Path)
+    if (-not $Path -or $Path.Length -gt 200 -or $Path -match '[\p{Cc}\p{Cf}\\:*?"<>|]' -or $Path.StartsWith('/')) { return $false }
+    foreach ($part in $Path.Split('/')) {
+        if ($part -eq '' -or $part -eq '.' -or $part -eq '..' -or $part.EndsWith('.') -or $part.EndsWith(' ')) { return $false }
+    }
+    return $true
+}
+
+function Test-NovaUpdateWanted {
+    param([string]$Path)
+    if ($script:UpdateNever -contains $Path.ToLowerInvariant()) { return $false }
+    if ($script:UpdateFiles -contains $Path) { return $true }
+    foreach ($dir in $script:UpdateDirs) { if ($Path.StartsWith($dir, [StringComparison]::Ordinal)) { return $true } }
+    return $false
+}
+
+# Читает архив и проверяет каждый файл. Любой подозрительный файл — отказ от всего обновления.
+# Возвращает Version и Files (Path — относительный путь через «/», Bytes — содержимое).
+function Read-NovaUpdatePackage {
+    param([Parameter(Mandatory)][string]$ZipPath)
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        $entries = @($zip.Entries)
+        if ($entries.Count -eq 0 -or $entries.Count -gt $script:UpdateZip.MaxEntries) { throw 'В архиве обновления не то количество файлов.' }
+        $top = ''
+        $files = New-Object System.Collections.Generic.List[object]
+        $seen = @{}
+        $total = [int64]0
+        foreach ($entry in $entries) {
+            $name = [string]$entry.FullName
+            $cut = $name.IndexOf('/')
+            if ($cut -lt 1) { throw ('В архиве лишний файл: {0}' -f (Get-NovaPlainText $name 80)) }
+            $first = $name.Substring(0, $cut)
+            if (-not $top) { $top = $first }
+            if ($first -ne $top -or $top -notmatch '^[A-Za-z0-9._-]{1,100}\z' -or $top -match '^\.+\z') { throw 'В архиве обновления странная или не одна верхняя папка.' }
+            $rel = $name.Substring($cut + 1)
+            if ($rel -eq '' -or $rel.EndsWith('/')) { continue }
+            if (-not (Test-NovaUpdatePath $rel)) { throw ('В архиве подозрительный путь: {0}' -f (Get-NovaPlainText $name 80)) }
+            if (-not (Test-NovaUpdateWanted $rel)) { continue }
+            $key = $rel.ToLowerInvariant()
+            if ($seen.ContainsKey($key)) { throw ('В архиве два файла с одним именем: {0}' -f $rel) }
+            $seen[$key] = $true
+            if ($entry.Length -gt $script:UpdateZip.MaxBytes) { throw ('Файл в архиве слишком большой: {0}' -f $rel) }
+            $total += $entry.Length
+            if ($total -gt $script:UpdateZip.MaxUnpacked) { throw 'Архив обновления распаковывается в слишком много данных.' }
+            # Читаем не больше заявленного размера: «бомба» из нулей не займёт всю память.
+            $stream = $entry.Open()
+            try {
+                $buffer = New-Object byte[] ([int]$entry.Length)
+                $read = 0
+                while ($read -lt $buffer.Length) {
+                    $n = $stream.Read($buffer, $read, $buffer.Length - $read)
+                    if ($n -le 0) { break }
+                    $read += $n
+                }
+                if ($read -ne $buffer.Length -or $stream.ReadByte() -ne -1) { throw ('Файл в архиве повреждён: {0}' -f $rel) }
+            } finally {
+                $stream.Dispose()
+            }
+            $files.Add([pscustomobject]@{ Path = $rel; Bytes = $buffer })
+        }
+    } finally {
+        $zip.Dispose()
+    }
+    foreach ($required in @('Nova.cmd', 'src/Nova.ps1', 'src/Nova.psm1')) {
+        if (-not $seen.ContainsKey($required.ToLowerInvariant())) { throw ('В архиве нет {0} — это не Nova.' -f $required) }
+    }
+    $engine = @($files | Where-Object { $_.Path -eq 'src/Nova.psm1' })[0]
+    $text = [Text.Encoding]::UTF8.GetString($engine.Bytes)
+    if ($text -notmatch "(?m)^\`$script:NovaVersion = '([0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4})'") { throw 'В архиве не нашлась версия Nova.' }
+    return [pscustomobject]@{ Version = $Matches[1]; Files = $files.ToArray() }
+}
+
+# Путь внутри папки Nova и без ссылок по дороге (ссылка увела бы запись в чужое место).
+function Get-NovaUpdateTarget {
+    param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$Path)
+    $rootFull = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+    $target = [IO.Path]::GetFullPath((Join-Path $rootFull ($Path -replace '/', '\')))
+    if (-not $target.StartsWith($rootFull + '\', [StringComparison]::OrdinalIgnoreCase)) { throw ('Путь выходит из папки Nova: {0}' -f $Path) }
+    $walk = $rootFull
+    foreach ($part in @(($Path -split '/'))) {
+        if ((Test-Path -LiteralPath $walk) -and ((Get-Item -LiteralPath $walk -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw ('{0}: это ссылка на другое место — обновлять не буду' -f $walk) }
+        $walk = Join-Path $walk $part
+    }
+    if ((Test-Path -LiteralPath $target) -and ((Get-Item -LiteralPath $target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw ('{0}: это ссылка на другое место — обновлять не буду' -f $target) }
+    return $target
+}
+
+function Get-NovaRelativeFiles {
+    param([string]$Root, [string]$Sub)
+    $dir = Join-Path $Root $Sub
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) { return @() }
+    $rootFull = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+    return @(Get-ChildItem -LiteralPath $dir -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName.Substring($rootFull.Length + 1) -replace '\\', '/' })
+}
+
+function Write-NovaUpdateFile {
+    param([string]$Target, [byte[]]$Bytes)
+    $dir = Split-Path -Parent $Target
+    if (-not (Test-Path -LiteralPath $dir)) { [void][IO.Directory]::CreateDirectory($dir) }
+    if (Test-Path -LiteralPath $Target) {
+        [IO.File]::SetAttributes($Target, ([IO.File]::GetAttributes($Target) -band (-bnot [IO.FileAttributes]::ReadOnly)))
+    }
+    [IO.File]::WriteAllBytes($Target, $Bytes)
+}
+
+# Ставит новую версию в папку Root. Сначала сохраняет всё, что поменяется, в BackupRoot\update-<версия>-<время>
+# и записывает туда список изменений — по нему же работает откат. Возвращает итог.
+function Install-NovaUpdate {
+    param([Parameter(Mandatory)]$Package, [Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$BackupRoot, [string]$Current = (Get-NovaVersion))
+    $from = ConvertTo-NovaVersion $Current
+    $to = ConvertTo-NovaVersion $Package.Version
+    if ($null -eq $to -or $null -eq $from -or $to -le $from) { throw ('В архиве Nova {0} — она не новее твоей {1}.' -f $Package.Version, $Current) }
+    $plan = New-Object System.Collections.Generic.List[object]
+    $inPackage = @{}
+    foreach ($file in $Package.Files) {
+        $inPackage[$file.Path.ToLowerInvariant()] = $true
+        $target = Get-NovaUpdateTarget -Root $Root -Path $file.Path
+        if (Test-Path -LiteralPath $target -PathType Leaf) {
+            $old = [IO.File]::ReadAllBytes($target)
+            if ([Convert]::ToBase64String($old) -eq [Convert]::ToBase64String($file.Bytes)) { continue }
+            $plan.Add([pscustomobject]@{ Op = 'replace'; Path = $file.Path; Target = $target; Bytes = $file.Bytes })
+        } else {
+            $plan.Add([pscustomobject]@{ Op = 'add'; Path = $file.Path; Target = $target; Bytes = $file.Bytes })
+        }
+    }
+    # Старые файлы программы, которых в новой версии нет (только в src — в assets могут быть твои обои).
+    foreach ($rel in (Get-NovaRelativeFiles -Root $Root -Sub 'src')) {
+        if ($inPackage.ContainsKey($rel.ToLowerInvariant())) { continue }
+        $plan.Add([pscustomobject]@{ Op = 'remove'; Path = $rel; Target = (Get-NovaUpdateTarget -Root $Root -Path $rel); Bytes = $null })
+    }
+    $backup = Join-Path $BackupRoot ('update-{0}-{1}' -f $Current, (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    if (Test-Path -LiteralPath $backup) { throw ('Папка копии уже есть: {0}' -f $backup) }
+    [void][IO.Directory]::CreateDirectory($backup)
+    foreach ($step in @($plan | Where-Object { $_.Op -ne 'add' })) {
+        $copy = Join-Path $backup ('files\' + ($step.Path -replace '/', '\'))
+        [void][IO.Directory]::CreateDirectory((Split-Path -Parent $copy))
+        Write-NovaNewFile -Path $copy -Bytes ([IO.File]::ReadAllBytes($step.Target))
+    }
+    $manifest = [ordered]@{
+        from     = $Current
+        to       = $Package.Version
+        created  = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+        added    = @($plan | Where-Object { $_.Op -eq 'add' } | ForEach-Object { $_.Path })
+        replaced = @($plan | Where-Object { $_.Op -eq 'replace' } | ForEach-Object { $_.Path })
+        removed  = @($plan | Where-Object { $_.Op -eq 'remove' } | ForEach-Object { $_.Path })
+    }
+    Write-NovaNewFile -Path (Join-Path $backup 'update.json') -Bytes ([Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $manifest -Depth 4)))
+    foreach ($step in $plan) {
+        if ($step.Op -eq 'remove') { [IO.File]::Delete($step.Target) } else { Write-NovaUpdateFile -Target $step.Target -Bytes $step.Bytes }
+    }
+    return [pscustomobject]@{ From = $Current; To = $Package.Version; Added = $manifest.added.Count; Replaced = $manifest.replaced.Count; Removed = $manifest.removed.Count; Backup = $backup }
+}
+
+# Копии прошлых версий: самая свежая сверху.
+function Get-NovaUpdateBackups {
+    param([string]$BackupRoot = (Join-Path (Get-NovaDataDir) 'backups'))
+    if (-not (Test-Path -LiteralPath $BackupRoot -PathType Container)) { return @() }
+    $list = New-Object System.Collections.Generic.List[object]
+    foreach ($dir in @(Get-ChildItem -LiteralPath $BackupRoot -Directory -Filter 'update-*' -ErrorAction SilentlyContinue | Sort-Object Name -Descending)) {
+        $manifestPath = Join-Path $dir.FullName 'update.json'
+        if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { continue }
+        try { $m = ConvertFrom-Json ([IO.File]::ReadAllText($manifestPath, [Text.Encoding]::UTF8)) } catch { continue }
+        if ($null -eq (ConvertTo-NovaVersion ([string]$m.from)) -or $null -eq (ConvertTo-NovaVersion ([string]$m.to))) { continue }
+        $list.Add([pscustomobject]@{ Path = $dir.FullName; From = [string]$m.from; To = [string]$m.to; Created = [string]$m.created; Manifest = $m })
+    }
+    return $list.ToArray()
+}
+
+# Возвращает прошлую версию из копии: новые файлы убирает, заменённые и удалённые кладёт обратно.
+function Restore-NovaUpdate {
+    param([Parameter(Mandatory)]$Backup, [Parameter(Mandatory)][string]$Root)
+    $m = $Backup.Manifest
+    foreach ($rel in @(@($m.added) + @($m.replaced) + @($m.removed))) {
+        if (-not (Test-NovaUpdatePath ([string]$rel)) -or -not (Test-NovaUpdateWanted ([string]$rel))) { throw ('В копии подозрительный путь: {0}' -f (Get-NovaPlainText ([string]$rel) 80)) }
+    }
+    foreach ($rel in @($m.added)) {
+        $target = Get-NovaUpdateTarget -Root $Root -Path $rel
+        if (Test-Path -LiteralPath $target -PathType Leaf) { [IO.File]::Delete($target) }
+    }
+    foreach ($rel in @(@($m.replaced) + @($m.removed))) {
+        $copy = Join-Path $Backup.Path ('files\' + ($rel -replace '/', '\'))
+        if (-not (Test-Path -LiteralPath $copy -PathType Leaf)) { throw ('В копии нет файла {0}' -f $rel) }
+        Write-NovaUpdateFile -Target (Get-NovaUpdateTarget -Root $Root -Path $rel) -Bytes ([IO.File]::ReadAllBytes($copy))
+    }
+    # Копия больше не нужна: переименовываем, чтобы не вернуть её второй раз.
+    Rename-Item -LiteralPath $Backup.Path -NewName ('restored-' + (Split-Path -Leaf $Backup.Path))
+    return [pscustomobject]@{ Version = $m.from }
 }
 
 #endregion

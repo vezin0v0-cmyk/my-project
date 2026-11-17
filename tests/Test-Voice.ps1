@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Import-Module (Join-Path $root 'src\Nova.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $root 'src\NovaVoice.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $root 'src\NovaPlay.psm1') -Force -DisableNameChecking
 
 $config = Read-NovaVoiceConfig -Path (Join-Path $root 'voice.json')
 if ($config.Problems.Count -gt 0) { $config.Problems | ForEach-Object { Write-Host "::error::$_" }; throw 'Ошибки в voice.json' }
@@ -26,6 +27,11 @@ $cases = @(
     @('нова какое сегодня число', 'date'),
     @('нова сколько заряда', 'battery'),
     @('нова привет', 'hello'),
+    @('нова режим игры', 'gameMode'),
+    @('нова включи режим игры', 'gameMode'),
+    @('нова выключи режим игры', 'gameModeOff'),
+    @('нова игра окончена', 'gameModeOff'),
+    @('нова запусти игру', 'game'),
     @('[unk] нова [unk]', ''),
     @('привет нова как дела', '')
 )
@@ -34,6 +40,31 @@ foreach ($case in $cases) {
     if ($got -ne $case[1]) { throw ('«{0}»: ожидалось «{1}», получилось «{2}»' -f $case[0], $case[1], $got) }
     Write-Host ('ok  «{0}» → {1}' -f $case[0], $(if ($got) { $got } else { 'ничего' }))
 }
+
+# Игры: свой список вместо поиска на диске. «Запусти доту» — Dota 2, «запусти игру» — последняя.
+$fakeGames = @(
+    (New-NovaGame -Name 'Dota 2' -Store 'Steam' -Id '570' -Uri 'steam://rungameid/570' -LastPlayed 10),
+    (New-NovaGame -Name 'Counter-Strike 2' -Store 'Steam' -Id '730' -Uri 'steam://rungameid/730' -LastPlayed 20),
+    (New-NovaGame -Name 'Some English Game' -Store 'Steam' -Id '42' -Uri 'steam://rungameid/42'))
+$gameConfig = Read-NovaVoiceConfig -Path (Join-Path $root 'voice.json') -Games $fakeGames
+foreach ($case in @(@('нова запусти доту', '570'), @('нова включи доту', '570'), @('нова запусти контру', '730'), @('нова запусти игру', ''))) {
+    $found = @(Resolve-NovaVoiceText -Text $case[0] -Config $gameConfig)
+    if ($found.Count -ne 1 -or $found[0].Do -ne 'game') { throw ('«{0}» — не команда игры' -f $case[0]) }
+    $id = ''
+    if ($found[0].Game) { $id = $found[0].Game.Id }
+    if ($id -ne $case[1]) { throw ('«{0}» → игра {1}, а ждали {2}' -f $case[0], $id, $case[1]) }
+    Write-Host ('ok  «{0}» → {1}' -f $case[0], (Invoke-NovaVoiceCommand -Command $found[0] -Config $gameConfig -DryRun))
+}
+$last = @(Resolve-NovaVoiceText -Text 'нова запусти игру' -Config $gameConfig)[0]
+if ((Invoke-NovaVoiceCommand -Command $last -Config $gameConfig -DryRun) -ne 'запускаю Counter-Strike 2') { throw '«запусти игру» должна запускать последнюю игру' }
+$noGames = Read-NovaVoiceConfig -Path (Join-Path $root 'voice.json') -Games @()
+$lastNone = @(Resolve-NovaVoiceText -Text 'нова запусти игру' -Config $noGames)[0]
+if ((Invoke-NovaVoiceCommand -Command $lastNone -Config $noGames -DryRun) -notlike 'не знаю*') { throw '«запусти игру» без игр должна честно сказать, что не знает' }
+foreach ($w in @('нова режим игры', 'нова игра окончена')) {
+    $cmd = @(Resolve-NovaVoiceText -Text $w -Config $gameConfig)[0]
+    Write-Host ('ok  «{0}» → {1}' -f $w, (Invoke-NovaVoiceCommand -Command $cmd -Config $gameConfig -DryRun))
+}
+Write-Host 'ok  игры голосом: «запусти доту», «включи контру», «запусти игру» (последняя), режим игры'
 
 # Клавиши
 $keys = ConvertTo-NovaVoiceKeys 'win+shift+s'
@@ -175,13 +206,22 @@ try {
     $unknownProbe = @(Get-NovaVoiceUnknownWord -Model $model -Words $probe)
     Write-Host ('слова не из словаря (справка): {0}' -f ($unknownProbe -join ', '))
     $unknown = @(Get-NovaVoiceUnknownWord -Model $model -Words (Get-NovaVoiceConfigWord $config))
+    # Названия игр вслух: варианты, которых модель не знает, Nova Голос сама пропускает — но в словаре их быть не должно.
+    $gameWords = @(Get-NovaGameWordList | ForEach-Object { $_.Words } | ForEach-Object { $_ -split ' ' } | Select-Object -Unique)
+    $unknownGames = @(Get-NovaVoiceUnknownWord -Model $model -Words $gameWords)
+    $deadGames = @(Get-NovaGameWordList | Where-Object { @($_.Words | Where-Object { @($_ -split ' ' | Where-Object { $unknownGames -contains $_ }).Count -eq 0 }).Count -eq 0 } | ForEach-Object { $_.Match })
+    Write-Host ('названия игр: слов {0}, модель не знает {1}: {2}' -f $gameWords.Count, $unknownGames.Count, ($unknownGames -join ', '))
+    Write-Host ('игры, которые не назвать ни одним вариантом: {0}' -f ($deadGames -join ' | '))
 } finally {
     [NovaVoice.Vosk]::vosk_model_free($model)
 }
 if ($unknown.Count -gt 0) { throw ('В voice.json слова, которых модель не знает: {0}' -f ($unknown -join ', ')) }
 Write-Host 'ok  все слова из voice.json модель знает'
 
+if ($unknownGames.Count -gt 0) { Write-Host ('::warning::В словаре игр слова, которых модель не знает: {0}' -f ($unknownGames -join ', ')) }
 $expected = [ordered]@{
+    'game'         = 'game'
+    'game-mode'    = 'gameMode'
     'shutdown'     = 'shutdown'
     'minimize'     = 'minimizeAll'
     'close-window' = 'closeWindow'
@@ -194,7 +234,9 @@ $expected = [ordered]@{
 $failed = @()
 foreach ($name in $expected.Keys) {
     $wav = Join-Path $root ('tests\voice\{0}.wav' -f $name)
-    $result = Invoke-NovaVoiceFile -Path $wav -Config $config
+    $useConfig = $config
+    if ($name -eq 'game') { $useConfig = $gameConfig }
+    $result = Invoke-NovaVoiceFile -Path $wav -Config $useConfig
     $got = (@($result.Commands) | ForEach-Object { $_.Do }) -join ','
     $mark = 'ok '
     if ($got -ne $expected[$name]) { $mark = 'BAD'; $failed += $name }

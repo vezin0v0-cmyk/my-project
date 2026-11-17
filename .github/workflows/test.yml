@@ -67,7 +67,7 @@ jobs:
         shell: powershell
         run: ./tests/Test-Move.ps1
 
-      - name: Есть ли новая версия (список изменений с GitHub, без установки)
+      - name: Обновление (список изменений, установка из архива, злые архивы и откат)
         shell: powershell
         run: |
           ./tests/Test-Update.ps1
@@ -87,6 +87,22 @@ jobs:
           $report = Get-ChildItem -LiteralPath ([Environment]::GetFolderPath('Desktop')) -Filter 'Nova*.txt' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $report) { throw 'No support report on the desktop.' }
           Get-Content -LiteralPath $report.FullName -Encoding UTF8 | Select-Object -First 12
+
+      - name: Режим игры и игры для голоса (включить и вернуть как было)
+        shell: powershell
+        run: |
+          ./tests/Test-Play.ps1
+          ./src/Nova.ps1 -Mode Game
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Get-ItemProperty -Path 'HKCU:\Software\Nova' -Name GameMode -ErrorAction SilentlyContinue)) { throw 'Game mode did not turn on.' }
+          ./src/Nova.ps1 -Mode Game
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (Get-ItemProperty -Path 'HKCU:\Software\Nova' -Name GameMode -ErrorAction SilentlyContinue) { throw 'Game mode did not turn off.' }
+          if (Test-Path -LiteralPath (Join-Path $env:ProgramData 'Nova\gamemode-updates.json')) { throw 'Update pause was not lifted.' }
+
+      - name: Свежий ли драйвер видеокарты
+        shell: powershell
+        run: ./src/Nova.ps1 -Mode Driver
 
       - name: Освободить место (без долгого DISM)
         shell: powershell

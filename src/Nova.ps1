@@ -20,10 +20,12 @@
     .\Nova.ps1 -Mode Heavy        # что тормозит прямо сейчас
     .\Nova.ps1 -Mode Net          # интернет для игр: пинг, Wi‑Fi, DNS
     .\Nova.ps1 -Mode Report       # отчёт для поддержки на рабочий стол
+    .\Nova.ps1 -Mode Game         # режим игры: включить, а если включён — выключить
+    .\Nova.ps1 -Mode Driver       # свежий ли драйвер видеокарты
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Menu', 'Preview', 'Apply', 'Undo', 'Measure', 'Check', 'Fps', 'Clean', 'Startup', 'Update', 'Heavy', 'Net', 'Report')]
+    [ValidateSet('Menu', 'Preview', 'Apply', 'Undo', 'Measure', 'Check', 'Fps', 'Clean', 'Startup', 'Update', 'Heavy', 'Net', 'Report', 'Game', 'Driver')]
     [string]$Mode = 'Menu',
     [string]$ConfigPath,
     [switch]$Yes,
@@ -59,6 +61,7 @@ Import-Module (Join-Path $PSScriptRoot 'NovaGame.psm1') -Force -DisableNameCheck
 Import-Module (Join-Path $PSScriptRoot 'NovaStartup.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaMove.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaTools.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'NovaPlay.psm1') -Force -DisableNameChecking
 
 # Без прав администратора Windows не даст менять системные настройки — перезапускаемся с ними.
 if (-not (Test-NovaAdmin)) {
@@ -708,11 +711,13 @@ function Invoke-NovaMoveFlow {
     return 0
 }
 
-# Новая версия: в интернет Nova идёт только здесь и только по просьбе — за одним файлом CHANGELOG.md.
-# Сама ничего не скачивает и не ставит: показывает, что нового, и открывает сайт.
+# Новая версия: в интернет Nova идёт только здесь и только по просьбе. Сначала — список изменений,
+# потом, если ты согласишься, — архив новой версии с GitHub. Твои config.json и voice.json остаются как есть.
 function Invoke-NovaUpdateFlow {
     $source = Get-NovaUpdateSource
-    Write-Nova 'Смотрю на GitHub, есть ли новая версия. Скачивается только список изменений — о тебе ничего не отправляется.' info
+    Write-Nova 'Смотрю на GitHub, есть ли новая версия. О тебе ничего не отправляется.' info
+    $backups = @()
+    try { $backups = @(Get-NovaUpdateBackups) } catch { Write-Verbose ('Копии прошлых версий: {0}' -f $_.Exception.Message) }
     try {
         $info = Get-NovaUpdateInfo
     } catch {
@@ -722,26 +727,196 @@ function Invoke-NovaUpdateFlow {
     }
     if (-not $info.IsNewer) {
         Write-Nova ('У тебя последняя версия — Nova {0}.' -f $info.Current) ok
+    } else {
+        Write-Host ''
+        Write-Nova ('Вышла Nova {0}, у тебя {1}. Что нового:' -f $info.Latest, $info.Current) ok
+        foreach ($release in $info.Releases) {
+            Write-Host ''
+            Write-Nova ('Версия {0}' -f $release.Label) title
+            $items = @($release.Items)
+            foreach ($item in @($items | Select-Object -First 8)) { Write-Nova ('  • ' + $item) info }
+            if ($items.Count -gt 8) { Write-Nova ('  …и ещё {0}' -f ($items.Count - 8)) dim }
+        }
+    }
+    if (-not (Test-NovaInteractive)) {
+        if ($info.IsNewer) { Write-Nova ('Обновить: пункт 12 в меню Nova — одной кнопкой. Или скачай сам: {0}' -f $source.DownloadPage) dim }
         return 0
     }
+    if (-not $info.IsNewer -and $backups.Count -eq 0) { return 0 }
     Write-Host ''
-    Write-Nova ('Вышла Nova {0}, у тебя {1}. Что нового:' -f $info.Latest, $info.Current) ok
-    foreach ($release in $info.Releases) {
-        Write-Host ''
-        Write-Nova ('Версия {0}' -f $release.Label) title
-        $items = @($release.Items)
-        foreach ($item in @($items | Select-Object -First 8)) { Write-Nova ('  • ' + $item) info }
-        if ($items.Count -gt 8) { Write-Nova ('  …и ещё {0}' -f ($items.Count - 8)) dim }
+    if ($info.IsNewer) {
+        Write-Host ('  1  Обновить до {0} сейчас (config.json и voice.json останутся твоими)' -f $info.Latest) -ForegroundColor White
+        Write-Host '  2  Открыть сайт Nova и скачать самому' -ForegroundColor White
     }
-    Write-Host ''
-    Write-Nova 'Как обновиться: скачай новую версию с сайта, распакуй в новую папку и перенеси туда свои config.json и voice.json.' info
-    Write-Nova ('Отмена прежних запусков не пропадёт: она хранится в {0}, а не в папке Nova.' -f (Get-NovaDataDir).TrimEnd('\')) dim
-    Write-Nova 'Если Nova Голос запускался вместе с Windows — в новой папке включи это снова: пункт 8 → 2.' dim
-    if ($Mode -eq 'Menu' -and (Confirm-NovaAction 'Открыть сайт Nova, чтобы скачать?')) {
+    if ($backups.Count -gt 0) { Write-Host ('  3  Вернуть прошлую версию — Nova {0}' -f $backups[0].From) -ForegroundColor White }
+    Write-Host '  0  Назад' -ForegroundColor White
+    $choice = (Read-Host '  Выбери пункт').Trim()
+    if ($choice -eq '1' -and $info.IsNewer) {
+        Invoke-NovaSelfUpdate -Expected $info.Latest
+    } elseif ($choice -eq '2' -and $info.IsNewer) {
         # Браузер — без прав администратора.
         if (-not (Start-NovaAsUser $source.DownloadPage)) { Write-Nova ('Открой сам: {0}' -f $source.DownloadPage) info }
-    } else {
-        Write-Nova ('Скачать: {0}' -f $source.DownloadPage) dim
+    } elseif ($choice -eq '3' -and $backups.Count -gt 0) {
+        Invoke-NovaRollbackFlow -Backup $backups[0]
+    }
+    return 0
+}
+
+# Открывает новую (или прежнюю) Nova в новом окне, а это закрывает.
+function Restart-NovaSelf {
+    if ($script:transcript) { Stop-Transcript | Out-Null; $script:transcript = $false }
+    $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    Start-Process -FilePath $ps -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f (Join-Path $projectRoot 'src\Nova.ps1')))
+    exit 0
+}
+
+function Invoke-NovaSelfUpdate {
+    param([string]$Expected)
+    Write-Nova 'Скачиваю новую версию с GitHub (около 1,5 МБ)...' dim
+    $zip = Save-NovaUpdateZip
+    try { $package = Read-NovaUpdatePackage -ZipPath $zip } finally { Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue }
+    if ((ConvertTo-NovaVersion $package.Version) -ne (ConvertTo-NovaVersion $Expected)) {
+        throw ('На GitHub сейчас версия {0}, а в списке изменений {1} — похоже, файлы как раз обновляются. Попробуй через пару минут.' -f $package.Version, $Expected)
+    }
+    $backupRoot = Join-Path (Get-NovaDataDir) 'backups'
+    $result = Install-NovaUpdate -Package $package -Root $projectRoot -BackupRoot $backupRoot
+    # Храним пять последних копий — этого хватит, чтобы вернуться.
+    Get-ChildItem -LiteralPath $backupRoot -Directory -Filter 'update-*' -ErrorAction SilentlyContinue | Sort-Object Name -Descending |
+        Select-Object -Skip 5 | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+    Write-Host ''
+    Write-Nova ('Готово: Nova {0}! Обновлено файлов: {1}, новых: {2}, убрано старых: {3}.' -f $result.To, $result.Replaced, $result.Added, $result.Removed) ok
+    Write-Nova 'Твои config.json и voice.json не тронуты. Вернуть прошлую версию — снова пункт 12.' dim
+    Write-Nova 'Открываю новую Nova в новом окне...' info
+    Start-Sleep -Seconds 2
+    Restart-NovaSelf
+}
+
+function Invoke-NovaRollbackFlow {
+    param($Backup)
+    if ((ConvertTo-NovaVersion (Get-NovaVersion)) -ne (ConvertTo-NovaVersion $Backup.To)) {
+        Write-Nova ('Эта копия сделана при обновлении до {0}, а у тебя сейчас {1} — возвращать её не буду.' -f $Backup.To, (Get-NovaVersion)) warn
+        return
+    }
+    if (-not (Confirm-NovaAction ('Вернуть Nova {0}? config.json и voice.json не изменятся.' -f $Backup.From))) { return }
+    $result = Restore-NovaUpdate -Backup $Backup -Root $projectRoot
+    Write-Nova ('Готово: вернулась Nova {0}. Открываю её в новом окне...' -f $result.Version) ok
+    Start-Sleep -Seconds 2
+    Restart-NovaSelf
+}
+
+# Режим игры: включить — максимальная мощность, без уведомлений, обновления на паузе, лишнее закрыть.
+# Если уже включён — выключить и вернуть всё как было.
+function Invoke-NovaGameModeFlow {
+    Write-Host ''
+    Write-Nova 'РЕЖИМ ИГРЫ' title
+    if (Test-NovaGameModeActive) {
+        Write-Nova 'Режим игры включён — выключаю и возвращаю как было.' info
+        $r = Stop-NovaGameMode
+        switch ($r.Power) { 'restored' { Write-Nova 'Питание: как было до игры.' ok } 'kept' { Write-Nova 'Питание ты поменял сам — оставляю твоё.' ok } 'failed' { Write-Nova 'Питание вернуть не получилось — выбери схему в «Панель управления → Электропитание».' warn } }
+        switch ($r.Toasts) { 'restored' { Write-Nova 'Уведомления снова включены.' ok } 'kept' { Write-Nova 'Уведомления ты уже включил сам.' ok } }
+        switch ($r.Updates) { 'restored' { Write-Nova 'Обновления Windows сняты с паузы.' ok } 'kept' { Write-Nova 'Паузу обновлений ты поменял сам — оставляю твою.' ok } 'failed' { Write-Nova 'Паузу обновлений снять не получилось — сними её в «Параметры → Центр обновления».' warn } }
+        $reopen = @($r.Reopen)
+        if ($reopen.Count -gt 0 -and (Test-NovaInteractive)) {
+            Write-Nova ('На время игры были закрыты: {0}.' -f (($reopen | ForEach-Object { $_.name }) -join ', ')) info
+            if (Confirm-NovaAction 'Открыть их снова?') {
+                foreach ($app in $reopen) { if (-not (Start-NovaAsUser ([string]$app.path))) { Write-Nova ('Открой сам: {0}' -f $app.name) dim } }
+            }
+        }
+        return 0
+    }
+    Write-Nova 'На время игры: максимальная мощность, без всплывающих уведомлений, обновления Windows на паузе. Потом — всё как было.' dim
+    $closed = New-Object System.Collections.Generic.List[object]
+    $apps = @(Get-NovaBackgroundApps)
+    if ($apps.Count -gt 0 -and (Test-NovaInteractive)) {
+        Write-Host ''
+        Write-Nova 'Сейчас открыты программы, которые отнимают у игры память, диск или интернет:' info
+        for ($i = 0; $i -lt $apps.Count; $i++) { Write-Host ('{0,4}  {1}{2}' -f ($i + 1), $apps[$i].Name.PadRight(26), (Format-NovaSize $apps[$i].Mem).PadLeft(9)) -ForegroundColor White }
+        $answer = (Read-Host '  Что закрыть? Номера через пробел, «все» — всё, Enter — ничего').Trim().ToLowerInvariant()
+        $picked = @()
+        if ($answer -eq 'все' -or $answer -eq 'all') { $picked = $apps }
+        elseif ($answer) { $picked = @($answer -split '[\s,]+' | ForEach-Object { $n = 0; if ([int]::TryParse($_, [ref]$n) -and $n -ge 1 -and $n -le $apps.Count) { $apps[$n - 1] } } | Select-Object -Unique) }
+        foreach ($app in $picked) {
+            $why = Get-NovaCloseProblem -Group $app
+            if ($why) { Write-Nova ('«{0}» — {1}.' -f $app.Name, $why) warn; continue }
+            $left = Close-NovaProcessGroup -Group $app
+            if ($left -gt 0 -and (Confirm-NovaAction ('«{0}» работает в фоне и сама не закрылась. Закрыть принудительно? Несохранённое в ней пропадёт.' -f $app.Name))) { $left = Close-NovaProcessGroup -Group $app -Force }
+            if ($left -eq 0) {
+                Write-Nova ('«{0}» закрыта.' -f $app.Name) ok
+                if ($app.Path) { $closed.Add([pscustomobject]@{ name = $app.Name; path = $app.Path }) }
+            } else {
+                Write-Nova ('«{0}» закрыть не получилось.' -f $app.Name) warn
+            }
+        }
+    }
+    # Уведомления — личная настройка: трогаем, только если Nova открыта тем, кто сидит за компьютером.
+    $me = Test-NovaDesktopUser
+    $r = Start-NovaGameMode -Updates -Toasts $me -ClosedApps $closed.ToArray()
+    Write-Host ''
+    switch ($r.Power) {
+        'set' { Write-Nova 'Питание: максимальная мощность.' ok }
+        'already' { Write-Nova 'Питание и так на максимуме.' ok }
+        default { Write-Nova 'Питание: на этом компьютере нет схемы «Высокая производительность» — оставляю как есть.' dim }
+    }
+    switch ($r.Toasts) {
+        'set' { if ($r.ToastsApplied) { Write-Nova 'Уведомления не будут всплывать.' ok } else { Write-Nova 'Уведомления выключены — Windows может применить это через минуту.' ok } }
+        'already' { Write-Nova 'Уведомления и так выключены.' ok }
+        'skip' { Write-Nova 'Уведомления не трогаю: Nova открыта другим пользователем, а не тем, кто за компьютером.' dim }
+    }
+    switch ($r.Updates) {
+        'set' { Write-Nova 'Обновления Windows на паузе — сами вернутся максимум через 12 часов, даже если забудешь.' ok }
+        'already' { Write-Nova 'Обновления Windows и так на паузе.' ok }
+    }
+    Write-Nova 'Наиграешься — снова пункт 16 или скажи «Нова, игра окончена» (в Nova Голос).' dim
+    if (-not (Test-NovaInteractive)) { return 0 }
+    $games = @(Get-NovaGames | Where-Object { $_.Uri })
+    if ($games.Count -eq 0) { return 0 }
+    Write-Host ''
+    Write-Nova 'Игры на этом компьютере:' info
+    $shown = @($games | Select-Object -First 20)
+    for ($i = 0; $i -lt $shown.Count; $i++) { Write-Host ('{0,4}  {1}  ({2})' -f ($i + 1), $shown[$i].Name, $shown[$i].Store) -ForegroundColor White }
+    $answer = (Read-Host '  Номер — запустить игру, Enter — запущу сам').Trim()
+    $n = 0
+    if ([int]::TryParse($answer, [ref]$n) -and $n -ge 1 -and $n -le $shown.Count) {
+        Start-NovaGame -Game $shown[$n - 1] -AsUser
+        Write-Nova ('Запускаю {0}. Удачной игры!' -f $shown[$n - 1].Name) ok
+    }
+    return 0
+}
+
+# Свежий ли драйвер видеокарты: для NVIDIA — сверка с сайтом NVIDIA, для AMD и Intel — по дате и ссылка на их программу.
+function Invoke-NovaDriverFlow {
+    Write-Host ''
+    Write-Nova 'СВЕЖИЙ ЛИ ДРАЙВЕР ВИДЕОКАРТЫ' title
+    $gpus = @(Get-NovaGpu)
+    $physical = @($gpus | Where-Object { Get-NovaGpuVendor $_.PnpId })
+    $discrete = @($physical | Where-Object { -not (Test-NovaIntegratedGpu $_) })
+    $list = $physical
+    if ($discrete.Count -gt 0) { $list = $discrete }
+    if ($list.Count -eq 0) {
+        foreach ($g in $gpus) { Write-Nova ('{0} — виртуальная или неизвестная видеокарта, проверять нечего.' -f $g.Name) info }
+        return 0
+    }
+    $checks = New-Object System.Collections.Generic.List[object]
+    $page = ''
+    foreach ($gpu in $list) {
+        $vendor = Get-NovaGpuVendor $gpu.PnpId
+        $latest = $null
+        $lookupError = ''
+        if ($vendor -eq 'NVIDIA') {
+            Write-Nova ('Спрашиваю у сайта NVIDIA, какой драйвер последний для {0}. Отправляется только модель видеокарты.' -f $gpu.Name) dim
+            try { $latest = Get-NovaNvidiaLatest -Name $gpu.Name } catch { $lookupError = $_.Exception.Message }
+        }
+        $check = Get-NovaDriverFreshAdvice -Gpu $gpu -Latest $latest -LookupError $lookupError
+        $checks.Add($check)
+        if (-not $page -and $check.Status -ne 'ok') {
+            $page = Get-NovaDriverLink $vendor
+            if ($latest -and $latest.Page) { $page = $latest.Page }
+        }
+    }
+    [void](Show-NovaHealth $checks.ToArray() -Title 'ИТОГ' -NoVerdict)
+    Write-Nova 'Ставь драйверы только с официальных сайтов. «Драйвер-паки» с других сайтов — частый источник вирусов.' dim
+    if ($page -and (Test-NovaInteractive) -and (Confirm-NovaAction 'Открыть официальную страницу драйвера?')) {
+        if (-not (Start-NovaAsUser $page)) { Write-Nova ('Открой сам: {0}' -f $page) info }
     }
     return 0
 }
@@ -913,10 +1088,16 @@ function Start-NovaMenu {
         Write-Host '  9  Освободить место на диске' -ForegroundColor White
         Write-Host ' 10  Автозагрузка: что запускается вместе с Windows' -ForegroundColor White
         Write-Host ' 11  Переезд на чистую Windows: сохранить и вернуть свои программы' -ForegroundColor White
-        Write-Host ' 12  Есть ли новая версия Nova' -ForegroundColor White
+        Write-Host ' 12  Обновить Nova одной кнопкой (или вернуть прошлую версию)' -ForegroundColor White
         Write-Host ' 13  Что тормозит прямо сейчас' -ForegroundColor White
         Write-Host ' 14  Интернет для игр: пинг, Wi‑Fi и DNS' -ForegroundColor White
         Write-Host ' 15  Отчёт для поддержки (файл на рабочий стол)' -ForegroundColor White
+        if (Test-NovaGameModeActive) {
+            Write-Host ' 16  Режим игры ВКЛЮЧЁН — выключить и вернуть как было' -ForegroundColor Green
+        } else {
+            Write-Host ' 16  Режим игры: максимум мощности, без уведомлений и обновлений' -ForegroundColor White
+        }
+        Write-Host ' 17  Свежий ли драйвер видеокарты' -ForegroundColor White
         Write-Host ('      Вопросы и ошибки: {0}' -f (Get-NovaSupportEmail)) -ForegroundColor DarkGray
         Write-Host '  0  Выход' -ForegroundColor White
         Write-Host ''
@@ -947,6 +1128,8 @@ function Start-NovaMenu {
                 '13' { [void](Invoke-NovaHeavyFlow); Wait-NovaKey }
                 '14' { [void](Invoke-NovaNetFlow); Wait-NovaKey }
                 '15' { [void](Invoke-NovaReportFlow); Wait-NovaKey }
+                '16' { [void](Invoke-NovaGameModeFlow); Wait-NovaKey }
+                '17' { [void](Invoke-NovaDriverFlow); Wait-NovaKey }
                 '0' { return }
             }
         } catch {
@@ -995,6 +1178,8 @@ try {
         'Heavy' { Show-NovaBanner; $exitCode = Invoke-NovaHeavyFlow }
         'Net' { Show-NovaBanner; $exitCode = Invoke-NovaNetFlow }
         'Report' { Show-NovaBanner; $exitCode = Invoke-NovaReportFlow }
+        'Game' { Show-NovaBanner; $exitCode = Invoke-NovaGameModeFlow }
+        'Driver' { Show-NovaBanner; $exitCode = Invoke-NovaDriverFlow }
     }
 } catch {
     Write-Nova ('Ошибка: {0}' -f $_.Exception.Message) err

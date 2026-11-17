@@ -82,6 +82,141 @@ function Get-NovaGpu {
 
 #endregion
 
+#region Свежий ли драйвер
+
+# NVIDIA сама говорит, какой драйвер последний для твоей видеокарты: Nova спрашивает только по просьбе
+# (пункт 17) и отправляет только модель видеокарты. У AMD и Intel такого открытого способа нет —
+# там Nova смотрит на дату драйвера и даёт ссылку на их официальную программу проверки.
+$script:NvidiaApi = @{
+    Products = 'https://www.nvidia.com/Download/API/lookupValueSearch.aspx?TypeID=3'
+    Drivers  = 'https://gfwsl.geforce.com/services_toolkit/services/com/nvidia/services/AjaxDriverService.php?func=DriverManualLookup&psid={0}&pfid={1}&osID=57&languageCode=1033&beta=0&isWHQL=1&dltype=-1&dch=1&upCRD=0&qnf=0&sort1=0&numberOfResults=1'
+    Details  = 'https://www.nvidia.com/en-us/drivers/details/{0}/'
+    Hosts    = @('www.nvidia.com', 'nvidia.com', 'gfwsl.geforce.com')
+}
+
+# Версия драйвера NVIDIA так, как её пишет NVIDIA: «32.0.15.6636» в Windows — это 566.36.
+function ConvertTo-NovaNvidiaVersion {
+    param([string]$DriverVersion)
+    $parts = @(([string]$DriverVersion).Split('.'))
+    if ($parts.Count -ne 4) { return $null }
+    foreach ($p in $parts) { if ($p -notmatch '^\d{1,5}\z') { return $null } }
+    $digits = $parts[2] + $parts[3].PadLeft(4, '0')
+    if ($digits.Length -lt 5) { return $null }
+    $digits = $digits.Substring($digits.Length - 5)
+    return ('{0}.{1}' -f [int]$digits.Substring(0, 3), $digits.Substring(3, 2))
+}
+
+# Имя видеокарты, как его знает сайт NVIDIA: без «NVIDIA » в начале и лишних пробелов.
+function Get-NovaNvidiaProductName {
+    param([string]$Name)
+    return ((([string]$Name -replace '[\p{Cc}\p{Cf}]', '') -replace '^\s*NVIDIA\s+', '') -replace '\s+', ' ').Trim()
+}
+
+# XML без DTD и внешних ссылок: так в ответ сайта нельзя спрятать «бомбу» или чтение файлов.
+function ConvertFrom-NovaSafeXml {
+    param([string]$Text)
+    $settings = New-Object System.Xml.XmlReaderSettings
+    $settings.DtdProcessing = [System.Xml.DtdProcessing]::Prohibit
+    $settings.XmlResolver = $null
+    $reader = [System.Xml.XmlReader]::Create((New-Object System.IO.StringReader($Text)), $settings)
+    try {
+        $doc = New-Object System.Xml.XmlDocument
+        $doc.XmlResolver = $null
+        $doc.Load($reader)
+        return $doc
+    } finally {
+        $reader.Close()
+    }
+}
+
+# Номер видеокарты на сайте NVIDIA (pfid) и её серии (psid) — из списка всех видеокарт NVIDIA.
+function Find-NovaNvidiaProduct {
+    param([Parameter(Mandatory)][string]$Xml, [Parameter(Mandatory)][string]$Name)
+    $doc = ConvertFrom-NovaSafeXml $Xml
+    $want = Get-NovaNvidiaProductName $Name
+    $short = ($want -replace '\s+\d+\s?GB\z', '').Trim()
+    $fallback = $null
+    foreach ($node in @($doc.SelectNodes('//LookupValue'))) {
+        $nameNode = $node.SelectSingleNode('Name')
+        $valueNode = $node.SelectSingleNode('Value')
+        if (-not $nameNode -or -not $valueNode) { continue }
+        $productName = (([string]$nameNode.InnerText) -replace '\s+', ' ').Trim()
+        $pfid = ([string]$valueNode.InnerText).Trim()
+        $psid = ([string]$node.GetAttribute('ParentID')).Trim()
+        if ($pfid -notmatch '^\d{1,7}\z' -or $psid -notmatch '^\d{1,7}\z') { continue }
+        if ($productName -ieq $want) { return [pscustomobject]@{ Name = $productName; Pfid = $pfid; Psid = $psid } }
+        if (-not $fallback -and $short -ne $want -and $productName -ieq $short) { $fallback = [pscustomobject]@{ Name = $productName; Pfid = $pfid; Psid = $psid } }
+    }
+    return $fallback
+}
+
+# Ответ NVIDIA о последнем драйвере: версия, дата и номер страницы драйвера. Всё проверяется по формату.
+function ConvertFrom-NovaNvidiaDriverJson {
+    param([Parameter(Mandatory)][string]$Json)
+    $doc = ConvertFrom-Json $Json
+    $first = @(Get-NovaProp $doc 'IDS' @()) | Select-Object -First 1
+    $info = Get-NovaProp $first 'downloadInfo'
+    if (-not $info) { return $null }
+    $version = ([string](Get-NovaProp $info 'Version' '')).Trim()
+    $id = ([string](Get-NovaProp $info 'ID' '')).Trim()
+    if ($version -notmatch '^\d{3}\.\d{2}\z') { return $null }
+    $date = $null
+    $raw = ([string](Get-NovaProp $info 'ReleaseDateTime' '')).Trim()
+    $parsed = [datetime]::MinValue
+    if ([datetime]::TryParseExact($raw, 'ddd MMM d, yyyy', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AllowWhiteSpaces, [ref]$parsed)) { $date = $parsed }
+    $page = ''
+    if ($id -match '^\d{1,9}\z') { $page = $script:NvidiaApi.Details -f $id }
+    return [pscustomobject]@{ Version = $version; Date = $date; Page = $page }
+}
+
+# Последний драйвер для видеокарты NVIDIA с сайта NVIDIA (два небольших запроса). Ошибка — исключение.
+function Get-NovaNvidiaLatest {
+    param([Parameter(Mandatory)][string]$Name)
+    $xml = [Text.Encoding]::UTF8.GetString((Get-NovaHttpBytes -Url $script:NvidiaApi.Products -AllowedHosts $script:NvidiaApi.Hosts -MaxBytes 8388608 -TimeoutSeconds 40))
+    $product = Find-NovaNvidiaProduct -Xml $xml -Name $Name
+    if (-not $product) { throw ('сайт NVIDIA не знает видеокарту «{0}»' -f (Get-NovaNvidiaProductName $Name)) }
+    $json = [Text.Encoding]::UTF8.GetString((Get-NovaHttpBytes -Url ($script:NvidiaApi.Drivers -f $product.Psid, $product.Pfid) -AllowedHosts $script:NvidiaApi.Hosts -MaxBytes 1048576 -TimeoutSeconds 30))
+    $latest = ConvertFrom-NovaNvidiaDriverJson $json
+    if (-not $latest) { throw 'сайт NVIDIA ответил непонятно' }
+    return $latest
+}
+
+# Совет «свежий ли драйвер». $Latest — ответ NVIDIA или $null (AMD, Intel или сайт недоступен).
+function Get-NovaDriverFreshAdvice {
+    param([Parameter(Mandatory)]$Gpu, $Latest, [datetime]$Now = (Get-Date), [string]$LookupError = '')
+    $vendor = Get-NovaGpuVendor $Gpu.PnpId
+    if (-not $vendor) { return (New-NovaCheck 'Драйвер' 'info' ('{0} — виртуальная видеокарта, драйвер не проверяю.' -f $Gpu.Name) -Id 'driver') }
+    $link = Get-NovaDriverLink $vendor
+    $basic = ($Gpu.Name -match 'Basic Display|Базовый видеоадаптер') -or ($Gpu.ErrorCode -and [int]$Gpu.ErrorCode -ne 0)
+    if ($basic) { return (New-NovaCheck 'Драйвер' 'warn' ('Драйвер {0} не установлен — Windows работает на базовом.' -f $vendor) ('Скачай с официального сайта: {0}' -f $link) 'driver') }
+    $date = ''
+    if ($Gpu.DriverDate) { $date = ([datetime]$Gpu.DriverDate).ToString('d MMMM yyyy', $script:RuCulture) }
+    $installed = [string]$Gpu.DriverVersion
+    if ($vendor -eq 'NVIDIA') { $nv = ConvertTo-NovaNvidiaVersion $Gpu.DriverVersion; if ($nv) { $installed = $nv } }
+    $mine = 'у тебя {0}' -f $installed
+    if ($date) { $mine = '{0} от {1}' -f $mine, $date }
+    if ($vendor -eq 'NVIDIA' -and $Latest) {
+        $page = $link
+        if ($Latest.Page) { $page = $Latest.Page }
+        $latestText = $Latest.Version
+        if ($Latest.Date) { $latestText = '{0} от {1}' -f $Latest.Version, ([datetime]$Latest.Date).ToString('d MMMM yyyy', $script:RuCulture) }
+        $mineVersion = ConvertTo-NovaVersion $installed
+        $newVersion = ConvertTo-NovaVersion $Latest.Version
+        if ($mineVersion -and $newVersion -and $mineVersion -ge $newVersion) {
+            return (New-NovaCheck 'Драйвер' 'ok' ('{0}: драйвер последний ({1}).' -f $Gpu.Name, $mine) -Id 'driver')
+        }
+        return (New-NovaCheck 'Драйвер' 'warn' ('{0}: вышел драйвер {1}, {2}.' -f $Gpu.Name, $latestText, $mine) ('Скачай с сайта NVIDIA: {0}' -f $page) 'driver')
+    }
+    $hint = ('Проверить и скачать — официальная программа {0}: {1}' -f $vendor, $link)
+    if ($vendor -eq 'NVIDIA') { $hint = 'Сайт NVIDIA сейчас не ответил{0}. Проверь сам: {1}' -f $(if ($LookupError) { ' (' + $LookupError + ')' } else { '' }), $link }
+    if ($Gpu.DriverDate -and ($Now - [datetime]$Gpu.DriverDate).TotalDays -gt 180) {
+        return (New-NovaCheck 'Драйвер' 'warn' ('{0}: драйвер старше полугода ({1}).' -f $Gpu.Name, $mine) $hint 'driver')
+    }
+    return (New-NovaCheck 'Драйвер' 'info' ('{0}: {1}.' -f $Gpu.Name, $mine) $hint 'driver')
+}
+
+#endregion
+
 #region Монитор
 
 $script:ScreensReady = $false
