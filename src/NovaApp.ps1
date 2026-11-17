@@ -10,11 +10,23 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Screenshot
+    [string]$Screenshot,
+    # Уже перезапускались с правами администратора — второй раз не пробуем (без вечной петли).
+    [switch]$Elevated
 )
 
 $ErrorActionPreference = 'Stop'
 if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') { exit 1 }
+Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
+# Консоль скрыта: если окно не откроется, человек должен увидеть причину, а не тишину.
+trap {
+    $message = [string]$_.Exception.Message
+    if ($message.Length -gt 400) { $message = $message.Substring(0, 400) + '…' }
+    # Снимки для проверки: окна с вопросом там некому закрыть — только текст ошибки.
+    if ($Screenshot) { [Console]::Error.WriteLine('Nova Center: ' + $message); exit 1 }
+    try { [void][Windows.MessageBox]::Show(("Nova Центр не открылся: {0}`n`nОткрой Nova.cmd — обычное меню Nova работает и без окна." -f $message), 'Nova Центр', 'OK', 'Error') } catch { Write-Verbose 'Сообщение не показалось.' }
+    exit 1
+}
 $env:PSModulePath = (@((Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules'), (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\Modules')) -join ';')
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $configPath = Join-Path $projectRoot 'config.json'
@@ -25,12 +37,16 @@ Import-Module (Join-Path $PSScriptRoot 'Nova.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaTools.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaPlay.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaStartup.psm1') -Force -DisableNameChecking
-Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
 
 # Права администратора — как у меню Nova. Окно перезапускается с ними; консоль при этом скрыта.
 if (-not (Test-NovaAdmin)) {
+    if ($Elevated) {
+        # Windows не дала прав (например, контроль учётных записей выключен у обычного пользователя).
+        [void][Windows.MessageBox]::Show('Windows не дала Nova прав администратора. Войди в Windows как администратор и открой NovaCenter.cmd снова.', 'Nova Центр', 'OK', 'Warning')
+        exit 1
+    }
     try {
-        Start-Process -FilePath $psExe -Verb RunAs -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', ('"{0}"' -f $PSCommandPath))
+        Start-Process -FilePath $psExe -Verb RunAs -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', ('"{0}"' -f $PSCommandPath), '-Elevated')
     } catch {
         [void][Windows.MessageBox]::Show('Nova нужны права администратора. Запусти NovaCenter.cmd ещё раз и нажми «Да».', 'Nova Центр')
     }
@@ -47,12 +63,23 @@ if (-not ($env:NOVA_ALLOW_SHARED_FOLDER -eq '1' -and $env:GITHUB_ACTIONS -eq 'tr
 }
 [void](Get-NovaDataDir)
 
+# Одно окно Nova Центр: второй двойной клик просто показывает уже открытое.
+$script:Single = New-Object Threading.Mutex($false, 'Local\NovaCenter')
+$owned = $false
+# Прошлое окно закрылось аварийно — отметка «брошена», она теперь наша.
+try { $owned = $script:Single.WaitOne(0) } catch { $owned = $true }
+if (-not $owned -and -not $Screenshot) {
+    try { Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.Interaction]::AppActivate('Nova Центр') } catch { Write-Verbose 'Открытое окно не нашлось.' }
+    exit 0
+}
+function Close-NovaSingle { try { $script:Single.ReleaseMutex() } catch { Write-Verbose 'Отметка «окно открыто» уже снята.' } }
+
 #region Внешний вид (XAML)
 
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Nova Центр" Width="1180" Height="760" MinWidth="980" MinHeight="640"
+        Title="Nova Центр" Width="1180" Height="760" MinWidth="900" MinHeight="560"
         WindowStartupLocation="CenterScreen" Background="#0E1015" Foreground="#E8EAF0"
         FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14" UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Display" SnapsToDevicePixels="True">
@@ -516,7 +543,8 @@ $xaml = @'
               </ScrollViewer>
             </Border>
             <DockPanel Grid.Row="3" Margin="0,16,0,0">
-              <Button x:Name="RunClose" DockPanel.Dock="Right" Style="{StaticResource Primary}" Content="Закрыть" IsEnabled="False"/>
+              <Button x:Name="RunClose" DockPanel.Dock="Right" Style="{StaticResource Primary}" Content="Закрыть" IsEnabled="False" IsDefault="True"/>
+              <Button x:Name="RunStop" DockPanel.Dock="Right" Style="{StaticResource Ghost}" Content="Остановить"/>
               <TextBlock x:Name="RunResult" VerticalAlignment="Center" FontWeight="SemiBold"/>
             </DockPanel>
           </Grid>
@@ -535,6 +563,11 @@ $xaml = @'
 #endregion
 
 $win = [Windows.Markup.XamlReader]::Parse($xaml)
+$work = [Windows.SystemParameters]::WorkArea
+$win.MinWidth = [Math]::Min($win.MinWidth, [Math]::Max(640, $work.Width - 20))
+$win.MinHeight = [Math]::Min($win.MinHeight, [Math]::Max(480, $work.Height - 20))
+$win.Width = [Math]::Max($win.MinWidth, [Math]::Min($win.Width, $work.Width - 40))
+$win.Height = [Math]::Max($win.MinHeight, [Math]::Min($win.Height, $work.Height - 40))
 $ui = @{}
 foreach ($name in @('Root', 'LogoImg', 'VerText', 'BtnMin', 'BtnMax', 'BtnClose', 'SideStatus', 'NavAbout', 'NavHome', 'NavTweaks', 'NavApps', 'NavGames', 'NavVoice', 'NavTools', 'NavUpdate',
         'Pages', 'PageHome', 'HeroImg', 'HealthChip', 'HealthText', 'SysText', 'QApply', 'QGame', 'QGameTitle', 'QGameText', 'QCheck', 'QClean', 'LSite', 'LCabinet', 'LGitHub', 'LMail', 'MailText', 'NewsVer', 'NewsList',
@@ -543,7 +576,7 @@ foreach ($name in @('Root', 'LogoImg', 'VerText', 'BtnMin', 'BtnMax', 'BtnClose'
         'PageVoice', 'BtnVoiceOpen', 'BtnVoiceAuto', 'BtnVoiceEdit', 'VoiceList',
         'PageTools', 'TClean', 'TUndo', 'TCheck', 'TStartup', 'TReport', 'TMenu', 'TShortcut',
         'PageUpdate', 'BtnCheckUpd', 'BtnDoUpd', 'UpdTitle', 'UpdText', 'UpdList', 'BtnRollback', 'PageAbout', 'AboutText',
-        'RunOverlay', 'RunIcon', 'RunTitle', 'RunStep', 'BarTrack', 'BarFill', 'BarMove', 'RunScroll', 'RunLog', 'RunClose', 'RunResult', 'Toast', 'ToastText')) {
+        'RunOverlay', 'RunIcon', 'RunTitle', 'RunStep', 'BarTrack', 'BarFill', 'BarMove', 'RunScroll', 'RunLog', 'RunClose', 'RunStop', 'RunResult', 'Toast', 'ToastText')) {
     $ui[$name] = $win.FindName($name)
     if ($null -eq $ui[$name]) { throw ('В окне нет элемента {0}' -f $name) }
 }
@@ -617,7 +650,7 @@ function Show-Page($Page) {
 $script:Run = $null
 $runTimer = New-Object Windows.Threading.DispatcherTimer
 $runTimer.Interval = [TimeSpan]::FromMilliseconds(200)
-$colors = @{ Green = '#7CE0A3'; Yellow = '#FFC940'; Red = '#FF7A7A'; DarkGray = '#6E7689'; Cyan = '#7FD4FF'; White = '#FFFFFF'; Gray = '#C9CEDA' }
+$colors = @{ Green = '#7CE0A3'; Yellow = '#FFC940'; Red = '#FF7A7A'; DarkGray = '#6E7689'; Cyan = '#7FD4FF'; White = '#FFFFFF'; Gray = '#C9CEDA'; Magenta = '#E9B8FF' }
 
 function Add-RunLine([string]$Color, [string]$Text) {
     if (-not $Text.Trim()) { return }
@@ -625,6 +658,7 @@ function Add-RunLine([string]$Color, [string]$Text) {
     $t.FontFamily = New-Object Windows.Media.FontFamily('Cascadia Mono, Consolas')
     $t.Margin = '0,1,0,1'
     [void]$ui.RunLog.Children.Add($t)
+    $script:Run.Lines++
     if ($Color -ne 'DarkGray' -and $Text.Trim().Length -gt 2) { $ui.RunStep.Text = $Text.Trim().TrimStart('+', '!', 'x', ' ') }
     $ui.RunScroll.ScrollToEnd()
 }
@@ -648,34 +682,61 @@ function Stop-BarAnimation([bool]$Ok) {
     $ui.BarFill.Background = Get-Brush ($(if ($Ok) { '#3DDC84' } else { '#FF6B6B' }))
 }
 
+# Пока Nova работает, страницы и меню под окном хода работы недоступны: Enter или пробел
+# не нажмут ещё раз плитку, с которой всё началось.
+function Set-PagesEnabled([bool]$Value) {
+    $ui.Pages.IsEnabled = $Value
+    $ui.NavHome.Parent.IsEnabled = $Value
+    $ui.NavAbout.Parent.IsEnabled = $Value
+}
+
+# Строка для команды PowerShell в одинарных кавычках: кроме ' PowerShell считает кавычками и ‘ ’ ‚ ‛.
+function ConvertTo-NovaQuoted([string]$Text) {
+    return ("'{0}'" -f [Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent($Text))
+}
+
+# Останавливает Nova вместе с тем, что она запустила (например, winget).
+function Stop-NovaRunProcess($Run) {
+    if (-not $Run -or $Run.P.HasExited) { return }
+    try { & (Join-Path $env:SystemRoot 'System32\taskkill.exe') /T /F /PID $Run.P.Id 2>&1 | Out-Null } catch { Write-Verbose 'taskkill не сработал.' }
+    try { if (-not $Run.P.HasExited) { $Run.P.Kill() } } catch { Write-Verbose 'Процесс уже завершился.' }
+}
+
 # Запускает Nova (src\Nova.ps1) с заданным режимом и показывает её вывод в окне. Аргументы — только постоянные строки
-# из этого файла; путь к Nova передаётся закодированной командой, поэтому кавычки и апострофы в пути не мешают.
+# из этого файла; пути передаются закодированной командой, поэтому кавычки и апострофы в пути не мешают.
 function Start-NovaRun {
     param([string]$Title, [string]$Icon, [string]$Arguments, [scriptblock]$OnDone)
     if ($script:Run) { return }
-    $out = Join-Path (Get-NovaBuildDir) ('app-run-{0}.log' -f [DateTime]::UtcNow.Ticks)
-    $novaEsc = $novaScript.Replace("'", "''")
-    $outEsc = $out.Replace("'", "''")
-    $cmd = "& '$novaEsc' $Arguments -EchoFile '$outEsc'; exit `$LASTEXITCODE"
-    $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))
-    $psi = New-Object Diagnostics.ProcessStartInfo
-    $psi.FileName = $psExe
-    $psi.Arguments = '-NoProfile -ExecutionPolicy Bypass -EncodedCommand ' + $enc
-    $psi.UseShellExecute = $false
-    $psi.CreateNoWindow = $true
-    $psi.RedirectStandardInput = $true
-    $psi.RedirectStandardOutput = $false
-    $p = [Diagnostics.Process]::Start($psi)
+    try {
+        $out = Join-Path (Get-NovaBuildDir) ('app-run-{0}.log' -f [DateTime]::UtcNow.Ticks)
+        # Код выхода по умолчанию — ошибка: если Nova не запустится вовсе (например, файл повреждён), окно не скажет «получилось».
+        $cmd = "`$global:LASTEXITCODE = 1; try { & $(ConvertTo-NovaQuoted $novaScript) $Arguments -EchoFile $(ConvertTo-NovaQuoted $out); exit ([int]`$LASTEXITCODE) } catch { exit 1 }"
+        $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))
+        $psi = New-Object Diagnostics.ProcessStartInfo
+        $psi.FileName = $psExe
+        $psi.Arguments = '-NoProfile -ExecutionPolicy Bypass -EncodedCommand ' + $enc
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $psi.RedirectStandardInput = $true
+        $psi.RedirectStandardOutput = $false
+        $p = [Diagnostics.Process]::Start($psi)
+    } catch {
+        Show-Toast ('Nova не запустилась: {0}' -f (Get-NovaPlainText $_.Exception.Message 160))
+        return
+    }
     # Вопросов в этих режимах нет; ввод закрываем, чтобы случайный вопрос не ждал ответа вечно.
     $p.StandardInput.Close()
-    $script:Run = @{ P = $p; Out = $out; Pos = [long]0; OnDone = $OnDone; Rest = '' }
+    $script:Run = @{ P = $p; Out = $out; Pos = [long]0; OnDone = $OnDone; Rest = ''; Decoder = [Text.Encoding]::UTF8.GetDecoder(); Lines = 0; Stopped = $false }
     $ui.RunLog.Children.Clear()
     $ui.RunTitle.Text = $Title
     $ui.RunIcon.Text = $Icon
     $ui.RunStep.Text = 'Запускаю Nova…'
     $ui.RunResult.Text = ''
     $ui.RunClose.IsEnabled = $false
+    $ui.RunStop.Visibility = 'Visible'
+    Set-PagesEnabled $false
     $ui.RunOverlay.Visibility = 'Visible'
+    [void]$ui.RunStop.Focus()
     Start-BarAnimation
     $runTimer.Start()
 }
@@ -690,17 +751,32 @@ function Read-RunOutput {
         $buf = New-Object byte[] ([int][math]::Min(1048576, $fs.Length - $r.Pos))
         $n = $fs.Read($buf, 0, $buf.Length)
         $r.Pos += $n
-        $text = $r.Rest + [Text.Encoding]::UTF8.GetString($buf, 0, $n)
-        $lines = $text -split "`n"
+        # Декодер помнит половинку русской буквы, если чтение пришлось на середину символа.
+        $chars = New-Object char[] ($r.Decoder.GetCharCount($buf, 0, $n))
+        [void]$r.Decoder.GetChars($buf, 0, $n, $chars, 0)
+        $lines = ($r.Rest + (-join $chars)) -split "`n"
         $r.Rest = $lines[-1]
+        if ($lines.Count -lt 2) { return }
         foreach ($line in $lines[0..($lines.Count - 2)]) {
             $parts = $line.Split("`t", 2)
             if ($parts.Count -lt 2) { continue }
-            # Рамку-логотип консольного меню в окне не показываем.
-            if ($parts[0] -eq 'Magenta') { continue }
             Add-RunLine $parts[0] $parts[1]
         }
     } finally { $fs.Dispose() }
+}
+
+function Complete-NovaRun([bool]$Ok, [string]$Text) {
+    $runTimer.Stop()
+    $r = $script:Run
+    $script:Run = $null
+    Stop-BarAnimation $Ok
+    $ui.RunResult.Text = $Text
+    $ui.RunResult.Foreground = Get-Brush ($(if ($Ok) { '#7CE0A3' } else { '#FFC940' }))
+    $ui.RunStop.Visibility = 'Collapsed'
+    $ui.RunClose.IsEnabled = $true
+    [void]$ui.RunClose.Focus()
+    if ($r) { try { [IO.File]::Delete($r.Out) } catch { Write-Verbose 'Файл хода работы удалится позже.' } }
+    return $r
 }
 
 $runTimer.Add_Tick({
@@ -709,33 +785,60 @@ $runTimer.Add_Tick({
             $r = $script:Run
             if ($r -and $r.P.HasExited) {
                 Read-RunOutput
-                $runTimer.Stop()
-                $code = $r.P.ExitCode
-                $ok = ($code -eq 0)
-                Stop-BarAnimation $ok
-                $ui.RunResult.Text = $(if ($ok) { '✓  Всё получилось' } else { 'Есть замечания — подробности выше' })
-                $ui.RunResult.Foreground = Get-Brush ($(if ($ok) { '#7CE0A3' } else { '#FFC940' }))
-                $ui.RunClose.IsEnabled = $true
-                $script:Run = $null
-                try { [IO.File]::Delete($r.Out) } catch { Write-Verbose 'Файл хода работы удалится позже.' }
+                $ok = ($r.P.ExitCode -eq 0) -and -not $r.Stopped
+                $text = '✓  Всё получилось'
+                if ($r.Stopped) { $text = 'Остановлено. Что уже сделано, можно вернуть: «Отменить последний запуск»' }
+                elseif (-not $ok -and $r.Lines -eq 0) { $text = 'Nova не запустилась — открой Nova.cmd, там будет видна причина' }
+                elseif (-not $ok) { $text = 'Есть замечания — подробности выше' }
+                [void](Complete-NovaRun $ok $text)
                 if ($r.OnDone) { & $r.OnDone $ok }
             }
         } catch {
-            $runTimer.Stop()
-            $script:Run = $null
-            $ui.RunResult.Text = ('Ошибка: {0}' -f (Get-NovaPlainText $_.Exception.Message 200))
-            $ui.RunClose.IsEnabled = $true
+            $r = $script:Run
+            Stop-NovaRunProcess $r
+            [void](Complete-NovaRun $false ('Ошибка: {0}' -f (Get-NovaPlainText $_.Exception.Message 200)))
         }
     })
-$ui.RunClose.Add_Click({ $ui.RunOverlay.Visibility = 'Collapsed'; Update-State })
+$ui.RunClose.Add_Click({ $ui.RunOverlay.Visibility = 'Collapsed'; Set-PagesEnabled $true; Update-State })
+$ui.RunStop.Add_Click({
+        $r = $script:Run
+        if (-not $r) { return }
+        if ([Windows.MessageBox]::Show('Остановить Nova? То, что она уже успела сделать, останется — вернуть можно через «Отменить последний запуск».', 'Nova Центр', 'YesNo', 'Question') -ne 'Yes') { return }
+        $r.Stopped = $true
+        $ui.RunStep.Text = 'Останавливаю…'
+        Stop-NovaRunProcess $r
+    })
 
 # Консольные режимы, где Nova задаёт вопросы (замер FPS, автозагрузка, меню), — в обычном окне.
 function Start-NovaConsole([string]$Arguments) {
-    $novaEsc = $novaScript.Replace("'", "''")
-    $cmd = "& '$novaEsc' $Arguments"
+    $cmd = '& {0} {1}' -f (ConvertTo-NovaQuoted $novaScript), $Arguments
     $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))
-    Start-Process -FilePath $psExe -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $enc)
+    try { Start-Process -FilePath $psExe -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $enc) } catch { Show-Toast ('Не открылось: {0}' -f (Get-NovaPlainText $_.Exception.Message 160)) }
 }
+
+# Долгие проверки (система, список изменений на GitHub) — в фоне, чтобы окно не «зависало».
+$script:Jobs = New-Object System.Collections.Generic.List[object]
+$jobTimer = New-Object Windows.Threading.DispatcherTimer
+$jobTimer.Interval = [TimeSpan]::FromMilliseconds(150)
+function Start-NovaBackground([string]$Script, [object[]]$Arguments, [scriptblock]$OnDone) {
+    $ps = [powershell]::Create()
+    [void]$ps.AddScript($Script)
+    foreach ($a in $Arguments) { [void]$ps.AddArgument($a) }
+    $script:Jobs.Add(@{ Ps = $ps; Handle = $ps.BeginInvoke(); OnDone = $OnDone })
+    $jobTimer.Start()
+}
+$jobTimer.Add_Tick({
+        foreach ($job in @($script:Jobs)) {
+            if (-not $job.Handle.IsCompleted) { continue }
+            [void]$script:Jobs.Remove($job)
+            $out = $null; $err = ''
+            try { $out = $job.Ps.EndInvoke($job.Handle) } catch { $err = $(if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }) }
+            if (-not $err -and $job.Ps.Streams.Error.Count -gt 0) { $err = $job.Ps.Streams.Error[0].Exception.Message }
+            $job.Ps.Dispose()
+            try { & $job.OnDone @($out) $err } catch { Show-Toast ('Ошибка: {0}' -f (Get-NovaPlainText $_.Exception.Message 160)) }
+        }
+        if ($script:Jobs.Count -eq 0) { $jobTimer.Stop() }
+    })
 
 #endregion
 
@@ -770,13 +873,25 @@ $presets = @(
 )
 
 $script:Tweaks = @((Read-NovaJson $tweaksPath).tweaks)
-$script:ConfigText = [IO.File]::ReadAllText($configPath, [Text.Encoding]::UTF8)
-$script:Config = ConvertFrom-Json $script:ConfigText
-$script:State = @{ tweaks = @{}; removeApps = @{}; installApps = @{} }
-foreach ($sec in @('tweaks', 'removeApps', 'installApps')) {
-    $obj = Get-NovaProp $script:Config $sec
-    if ($obj) { foreach ($p in $obj.PSObject.Properties) { $script:State[$sec][$p.Name] = [bool]$p.Value } }
+$script:Touched = @{}
+
+# Переключатели из текста config.json. Значение не true/false (например, "false" строкой) — считаем выключенным.
+# Настройки, которых в старом config.json ещё нет, — выключены (иначе сборки и счётчики их не видят).
+function Import-ConfigState([string]$Text) {
+    $config = ConvertFrom-Json $Text
+    $state = @{ tweaks = @{}; removeApps = @{}; installApps = @{} }
+    foreach ($sec in @('tweaks', 'removeApps', 'installApps')) {
+        $obj = Get-NovaProp $config $sec
+        if ($obj) { foreach ($p in $obj.PSObject.Properties) { $state[$sec][$p.Name] = ($p.Value -is [bool] -and $p.Value) } }
+    }
+    foreach ($t in $script:Tweaks) { if (-not $state.tweaks.ContainsKey([string]$t.id)) { $state.tweaks[[string]$t.id] = $false } }
+    # Что человек уже переключил в окне, но ещё не сохранил, — остаётся как в окне.
+    foreach ($key in @($script:Touched.Keys)) { $sk = $key.Split('|', 2); $state[$sk[0]][$sk[1]] = $script:State[$sk[0]][$sk[1]] }
+    $script:State = $state
+    $script:ConfigText = $Text
 }
+$script:State = @{ tweaks = @{}; removeApps = @{}; installApps = @{} }
+Import-ConfigState ([IO.File]::ReadAllText($configPath, [Text.Encoding]::UTF8))
 $script:Dirty = $false
 $script:TweakMode = 'tweaks'
 $script:Cat = 'privacy'
@@ -785,23 +900,38 @@ function Set-Dirty([bool]$Value) {
     $script:Dirty = $Value
     $ui.DirtyText.Text = $(if ($Value) { 'Есть несохранённые изменения' } else { '' })
 }
+function Set-Switch([string]$Sec, [string]$Key, [bool]$Value) {
+    $script:State[$Sec][$Key] = $Value
+    $script:Touched[('{0}|{1}' -f $Sec, $Key)] = $true
+    Set-Dirty $true
+}
 
-# Записывает переключатели в config.json, меняя в тексте только true/false у нужных ключей —
-# всё остальное (порядок, пояснения, отступы) остаётся как было.
+# Записывает в config.json только то, что переключили в окне, и только значения нужных ключей —
+# всё остальное (порядок, пояснения, отступы и правки, сделанные в файле руками) остаётся как было.
+# Файл перечитывается перед записью и заменяется целиком: оборванная запись не оставит пустой config.json.
 function Save-Config {
-    $text = $script:ConfigText
+    try {
+        $text = [IO.File]::ReadAllText($configPath, [Text.Encoding]::UTF8)
+        [void](ConvertFrom-Json $text)
+    } catch {
+        Show-Toast 'config.json сейчас не читается — исправь его в Блокноте и нажми «Сохранить» снова'
+        return $false
+    }
     foreach ($sec in @('tweaks', 'removeApps', 'installApps')) {
-        $start = $text.IndexOf(('"{0}"' -f $sec))
-        if ($start -lt 0) { continue }
-        $open = $text.IndexOf('{', $start)
+        $keys = @($script:Touched.Keys | Where-Object { $_.StartsWith($sec + '|') } | ForEach-Object { $_.Substring($sec.Length + 1) })
+        if ($keys.Count -eq 0) { continue }
+        $m = [regex]::Match($text, ('"{0}"\s*:\s*\{{' -f $sec))
+        if (-not $m.Success) { continue }
+        $open = $m.Index + $m.Length - 1
         $close = $text.IndexOf('}', $open)
-        if ($open -lt 0 -or $close -lt 0) { continue }
+        if ($close -lt 0) { continue }
         $block = $text.Substring($open, $close - $open + 1)
-        foreach ($k in $script:State[$sec].Keys) {
+        foreach ($k in $keys) {
             $value = $(if ($script:State[$sec][$k]) { 'true' } else { 'false' })
-            $pattern = '("' + [regex]::Escape($k) + '"\s*:\s*)(true|false)'
+            # Любое значение ключа (true, false, "строка", число, null) заменяется на true/false.
+            $pattern = '("' + [regex]::Escape($k) + '"\s*:\s*)(true|false|null|"(?:[^"\\]|\\.)*"|-?[0-9][0-9.eE+-]*)'
             if ([regex]::IsMatch($block, $pattern)) {
-                $block = [regex]::Replace($block, $pattern, ('$1' + $value))
+                $block = [regex]::Replace($block, $pattern, ('${1}' + $value))
             } elseif ($value -eq 'true') {
                 # Новой настройки в файле ещё нет — дописываем в конец раздела.
                 $body = $block.Substring(1, $block.Length - 2).TrimEnd()
@@ -811,10 +941,29 @@ function Save-Config {
         }
         $text = $text.Substring(0, $open) + $block + $text.Substring($close + 1)
     }
-    [void](ConvertFrom-Json $text)
-    [IO.File]::WriteAllText($configPath, $text, (New-Object Text.UTF8Encoding($false)))
-    $script:ConfigText = $text
+    try {
+        [void](ConvertFrom-Json $text)
+        $temp = $configPath + '.nova-new'
+        [IO.File]::WriteAllText($temp, $text, (New-Object Text.UTF8Encoding($false)))
+        try { [IO.File]::Replace($temp, $configPath, [NullString]::Value) } catch { [IO.File]::Delete($temp); throw }
+    } catch {
+        Show-Toast ('Не получилось сохранить config.json: {0}' -f (Get-NovaPlainText $_.Exception.Message 140))
+        return $false
+    }
+    $script:Touched.Clear()
+    Import-ConfigState $text
     Set-Dirty $false
+    if ($ui.PageTweaks.Visibility -eq 'Visible') { Update-CatTabs; Update-TweakList }
+    return $true
+}
+
+# config.json поменяли снаружи (Блокнот, сборка из кабинета), а в окне ничего не переключали — показываем новое.
+function Sync-ConfigFromDisk {
+    if ($script:Dirty -or $script:Run) { return }
+    try { $text = [IO.File]::ReadAllText($configPath, [Text.Encoding]::UTF8) } catch { return }
+    if ($text -eq $script:ConfigText) { return }
+    try { Import-ConfigState $text } catch { return }
+    if ($ui.PageTweaks.Visibility -eq 'Visible') { Update-CatTabs; Update-TweakList }
 }
 
 function New-Row([string]$Title, [string]$Text, [string]$Sec, [string]$Key, [string]$Badge) {
@@ -841,7 +990,7 @@ function New-Row([string]$Title, [string]$Text, [string]$Sec, [string]$Key, [str
     [Windows.Automation.AutomationProperties]::SetName($sw, $Title)
     [Windows.Automation.AutomationProperties]::SetAutomationId($sw, ('sw-' + $Key))
     # Checked/Unchecked, а не Click: так переключатель срабатывает и от экранного диктора, а не только от мыши и пробела.
-    $onSwitch = { param($s) $script:State[$s.Tag[0]][$s.Tag[1]] = [bool]$s.IsChecked; Set-Dirty $true }
+    $onSwitch = { param($s) Set-Switch $s.Tag[0] $s.Tag[1] ([bool]$s.IsChecked) }
     $sw.Add_Checked($onSwitch); $sw.Add_Unchecked($onSwitch)
     [Windows.Controls.Grid]::SetColumn($sw, 1)
     [void]$grid.Children.Add($sw)
@@ -911,8 +1060,8 @@ foreach ($pr in $presets) {
             param($s)
             $changed = 0
             $known = @{}; foreach ($t in $script:Tweaks) { $known[[string]$t.id] = $true }
-            foreach ($k in $s.Tag.Tweaks.Keys) { if ($known.ContainsKey($k) -and [bool]$script:State.tweaks[$k] -ne $s.Tag.Tweaks[$k]) { $script:State.tweaks[$k] = $s.Tag.Tweaks[$k]; $changed++ } }
-            Set-Dirty ($script:Dirty -or $changed -gt 0); Update-CatTabs; Update-TweakList
+            foreach ($k in $s.Tag.Tweaks.Keys) { if ($known.ContainsKey($k) -and [bool]$script:State.tweaks[$k] -ne $s.Tag.Tweaks[$k]) { Set-Switch 'tweaks' $k $s.Tag.Tweaks[$k]; $changed++ } }
+            Update-CatTabs; Update-TweakList
             Show-Toast ('Сборка «{0}»: изменено пунктов — {1}' -f $s.Tag.Name, $changed)
         })
     [void]$ui.PresetBar.Children.Add($b)
@@ -935,19 +1084,38 @@ function Update-State {
     } catch { Write-Verbose 'Режим игры: состояние неизвестно.' }
 }
 
-function Update-Health {
-    try {
-        $context = $null
-        try { $context = Get-NovaContext -ConfigPath $configPath -TweaksPath $tweaksPath } catch { $context = $null }
-        $summary = Get-NovaHealthSummary (Get-NovaHealth -Context $context)
-        $sys = Get-NovaSystemInfo
-        $ui.SysText.Text = ('{0} {1}, сборка {2}' -f $sys.Name, $sys.Version, $sys.Build)
-        if ($summary.Stop -gt 0) { $ui.HealthText.Text = 'Есть проблемы — «Проверить систему»'; $ui.HealthChip.Background = Get-Brush '#3A1C1C'; $ui.HealthText.Foreground = Get-Brush '#FF9A9A' }
-        elseif ($summary.Warn -gt 0) { $ui.HealthText.Text = ('Замечаний: {0} — «Проверить систему»' -f $summary.Warn); $ui.HealthChip.Background = Get-Brush '#33290F'; $ui.HealthText.Foreground = Get-Brush '#FFC940' }
-        else { $ui.HealthText.Text = 'Система готова'; $ui.HealthChip.Background = Get-Brush '#16301F'; $ui.HealthText.Foreground = Get-Brush '#7CE0A3' }
-    } catch {
-        $ui.HealthText.Text = 'Проверка системы — в «Обслуживании»'
+function Show-Health([object]$Result, [string]$Problem) {
+    if (-not $Result) { $ui.HealthText.Text = 'Проверка системы — в «Обслуживании»'; $ui.HealthChip.Background = Get-Brush '#22262F'; $ui.HealthText.Foreground = Get-Brush '#C9CEDA'; return }
+    $ui.SysText.Text = $Result.Sys
+    if ($Result.Stop -gt 0) { $ui.HealthText.Text = 'Есть проблемы — «Проверить систему»'; $ui.HealthChip.Background = Get-Brush '#3A1C1C'; $ui.HealthText.Foreground = Get-Brush '#FF9A9A' }
+    elseif ($Result.Warn -gt 0) { $ui.HealthText.Text = ('Замечаний: {0} — «Проверить систему»' -f $Result.Warn); $ui.HealthChip.Background = Get-Brush '#33290F'; $ui.HealthText.Foreground = Get-Brush '#FFC940' }
+    else { $ui.HealthText.Text = 'Система готова'; $ui.HealthChip.Background = Get-Brush '#16301F'; $ui.HealthText.Foreground = Get-Brush '#7CE0A3' }
+}
+# Та же проверка — в отдельном потоке со своими модулями.
+$healthScript = @'
+param([string]$Src, [string]$ConfigPath, [string]$TweaksPath)
+$ErrorActionPreference = 'Stop'
+foreach ($m in @('Nova.psm1', 'NovaTools.psm1', 'NovaPlay.psm1', 'NovaStartup.psm1')) { Import-Module (Join-Path $Src $m) -Force -DisableNameChecking }
+$context = $null
+try { $context = Get-NovaContext -ConfigPath $ConfigPath -TweaksPath $TweaksPath } catch { $context = $null }
+$summary = Get-NovaHealthSummary (Get-NovaHealth -Context $context)
+$sys = Get-NovaSystemInfo
+[pscustomobject]@{ Stop = [int]$summary.Stop; Warn = [int]$summary.Warn; Sys = ('{0} {1}, сборка {2}' -f $sys.Name, $sys.Version, $sys.Build) }
+'@
+function Update-Health([switch]$Wait) {
+    if ($Wait) {
+        $result = $null
+        try {
+            $context = $null
+            try { $context = Get-NovaContext -ConfigPath $configPath -TweaksPath $tweaksPath } catch { $context = $null }
+            $summary = Get-NovaHealthSummary (Get-NovaHealth -Context $context)
+            $sys = Get-NovaSystemInfo
+            $result = [pscustomobject]@{ Stop = [int]$summary.Stop; Warn = [int]$summary.Warn; Sys = ('{0} {1}, сборка {2}' -f $sys.Name, $sys.Version, $sys.Build) }
+        } catch { $result = $null }
+        Show-Health $result
+        return
     }
+    Start-NovaBackground $healthScript @($PSScriptRoot, $configPath, $tweaksPath) { param($out, $err) Show-Health (@($out) | Select-Object -Last 1) $err }
 }
 
 # Пункт списка изменений: звёздочка, жирное начало и полный текст с переносами.
@@ -1052,13 +1220,29 @@ $ui.BtnClose.Add_Click({ $win.Close() })
 $win.Add_StateChanged({ $ui.Root.Margin = $(if ($win.WindowState -eq 'Maximized') { '7' } else { '0' }); $ui.BtnMax.Content = $(if ($win.WindowState -eq 'Maximized') { [string][char]0xE923 } else { [string][char]0xE922 }) })
 $win.Add_Closing({
         param($s, $e)
-        if ($script:Run) { $e.Cancel = $true; Show-Toast 'Подожди — Nova ещё работает.'; return }
+        if ($script:Run) {
+            if ([Windows.MessageBox]::Show('Nova ещё работает. Остановить её и закрыть окно?', 'Nova Центр', 'YesNo', 'Warning') -ne 'Yes') { $e.Cancel = $true; return }
+            $r = $script:Run
+            $r.Stopped = $true
+            Stop-NovaRunProcess $r
+            $runTimer.Stop()
+            $script:Run = $null
+        }
         if ($script:Dirty) {
             $answer = [Windows.MessageBox]::Show('Сохранить изменения в настройках перед выходом?', 'Nova Центр', 'YesNoCancel', 'Question')
             if ($answer -eq 'Cancel') { $e.Cancel = $true; return }
-            if ($answer -eq 'Yes') { Save-Config }
+            if ($answer -eq 'Yes' -and -not (Save-Config)) { $e.Cancel = $true; return }
         }
     })
+# Ошибка в любой кнопке не закрывает окно молча — показываем её и работаем дальше.
+$win.Dispatcher.Add_UnhandledException({
+        param($s, $e)
+        $e.Handled = $true
+        $inner = $e.Exception
+        while ($inner.InnerException) { $inner = $inner.InnerException }
+        Show-Toast ('Что-то пошло не так: {0}' -f (Get-NovaPlainText $inner.Message 160))
+    })
+$win.Add_Activated({ Sync-ConfigFromDisk })
 
 $ui.NavHome.Add_Checked({ Show-Page $ui.PageHome })
 $ui.NavTweaks.Add_Checked({ Open-TweaksPage 'tweaks' })
@@ -1070,11 +1254,11 @@ $ui.NavUpdate.Add_Checked({ Update-UpdatePage $null; Show-Page $ui.PageUpdate })
 $ui.NavAbout.Add_Checked({ Show-Page $ui.PageAbout })
 
 function Invoke-Apply {
-    if ($script:Dirty) { Save-Config }
+    if ($script:Dirty -and -not (Save-Config)) { return }
     Start-NovaRun -Title 'Применяю настройки' -Icon ([string][char]0xE768) -Arguments '-Mode Apply -Yes' -OnDone { param($ok) Update-Health }
 }
-$ui.BtnSave.Add_Click({ Save-Config; Show-Toast 'Сохранено в config.json' })
-$ui.BtnPreview.Add_Click({ if ($script:Dirty) { Save-Config }; Start-NovaRun -Title 'Что изменится' -Icon ([string][char]0xE890) -Arguments '-Mode Preview' })
+$ui.BtnSave.Add_Click({ if (Save-Config) { Show-Toast 'Сохранено в config.json' } })
+$ui.BtnPreview.Add_Click({ if ($script:Dirty -and -not (Save-Config)) { return }; Start-NovaRun -Title 'Что изменится' -Icon ([string][char]0xE890) -Arguments '-Mode Preview' })
 $ui.BtnApply.Add_Click({ Invoke-Apply })
 $ui.QApply.Add_Click({ Invoke-Apply })
 $toggleGame = { Start-NovaRun -Title 'Режим игры' -Icon ([string][char]0xE7FC) -Arguments '-Mode Game' -OnDone { param($ok) Update-State } }
@@ -1117,14 +1301,30 @@ $ui.LMail.Add_Click({ Open-AsUser ('mailto:{0}?subject=Nova' -f (Get-NovaSupport
 $ui.BtnVoiceOpen.Add_Click({ Open-AsUser (Join-Path $projectRoot 'NovaVoice.cmd') })
 $ui.BtnVoiceAuto.Add_Click({ Open-AsUser (Join-Path $PSScriptRoot 'NovaVoiceStartup.cmd') })
 $ui.BtnVoiceEdit.Add_Click({ Open-AsUser ($links.Cabinet + '#voice') })
+$updateScript = @'
+param([string]$Src)
+$ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $Src 'Nova.psm1') -Force -DisableNameChecking
+Get-NovaUpdateInfo
+'@
 $ui.BtnCheckUpd.Add_Click({
-        try { Update-UpdatePage (Get-NovaUpdateInfo) } catch { $ui.UpdTitle.Text = 'Не получилось проверить'; $ui.UpdText.Text = (Get-NovaPlainText $_.Exception.Message 200) }
+        $ui.BtnCheckUpd.IsEnabled = $false
+        $ui.UpdTitle.Text = 'Проверяю…'
+        $ui.UpdText.Text = 'Читаю список изменений на GitHub.'
+        Start-NovaBackground $updateScript @($PSScriptRoot) {
+            param($out, $err)
+            $ui.BtnCheckUpd.IsEnabled = $true
+            $info = @($out) | Select-Object -Last 1
+            if ($err -or -not $info) { $ui.UpdTitle.Text = 'Не получилось проверить'; $ui.UpdText.Text = (Get-NovaPlainText $(if ($err) { $err } else { 'GitHub ничего не ответил.' }) 200); return }
+            Update-UpdatePage $info
+        }
     })
 $ui.BtnDoUpd.Add_Click({
         Start-NovaRun -Title 'Обновляю Nova' -Icon ([string][char]0xE895) -Arguments '-Mode SelfUpdate' -OnDone {
             param($ok)
             if (-not $ok) { return }
             $ui.RunResult.Text = 'Готово — открываю новую Nova'
+            Close-NovaSingle
             Start-Process -FilePath $psExe -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', ('"{0}"' -f $PSCommandPath))
             $win.Close()
         }
@@ -1134,7 +1334,14 @@ $ui.BtnRollback.Add_Click({
         Start-NovaRun -Title 'Возвращаю прошлую версию' -Icon ([string][char]0xE7A7) -Arguments '-Mode Rollback' -OnDone {
             param($ok)
             if (-not $ok) { return }
-            Start-Process -FilePath $psExe -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', ('"{0}"' -f $PSCommandPath))
+            Close-NovaSingle
+            if (Test-Path -LiteralPath $PSCommandPath) {
+                Start-Process -FilePath $psExe -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', ('"{0}"' -f $PSCommandPath))
+            } else {
+                # В прошлой версии окна Nova Центр ещё не было — открываем обычное меню Nova.
+                [void][Windows.MessageBox]::Show('Вернулась прошлая версия Nova — в ней ещё не было окна Nova Центр. Открываю обычное меню Nova. Ярлык «Nova Центр» на рабочем столе можно удалить.', 'Nova Центр', 'OK', 'Information')
+                Start-Process -FilePath (Join-Path $projectRoot 'Nova.cmd') -WorkingDirectory $projectRoot
+            }
             $win.Close()
         }
     })
@@ -1164,7 +1371,7 @@ Update-UpdatePage $null
 # Окно появляется плавно.
 $win.Opacity = 0
 $win.Add_ContentRendered({
-        [void]$win.Dispatcher.BeginInvoke([Action] { Update-Health }, [Windows.Threading.DispatcherPriority]::Background)
+        Update-Health
         $a = New-Object Windows.Media.Animation.DoubleAnimation -ArgumentList @([double]0, [double]1, (New-Object Windows.Duration ([TimeSpan]::FromMilliseconds(260))))
         $win.BeginAnimation([Windows.Window]::OpacityProperty, $a)
     })
@@ -1178,7 +1385,7 @@ if ($Screenshot) {
     $win.Width = 1280; $win.Height = 800
     $win.WindowStartupLocation = 'Manual'; $win.Left = 0; $win.Top = 0
     $win.ShowActivated = $false
-    Update-Health
+    Update-Health -Wait
     $win.Show()
     $shots = @(
         @('01-glavnaya', { $ui.NavHome.IsChecked = $true; Show-Page $ui.PageHome }),
@@ -1192,8 +1399,9 @@ if ($Screenshot) {
         @('09-hod-raboty', {
                 $ui.NavTweaks.IsChecked = $true
                 $ui.RunLog.Children.Clear(); $ui.RunTitle.Text = 'Применяю настройки'; $ui.RunIcon.Text = [string][char]0xE768
+                $script:Run = @{ Lines = 0 }
                 foreach ($l in @(@('Green', '  + Минимум телеметрии'), @('Green', '  + Без рекламного идентификатора'), @('Green', '  + Тёмная тема'), @('DarkGray', '  Создаю точку восстановления Windows…'), @('Yellow', '  ! Windows ждёт перезагрузки'), @('Green', '  + Игры в приоритете у планировщика'))) { Add-RunLine $l[0] $l[1] }
-                $ui.RunOverlay.Visibility = 'Visible'; Stop-BarAnimation $true; $ui.RunResult.Text = '✓  Всё получилось'; $ui.RunResult.Foreground = Get-Brush '#7CE0A3'; $ui.RunClose.IsEnabled = $true
+                $ui.RunOverlay.Visibility = 'Visible'; Stop-BarAnimation $true; $ui.RunResult.Text = '✓  Всё получилось'; $ui.RunResult.Foreground = Get-Brush '#7CE0A3'; $ui.RunClose.IsEnabled = $true; $ui.RunStop.Visibility = 'Collapsed'
             })
     )
     foreach ($s in $shots) {
@@ -1213,9 +1421,11 @@ if ($Screenshot) {
         Write-Host ('снимок: {0}' -f $s[0])
     }
     $ui.RunOverlay.Visibility = 'Collapsed'
+    $script:Run = $null
     $script:Dirty = $false
     $win.Close()
     exit 0
 }
 
 [void]$win.ShowDialog()
+Close-NovaSingle

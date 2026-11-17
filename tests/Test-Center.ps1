@@ -73,17 +73,27 @@ function Wait-ConfigChange([string]$Before, [string]$What) {
 function Wait-Run([string]$What, [double]$Seconds = 300) {
     $t = [Diagnostics.Stopwatch]::StartNew()
     [void](Wait-Until { $b = Find-Id 'RunClose'; $b -and -not $b.Current.IsEnabled } 20 ('{0}: Nova запустилась' -f $What))
+    # Пока Nova работает, меню и плитки под окном хода работы недоступны (Enter не нажмёт их ещё раз).
+    if ((Get-Id 'NavHome').Current.IsEnabled) { throw ('{0}: во время работы меню под окном хода работы осталось доступным' -f $What) }
     [void](Wait-Until { $b = Find-Id 'RunClose'; $b -and $b.Current.IsEnabled } $Seconds ('{0}: Nova закончила' -f $What))
     $result = Get-Name 'RunResult'
     $lines = Get-Texts (Get-Id 'RunScroll')
     Write-Host ('--- {0}: «{1}», строк в окне: {2}, {3:N1} с' -f $What, $result, $lines.Count, $t.Elapsed.TotalSeconds)
     foreach ($l in @($lines | Select-Object -First 80)) { Write-Host ('    | ' + $l) }
+    if (@($lines | Where-Object { $_ -like '*_____*' }).Count) { throw ('{0}: в окно попала рамка-логотип консоли' -f $What) }
     $bad = @($lines | Where-Object { $_ -like '*Ошибка: *' })
     if ($bad.Count) { throw ('{0}: в окне ошибка — {1}' -f $What, $bad[0]) }
     if ($lines.Count -lt 2) { throw ('{0}: в окне хода работы почти пусто' -f $What) }
     Invoke-Id 'RunClose'
     Start-Sleep -Milliseconds 500
     return [pscustomobject]@{ Result = $result; Lines = $lines; Ok = ($result -like '*Всё получилось*'); Seconds = $t.Elapsed.TotalSeconds }
+}
+# Окно с вопросом «Да/Нет» от Nova Центра — нажимаем «Да».
+function Confirm-Dialog([string]$What) {
+    $cond = New-And @((New-Cond $AE::ClassNameProperty '#32770'), (New-Cond $AE::ProcessIdProperty $script:AppPid))
+    $dlg = Wait-Until { $d = $AE::RootElement.FindFirst($TS::Children, $cond); if (-not $d) { $d = $script:Win.FindFirst($TS::Descendants, $cond) }; $d } 20 ('вопрос: ' + $What)
+    $yes = Wait-Until { $dlg.FindFirst($TS::Descendants, (New-Cond $AE::AutomationIdProperty '6')) } 10 'кнопка «Да»'
+    Invoke-El $yes ('Да — ' + $What)
 }
 function Assert-RunOk($Run, [string]$What) {
     if (-not $Run.Ok) { throw ('{0}: итог «{1}», а ожидалось «Всё получилось»' -f $What, $Run.Result) }
@@ -103,6 +113,7 @@ try {
     $winCond = New-And @((New-Cond $AE::NameProperty 'Nova Центр'), (New-Cond $AE::ControlTypeProperty ([Windows.Automation.ControlType]::Window)))
     $script:Win = Wait-Until { $AE::RootElement.FindFirst($TS::Children, $winCond) } 90 'окно «Nova Центр»'
     $appPid = $script:Win.Current.ProcessId
+    $script:AppPid = $appPid
     $script:Done.Add(('ok  окно открылось двойным кликом по NovaCenter.cmd за {0:N1} с' -f $watch.Elapsed.TotalSeconds))
 
     $ver = Get-Name 'VerText'
@@ -110,7 +121,7 @@ try {
     $health = Wait-Until { $h = Get-Name 'HealthText'; if ($h -and $h -ne 'Проверяю систему…') { $h } } 120 'проверка системы на главной'
     if ($health -like 'Проверка системы — в*') { throw 'Проверка системы на главной не сработала' }
     $script:Done.Add(('ok  главная: версия {0}, проверка системы — «{1}»' -f $ver, $health))
-    foreach ($tile in @(@('QCheck', 'Проверить систему'), @('QGame', 'Режим игры'), @('TShortcut', 'Ярлык на рабочий стол'), @('BtnClose', 'Закрыть'))) {
+    foreach ($tile in @(@('QCheck', 'Проверить систему'), @('QGame', 'Режим игры'), @('BtnClose', 'Закрыть'))) {
         $n = [string](Get-Id $tile[0]).Current.Name
         if (-not $n.StartsWith($tile[1])) { throw ('Экранный диктор прочтёт у «{0}» имя «{1}», а ожидалось «{2}…»' -f $tile[0], $n, $tile[1]) }
     }
@@ -157,6 +168,24 @@ try {
     if (($changed -join ',') -ne ($expect -join ',')) { throw ('Сборка поменяла лишнее: {0}' -f ($changed -join ', ')) }
     $script:Done.Add(('ok  сборка «Игровой ПК»: включено пунктов {0}, лишнего не тронуто' -f $expect.Count))
 
+    # 3б. config.json поправили снаружи (Блокнот), а в окне переключили другое — после «Сохранить» есть и то, и другое.
+    $ext = $privacy[1]; $own = $privacy[2]
+    $extVal = -not [bool]((ConvertFrom-Json $text2).tweaks.($ext.id))
+    $outside = [regex]::Replace($text2, ('("' + [regex]::Escape($ext.id) + '"\s*:\s*)(true|false)'), ('${1}' + $(if ($extVal) { 'true' } else { 'false' })))
+    [IO.File]::WriteAllText($script:ConfigPath, $outside, (New-Object Text.UTF8Encoding($false)))
+    $ownWas = Get-Toggle ('sw-' + $own.id)
+    (Get-Id ('sw-' + $own.id)).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle()
+    Invoke-Id 'BtnSave'
+    $text3 = Wait-ConfigChange $outside 'config.json сохранился после правки снаружи'
+    $sw3 = Get-Switches $text3
+    if ($sw3[('tweaks.' + $ext.id)] -ne [string]$extVal) { throw ('«Сохранить» затёр правку config.json, сделанную снаружи ({0})' -f $ext.id) }
+    if ($sw3[('tweaks.' + $own.id)] -ne [string](-not $ownWas)) { throw ('«Сохранить» не записал переключатель {0}' -f $own.id) }
+    $changed = @(Get-Changed $outside $text3)
+    if ($changed.Count -ne 1) { throw ('После правки снаружи «Сохранить» поменял лишнее: {0}' -f ($changed -join ', ')) }
+    if ((Get-Toggle ('sw-' + $ext.id)) -ne $extVal) { throw 'После сохранения окно не показало правку, сделанную снаружи' }
+    $text2 = $text3
+    $script:Done.Add('ok  правка config.json снаружи не затирается: «Сохранить» меняет только то, что переключили в окне')
+
     # 4. Приложения: русские названия и те же переключатели.
     Open-Page 'NavApps'
     $appKey = @((ConvertFrom-Json $text2).removeApps.PSObject.Properties | Where-Object { $_.Name -eq 'Microsoft.BingNews' })
@@ -176,10 +205,7 @@ try {
     # 6. Отменить последний запуск — с вопросом «Да/Нет», как у пользователя.
     Open-Page 'NavTools'
     Invoke-Id 'TUndo'
-    $dlgCond = New-And @((New-Cond $AE::ClassNameProperty '#32770'), (New-Cond $AE::ProcessIdProperty $appPid))
-    $dlg = Wait-Until { $d = $AE::RootElement.FindFirst($TS::Children, $dlgCond); if (-not $d) { $d = $script:Win.FindFirst($TS::Descendants, $dlgCond) }; $d } 20 'вопрос «Вернуть всё, как было…»'
-    $yes = Wait-Until { $dlg.FindFirst($TS::Descendants, (New-Cond $AE::AutomationIdProperty '6')) } 10 'кнопка «Да»'
-    Invoke-El $yes 'Да'
+    Confirm-Dialog 'вернуть всё, как было'
     Assert-RunOk (Wait-Run 'Отменить последний запуск' 420) 'Отменить из окна (после вопроса «Да»)'
 
     # 7. Проверка системы с главной.
@@ -205,10 +231,32 @@ try {
     Assert-RunOk (Wait-Run 'Свежий ли драйвер' 180) 'Свежий ли драйвер'
     Open-Page 'NavTweaks'
     Invoke-Id 'BtnPreview'
-    Assert-RunOk (Wait-Run 'Что изменится' 240) 'Что изменится'
+    $preview = Wait-Run 'Что изменится' 240
+    Assert-RunOk $preview 'Что изменится'
+    # Строка плана — целиком: «[+] Название … будет изменено», а не две строки.
+    $plan = @($preview.Lines | Where-Object { $_ -match '^\[.\] ' })
+    if ($plan.Count -lt 5) { throw ('В «Что изменится» мало строк плана: {0}' -f $plan.Count) }
+    if (@($plan | Where-Object { $_.TrimEnd().Length -lt 62 }).Count -gt 0) { throw ('Строка плана разорвана: «{0}»' -f @($plan | Where-Object { $_.TrimEnd().Length -lt 62 })[0]) }
+
+    # 10б. «Остановить» посреди работы: Nova останавливается вместе со всем, что запустила.
+    Open-Page 'NavGames'
+    Invoke-Id 'GHeavy'
+    [void](Wait-Until { $b = Find-Id 'RunStop'; $b -and $b.Current.IsEnabled } 20 '«Остановить» во время работы')
+    # «Что тормозит» смотрит на компьютер 3 секунды — останавливаем, пока смотрит.
+    Start-Sleep -Milliseconds 300
+    Invoke-Id 'RunStop'
+    Confirm-Dialog 'остановить Nova'
+    [void](Wait-Until { $b = Find-Id 'RunClose'; $b -and $b.Current.IsEnabled } 30 'Nova остановилась')
+    $stopped = Get-Name 'RunResult'
+    if ($stopped -notlike 'Остановлено*') { throw ('После «Остановить» итог: «{0}»' -f $stopped) }
+    Invoke-Id 'RunClose'
+    Start-Sleep -Milliseconds 500
+    $script:Done.Add('ok  «Остановить» посреди работы: Nova остановилась, окно написало «Остановлено»')
 
     # 11. Ярлык на рабочий стол.
     Open-Page 'NavTools'
+    $n = [string](Get-Id 'TShortcut').Current.Name
+    if (-not $n.StartsWith('Ярлык на рабочий стол')) { throw ('Экранный диктор прочтёт у плитки ярлыка «{0}»' -f $n) }
     Invoke-Id 'TShortcut'
     [void](Wait-Until { Test-Path -LiteralPath $lnkPath } 10 'ярлык «Nova Центр» на рабочем столе')
     $lnk = (New-Object -ComObject WScript.Shell).CreateShortcut($lnkPath)
@@ -227,7 +275,7 @@ try {
     if (-not @(Get-Texts $script:Win | Where-Object { $_ -like ('Что нового в версии*') }).Count) { throw 'На странице «Обновления» нет «Что нового»' }
     $title0 = Get-Name 'UpdTitle'
     Invoke-Id 'BtnCheckUpd'
-    $title1 = Wait-Until { $x = Get-Name 'UpdTitle'; if ($x -and $x -ne $title0) { $x } } 60 'ответ GitHub на «Проверить»'
+    $title1 = Wait-Until { $x = Get-Name 'UpdTitle'; if ($x -and $x -ne $title0 -and $x -ne 'Проверяю…') { $x } } 60 'ответ GitHub на «Проверить»'
     if ($title1 -like 'Не получилось*') { throw ('«Проверить» не сработал: {0}' -f (Get-Name 'UpdText')) }
     $script:Done.Add(('ok  обновления: «{0}»' -f $title1))
 

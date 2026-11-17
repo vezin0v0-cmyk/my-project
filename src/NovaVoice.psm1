@@ -844,6 +844,51 @@ function Invoke-NovaVoiceFile {
     return [pscustomobject]@{ Text = $text; Commands = $commands }
 }
 
+# Окно Nova Голос получает события распознавания через очередь $global:NovaVoiceEvents
+# («вид<TAB>текст<TAB>текст»). В консоли очереди нет — там ничего не меняется.
+function Send-NovaVoiceEvent {
+    param([string]$Kind, [string[]]$Text)
+    $queue = $global:NovaVoiceEvents
+    if ($null -eq $queue) { return }
+    $parts = @($Kind) + @($Text | ForEach-Object { ([string]$_) -replace '[\r\n\t]+', ' ' })
+    $queue.Enqueue(($parts -join "`t"))
+}
+
+# Что делает встроенное действие — словами, для списка команд.
+function Get-NovaVoiceDoLabel {
+    param([string]$Do)
+    $labels = @{
+        shutdown = 'выключит компьютер (можно отменить)'; restart = 'перезагрузит (можно отменить)'; cancel = 'отменит выключение'; minimizeAll = 'свернёт все окна'
+        restoreAll = 'вернёт окна'; closeWindow = 'закроет окно впереди'; closeAll = 'закроет все окна'; lock = 'заблокирует компьютер'
+        volumeUp = 'громче'; volumeDown = 'тише'; mute = 'выключит или включит звук'; playPause = 'пауза или продолжить'
+        nextTrack = 'следующий трек'; prevTrack = 'предыдущий трек'; time = 'скажет, который час'; date = 'скажет дату'
+        battery = 'скажет заряд'; hello = 'поздоровается'; timer = 'поставит таймер'; timerLeft = 'скажет, сколько осталось'
+        game = 'запустит игру'; gameMode = 'включит режим игры'; gameModeOff = 'выключит режим игры'
+    }
+    if ($labels.ContainsKey($Do)) { return $labels[$Do] }
+    return $Do
+}
+
+# Все команды для окна: фраза и что она сделает. Таймеры — одной строкой, игры — каждая своей.
+function Send-NovaVoiceCommandList {
+    param([Parameter(Mandatory)]$Config)
+    $timer = $false
+    foreach ($command in $Config.Commands) {
+        if ($command.Do -eq 'timer') {
+            if (-not $timer) { Send-NovaVoiceEvent 'cmd' @(('{0}, {1} на пять минут' -f $Config.WakeWord, $command.Say[0].Split(' ')[0]), 'таймер — от десяти секунд до часа') }
+            $timer = $true
+            continue
+        }
+        $what = ''
+        if ($command.Do -eq 'game' -and $command.Game) { $what = 'запустит ' + $command.Game.Name }
+        elseif ($command.Do -eq 'game') { $what = 'запустит последнюю игру' }
+        elseif ($command.Do) { $what = Get-NovaVoiceDoLabel $command.Do }
+        elseif ($command.Run) { $what = 'откроет ' + $command.Run }
+        elseif ($command.Keys) { $what = 'нажмёт ' + $command.Keys }
+        Send-NovaVoiceEvent 'cmd' @(('{0}, {1}' -f $Config.WakeWord, $command.Say[0]), $what)
+    }
+}
+
 # Слушает микрофон, пока окно открыто.
 function Start-NovaVoiceListener {
     param([Parameter(Mandatory)]$Config)
@@ -862,11 +907,12 @@ function Start-NovaVoiceListener {
         if ($Config.Speak -and -not (Get-NovaVoiceSpeaker)) {
             Write-Nova 'На вопросы вроде «который час» отвечаю текстом: русский голос для ответа вслух ставится вместе с русским языком Windows.' dim
         }
+        Send-NovaVoiceEvent 'listen' $Config.WakeWord
         while ($true) {
             $data = $mic.Read()
             if ($null -eq $data) {
                 $done = Invoke-NovaVoicePending -Config $Config
-                if ($done) { Write-Nova $done ok }
+                if ($done) { Write-Nova $done ok; Send-NovaVoiceEvent 'done' @($done, '') }
                 Start-Sleep -Milliseconds 30
                 continue
             }
@@ -886,14 +932,21 @@ function Start-NovaVoiceListener {
             if (-not $text -or $text -eq '[unk]') { continue }
             $commands = @(Resolve-NovaVoiceText -Text $text -Config $Config)
             if ($commands.Count -eq 0) {
-                if ($text -notmatch '^(\[unk\]\s*)+$') { Write-Nova ('слышу «{0}» — без «{1}» не выполняю' -f $text, $Config.WakeWord) dim }
+                if ($text -notmatch '^(\[unk\]\s*)+$') {
+                    Write-Nova ('слышу «{0}» — без «{1}» не выполняю' -f $text, $Config.WakeWord) dim
+                    Send-NovaVoiceEvent 'ignored' $text
+                }
                 continue
             }
+            Send-NovaVoiceEvent 'heard' $text
             foreach ($command in $commands) {
                 try {
-                    Write-Nova ('«{0}» → {1}' -f $command.Label, (Invoke-NovaVoiceCommand -Command $command -Config $Config)) ok
+                    $result = Invoke-NovaVoiceCommand -Command $command -Config $Config
+                    Write-Nova ('«{0}» → {1}' -f $command.Label, $result) ok
+                    Send-NovaVoiceEvent 'done' @($command.Label, $result)
                 } catch {
                     Write-Nova ('«{0}»: {1}' -f $command.Label, $_.Exception.Message) err
+                    Send-NovaVoiceEvent 'fail' @($command.Label, $_.Exception.Message)
                 }
             }
         }

@@ -173,7 +173,8 @@ jobs:
           ./src/Nova.ps1 -Mode Driver -EchoFile $echo
           $lines = @(Get-Content -LiteralPath $echo -Encoding UTF8)
           "echo lines: $($lines.Count)"; $lines | Select-Object -First 6
-          if ($lines.Count -lt 3 -or $lines[0] -notmatch "^\w+`t") { throw 'Echo for Nova Center is empty or has no colors.' }
+          if ($lines.Count -lt 2 -or $lines[0] -notmatch "^\w+`t") { throw 'Echo for Nova Center is empty or has no colors.' }
+          if (@($lines | Where-Object { $_ -like '*_____*' }).Count) { throw 'The console banner went into the Nova Center echo.' }
           $evil = Join-Path $env:RUNNER_TEMP 'app-run-1.log'
           ./src/Nova.ps1 -Mode Driver -EchoFile $evil
           if (Test-Path -LiteralPath $evil) { throw 'Echo went outside the Nova build folder.' }

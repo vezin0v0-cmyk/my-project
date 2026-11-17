@@ -75,13 +75,22 @@ function Enable-NovaEcho {
     try { $build = Get-NovaBuildDir } catch { return }
     if (-not (Test-NovaPathInside -Path $Path -Folder $build) -or $Path -notmatch '\\app-run-\d+\.log\z') { return }
     $global:NovaEchoPath = [IO.Path]::GetFullPath($Path)
+    $global:NovaEchoPart = $null
     function global:Write-Host {
         [CmdletBinding()]
         param([Parameter(Position = 0, ValueFromRemainingArguments = $true)]$Object, [switch]$NoNewline, $Separator = ' ', [ConsoleColor]$ForegroundColor = [ConsoleColor]::Gray, [ConsoleColor]$BackgroundColor = [ConsoleColor]::Black)
         $text = (@($Object) | ForEach-Object { [string]$_ }) -join [string]$Separator
         $params = @{ Object = $text; NoNewline = $NoNewline; ForegroundColor = $ForegroundColor }
         Microsoft.PowerShell.Utility\Write-Host @params
-        try { [IO.File]::AppendAllText($global:NovaEchoPath, ("{0}`t{1}`n" -f $ForegroundColor, ($text -replace '[\r\n]+', ' ')), (New-Object Text.UTF8Encoding($false))) } catch { Write-Verbose 'Окно Nova Центр не получит строку.' }
+        # Части одной строки (-NoNewline) собираем вместе — в окне это одна строка цветом её начала.
+        if ($NoNewline) {
+            if ($null -eq $global:NovaEchoPart) { $global:NovaEchoPart = @{ Color = $ForegroundColor; Text = '' } }
+            $global:NovaEchoPart.Text += $text
+            return
+        }
+        $color = $ForegroundColor
+        if ($null -ne $global:NovaEchoPart) { $text = $global:NovaEchoPart.Text + $text; $color = $global:NovaEchoPart.Color; $global:NovaEchoPart = $null }
+        try { [IO.File]::AppendAllText($global:NovaEchoPath, ("{0}`t{1}`n" -f $color, ($text -replace '[\r\n]+', ' ')), (New-Object Text.UTF8Encoding($false))) } catch { Write-Verbose 'Окно Nova Центр не получит строку.' }
     }
 }
 
@@ -151,6 +160,8 @@ function Assert-NovaProjectFolder {
 
 function Show-NovaBanner {
     param([switch]$Clear)
+    # В окне Nova Центр свой заголовок — рамку-логотип консоли туда не пишем.
+    if ($global:NovaEchoPath) { return }
     if ($Clear) {
         try { Clear-Host } catch { Write-Verbose 'Не удалось очистить экран.' }
     }
