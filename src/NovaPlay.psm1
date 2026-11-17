@@ -375,84 +375,69 @@ function Get-NovaGameModeText {
 $script:GameWords = @(
     @{ Match = '^Counter-Strike 2$|^Counter-Strike: Global Offensive$'; Words = @('контру', 'контра', 'кс', 'контр страйк') }
     @{ Match = '^Dota 2$'; Words = @('доту', 'дота', 'дотку') }
-    @{ Match = '^PUBG'; Words = @('пабг', 'пубг', 'пабгу') }
-    @{ Match = '^Grand Theft Auto V'; Words = @('гта', 'гта пять', 'гташку') }
+    @{ Match = '^PUBG'; Words = @('пабджи') }
+    @{ Match = '^Grand Theft Auto V'; Words = @('гта', 'гта пять') }
     @{ Match = '^Apex Legends'; Words = @('апекс') }
     @{ Match = '^Rust$'; Words = @('раст') }
-    @{ Match = '^Valheim$'; Words = @('вальхейм') }
-    @{ Match = '^Terraria$'; Words = @('террарию', 'террария') }
-    @{ Match = '^Overwatch'; Words = @('овервотч', 'овервоч') }
-    @{ Match = '^The Sims'; Words = @('симс', 'симсы', 'симсов') }
+    @{ Match = '^Valheim$'; Words = @('викингов') }
+    @{ Match = '^The Sims'; Words = @('симс') }
     @{ Match = '^Cyberpunk 2077'; Words = @('киберпанк') }
     @{ Match = '^The Witcher 3'; Words = @('ведьмака', 'ведьмак') }
     @{ Match = '^War Thunder$'; Words = @('тундру', 'вар тандер') }
-    @{ Match = '^Warframe$'; Words = @('варфрейм') }
-    @{ Match = '^Battlefield'; Words = @('батлфилд', 'батлу') }
-    @{ Match = '^ELDEN RING'; Words = @('элден ринг', 'кольцо') }
+    @{ Match = '^Battlefield'; Words = @('поле боя') }
+    @{ Match = '^ELDEN RING'; Words = @('кольцо') }
     @{ Match = "^Tom Clancy's Rainbow Six"; Words = @('радугу', 'радуга', 'осаду') }
     @{ Match = '^Rocket League'; Words = @('рокет лигу', 'рокет') }
     @{ Match = '^Destiny 2'; Words = @('дестини', 'судьбу') }
-    @{ Match = '^Call of Duty'; Words = @('колду', 'калду', 'кол оф дьюти') }
-    @{ Match = '^Phasmophobia'; Words = @('фазмофобию', 'призраков') }
-    @{ Match = '^HELLDIVERS'; Words = @('хеллдайверс') }
+    @{ Match = '^Call of Duty'; Words = @('кол оф дьюти') }
+    @{ Match = '^Phasmophobia'; Words = @('призраков') }
     @{ Match = '^Marvel Rivals'; Words = @('марвел') }
     @{ Match = '^Lost Ark'; Words = @('лост арк') }
     @{ Match = '^The Elder Scrolls V: Skyrim'; Words = @('скайрим') }
     @{ Match = '^Fallout'; Words = @('фоллаут', 'фаллаут') }
     @{ Match = '^Red Dead Redemption 2'; Words = @('ред дед', 'рдр') }
-    @{ Match = '^PAYDAY'; Words = @('пейдей') }
     @{ Match = '^Hunt: Showdown'; Words = @('хант', 'охоту') }
-    @{ Match = '^THE FINALS'; Words = @('финалс', 'файналс') }
-    @{ Match = '^Project Zomboid'; Words = @('зомбоид', 'зомбоида') }
+    @{ Match = '^THE FINALS'; Words = @('финал') }
+    @{ Match = '^Project Zomboid'; Words = @('зомби') }
     @{ Match = '^ARK: Survival'; Words = @('арк', 'ковчег') }
-    @{ Match = '^Hearts of Iron IV'; Words = @('хойку', 'хойка', 'сердца железа') }
-    @{ Match = '^Stellaris'; Words = @('стелларис') }
-    @{ Match = "^Sid Meier's Civilization"; Words = @('цивилизацию', 'циву') }
-    @{ Match = '^Fortnite$'; Words = @('фортнайт', 'фортик') }
-    @{ Match = '^VALORANT$'; Words = @('валорант', 'валик') }
+    @{ Match = '^Hearts of Iron IV'; Words = @('сердца железа') }
+    @{ Match = "^Sid Meier's Civilization"; Words = @('цивилизацию') }
+    @{ Match = '^Fortnite$'; Words = @('фортнайт') }
+    @{ Match = '^VALORANT$'; Words = @('валик') }
     @{ Match = '^League of Legends$'; Words = @('лигу легенд', 'лол') }
     @{ Match = '^Euro Truck Simulator 2'; Words = @('дальнобойщиков', 'фуры', 'евро трак') }
-    @{ Match = '^Dead by Daylight'; Words = @('дбд', 'дед бай дейлайт') }
-    @{ Match = "^Garry's Mod"; Words = @('гаррис мод', 'гмод') }
-    @{ Match = '^Among Us'; Words = @('амонг ас', 'амогус') }
-    @{ Match = "^Baldur's Gate 3"; Words = @('балдурс гейт', 'балдур') }
-    @{ Match = '^Stardew Valley'; Words = @('стардью', 'ферму') }
+    @{ Match = '^Dead by Daylight'; Words = @('маньяка', 'дед бай') }
+    @{ Match = "^Garry's Mod"; Words = @('гаррис мод') }
+    @{ Match = '^Stardew Valley'; Words = @('ферму') }
     @{ Match = '^Lethal Company'; Words = @('летал компани') }
-    @{ Match = '^Palworld'; Words = @('палворлд') }
-    @{ Match = '^Path of Exile'; Words = @('пое', 'путь изгнанника') }
+    @{ Match = '^Path of Exile'; Words = @('путь изгнанника') }
     @{ Match = '^World of Tanks'; Words = @('танки', 'танчики') }
     @{ Match = '^World of Warships'; Words = @('корабли', 'кораблики') }
-    @{ Match = '^Escape from Tarkov'; Words = @('тарков') }
     @{ Match = '^S\.T\.A\.L\.K\.E\.R\.'; Words = @('сталкер', 'сталкера') }
     @{ Match = '^Metro'; Words = @('метро') }
     @{ Match = '^Mafia'; Words = @('мафию') }
     @{ Match = '^Deep Rock Galactic'; Words = @('дип рок', 'гномов') }
     @{ Match = '^Left 4 Dead 2'; Words = @('лефт фор дед') }
     @{ Match = '^Portal 2'; Words = @('портал') }
-    @{ Match = '^Geometry Dash'; Words = @('геометри дэш', 'геометрию') }
-    @{ Match = '^Forza Horizon'; Words = @('форзу', 'форза') }
+    @{ Match = '^Geometry Dash'; Words = @('геометрию') }
+    @{ Match = '^Forza Horizon'; Words = @('горизонт') }
     @{ Match = '^Need for Speed'; Words = @('нфс', 'нид фор спид') }
     @{ Match = '^DayZ$'; Words = @('дейзи', 'дэйзи') }
-    @{ Match = '^Arma 3'; Words = @('арму', 'арма') }
     @{ Match = '^Squad$'; Words = @('сквад', 'отряд') }
-    @{ Match = '^Black Myth: Wukong'; Words = @('вуконг') }
+    @{ Match = '^Black Myth: Wukong'; Words = @('обезьяну') }
     @{ Match = '^Hogwarts Legacy'; Words = @('хогвартс') }
-    @{ Match = '^DARK SOULS'; Words = @('дарк соулс') }
-    @{ Match = '^Sekiro'; Words = @('секиро') }
     @{ Match = '^Hollow Knight'; Words = @('холлоу найт', 'рыцаря') }
-    @{ Match = '^Cities: Skylines'; Words = @('города', 'ситис') }
-    @{ Match = '^Factorio'; Words = @('факторио', 'фабрику') }
-    @{ Match = '^Satisfactory'; Words = @('сатисфактори') }
-    @{ Match = '^Subnautica'; Words = @('сабнатику') }
+    @{ Match = '^Cities: Skylines'; Words = @('города') }
+    @{ Match = '^Factorio'; Words = @('фабрику') }
     @{ Match = '^The Forest$|^Sons Of The Forest'; Words = @('лес', 'форест') }
     @{ Match = '^7 Days to Die'; Words = @('семь дней') }
     @{ Match = '^Raft$'; Words = @('плот') }
-    @{ Match = '^Resident Evil'; Words = @('резидент', 'резик') }
+    @{ Match = '^Resident Evil'; Words = @('резидент') }
     @{ Match = "^Assassin's Creed"; Words = @('ассасина', 'ассасин') }
     @{ Match = '^Far Cry'; Words = @('фар край') }
-    @{ Match = '^Mount & Blade'; Words = @('баннерлорд', 'маунт') }
+    @{ Match = '^Mount & Blade'; Words = @('маунт') }
     @{ Match = '^Kingdom Come'; Words = @('кингдом', 'королевство') }
-    @{ Match = '^Atomic Heart'; Words = @('атомик харт', 'атомное сердце') }
+    @{ Match = '^Atomic Heart'; Words = @('атомное сердце') }
     @{ Match = '^Detroit: Become Human'; Words = @('детройт') }
 )
 # Служебное Steam — не игры.

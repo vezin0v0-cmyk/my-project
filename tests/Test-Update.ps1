@@ -167,7 +167,7 @@ try {
         'без версии'          = [ordered]@{ 'my-project-x/Nova.cmd' = 'x'; 'my-project-x/src/Nova.ps1' = 'x'; 'my-project-x/src/Nova.psm1' = 'no version' }
         'одно имя дважды'     = $twins
         'бомба из нулей'      = [ordered]@{ 'my-project-x/src/zeros.bin' = 25 }
-        'управляющий символ'  = [ordered]@{ ('my-project-x/src/ev' + [char]27 + 'il.ps1') = 'x' }
+        'управляющий символ'  = [ordered]@{ 'my-project-x/src/evQQil.ps1' = 'x' }
         'точка в конце имени' = [ordered]@{ 'my-project-x/src/evil.ps1.' = 'x' }
     }
     $n = 0
@@ -175,6 +175,12 @@ try {
         $n++
         $zipPath = Join-Path $work ('evil{0}.zip' -f $n)
         New-TestZip $zipPath $evil[$name]
+        if ($name -eq 'управляющий символ') {
+            # .NET не даёт создать такое имя — подменяем байты имени в готовом архиве (ESC и «]»).
+            $raw = [IO.File]::ReadAllBytes($zipPath)
+            for ($b = 0; $b -lt $raw.Length - 1; $b++) { if ($raw[$b] -eq 0x51 -and $raw[$b + 1] -eq 0x51) { $raw[$b] = 27; $raw[$b + 1] = 0x5D } }
+            [IO.File]::WriteAllBytes($zipPath, $raw)
+        }
         $threw = $false
         try { [void](Read-NovaUpdatePackage -ZipPath $zipPath) } catch { $threw = $true; Write-Host ('    {0}: {1}' -f $name, $_.Exception.Message) }
         if (-not $threw) { throw ('злой архив «{0}» принят' -f $name) }
