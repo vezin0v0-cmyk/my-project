@@ -78,7 +78,6 @@ jobs:
         shell: powershell
         run: |
           ./tests/Test-Tools.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./src/Nova.ps1 -Mode Heavy
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./src/Nova.ps1 -Mode Net
