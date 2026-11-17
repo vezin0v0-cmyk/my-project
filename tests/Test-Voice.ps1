@@ -109,6 +109,28 @@ if ((Read-NovaVoiceConfig -Path $ptt).Problems.Count -eq 0) { throw 'непон�
 Remove-Item -LiteralPath $ptt -Force
 Write-Host 'ok  pushToTalk'
 
+# Таймер: «Нова, таймер на пять минут», от десяти секунд до часа, «сколько осталось», «отмена».
+$timerCases = [ordered]@{ 'нова таймер на пять минут' = 300; 'нова поставь таймер на сорок пять секунд' = 45; 'нова таймер на двадцать одну минуту' = 1260
+    'нова таймер на минуту' = 60; 'нова таймер на две минуты' = 120; 'нова таймер на полчаса' = 1800; 'нова таймер на час' = 3600; 'нова таймер на пятьдесят девять минут' = 3540 }
+foreach ($phrase in $timerCases.Keys) {
+    $hit = @(Resolve-NovaVoiceText -Text $phrase -Config $config)
+    if ($hit.Count -ne 1 -or $hit[0].Do -ne 'timer' -or $hit[0].Seconds -ne $timerCases[$phrase]) { throw ('«{0}» → {1}' -f $phrase, (($hit | ForEach-Object { '{0}/{1}' -f $_.Do, $_.Seconds }) -join ',')) }
+}
+foreach ($pair in @(@(300, '5 минут'), @(61, '1 минута 1 секунда'), @(3600, '1 час'), @(45, '45 секунд'), @(1260, '21 минута'), @(0, '0 секунд'))) {
+    if ((Get-NovaVoiceDurationText $pair[0]) -ne $pair[1]) { throw ('{0} с → «{1}», ждали «{2}»' -f $pair[0], (Get-NovaVoiceDurationText $pair[0]), $pair[1]) }
+}
+$quiet = [pscustomobject]@{ WakeWord = 'нова'; Delay = 15; Speak = $false; Commands = @() }
+if ((Get-NovaVoiceTimerLeftText) -ne 'Таймер не запущен') { throw 'без таймера «сколько осталось» отвечает не то' }
+[void](Invoke-NovaVoiceCommand -Command ([pscustomobject]@{ Do = 'timer'; Run = ''; Keys = ''; Label = 'тест'; Seconds = 2 }) -Config $quiet)
+if ((Get-NovaVoiceTimerLeftText) -notmatch '^Осталось [12] секунд') { throw ('«сколько осталось»: {0}' -f (Get-NovaVoiceTimerLeftText)) }
+if ($null -ne (Invoke-NovaVoicePending -Config $quiet)) { throw 'таймер сработал раньше времени' }
+Start-Sleep -Milliseconds 2300
+$fired = Invoke-NovaVoicePending -Config $quiet
+if ($fired -notlike 'время вышло*') { throw ('таймер не сработал: {0}' -f $fired) }
+[void](Invoke-NovaVoiceCommand -Command ([pscustomobject]@{ Do = 'timer'; Run = ''; Keys = ''; Label = 'тест'; Seconds = 600 }) -Config $quiet)
+if ((Invoke-NovaVoiceCommand -Command ([pscustomobject]@{ Do = 'cancel'; Run = ''; Keys = ''; Label = 'отмена' }) -Config $quiet) -ne 'таймер отменён' -or $null -ne (Get-NovaVoiceTimer)) { throw '«отмена» не отменила таймер' }
+Write-Host 'ok  таймер: фразы от «сорок пять секунд» до «час», сколько осталось, срабатывает вовремя, отменяется'
+
 # Выключение не выполняется сразу: сначала отсчёт, «отмена» его снимает.
 $shutdownCmd = $config.Commands | Where-Object { $_.Do -eq 'shutdown' } | Select-Object -First 1
 $cancelCmd = $config.Commands | Where-Object { $_.Do -eq 'cancel' } | Select-Object -First 1
@@ -165,6 +187,7 @@ $expected = [ordered]@{
     'close-window' = 'closeWindow'
     'cancel'       = 'cancel'
     'volume-up'    = 'volumeUp'
+    'timer'        = 'timer'
     'no-wake'      = ''
     'chatter'      = ''
 }

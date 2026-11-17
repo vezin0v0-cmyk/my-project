@@ -17,10 +17,13 @@
     .\Nova.ps1 -Mode Clean        # освободить место на диске
     .\Nova.ps1 -Mode Startup      # что запускается вместе с Windows
     .\Nova.ps1 -Mode Update       # есть ли новая версия Nova
+    .\Nova.ps1 -Mode Heavy        # что тормозит прямо сейчас
+    .\Nova.ps1 -Mode Net          # интернет для игр: пинг, Wi‑Fi, DNS
+    .\Nova.ps1 -Mode Report       # отчёт для поддержки на рабочий стол
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Menu', 'Preview', 'Apply', 'Undo', 'Measure', 'Check', 'Fps', 'Clean', 'Startup', 'Update')]
+    [ValidateSet('Menu', 'Preview', 'Apply', 'Undo', 'Measure', 'Check', 'Fps', 'Clean', 'Startup', 'Update', 'Heavy', 'Net', 'Report')]
     [string]$Mode = 'Menu',
     [string]$ConfigPath,
     [switch]$Yes,
@@ -55,6 +58,7 @@ Import-Module (Join-Path $PSScriptRoot 'NovaClean.psm1') -Force -DisableNameChec
 Import-Module (Join-Path $PSScriptRoot 'NovaGame.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaStartup.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaMove.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'NovaTools.psm1') -Force -DisableNameChecking
 
 # Без прав администратора Windows не даст менять системные настройки — перезапускаемся с ними.
 if (-not (Test-NovaAdmin)) {
@@ -492,6 +496,141 @@ function Request-NovaWinget {
     return $false
 }
 
+# Можно ли спрашивать человека (а не просто показать результат, как в проверках на GitHub).
+function Test-NovaInteractive {
+    if ($Yes -or $Mode -ne 'Menu') { return $false }
+    try { return -not [Console]::IsInputRedirected } catch { return $false }
+}
+
+# Что тормозит прямо сейчас: кто ест процессор и память — и закрыть лишнее по выбору.
+function Invoke-NovaHeavyFlow {
+    Write-Host ''
+    Write-Nova 'ЧТО ТОРМОЗИТ ПРЯМО СЕЙЧАС' title
+    Write-Nova 'Смотрю 3 секунды, что нагружает компьютер...' dim
+    $before = Get-NovaProcessSnapshot
+    Start-Sleep -Seconds 3
+    $after = Get-NovaProcessSnapshot
+    $groups = @(Get-NovaHeavyList -Before $before -After $after)
+    $top = @(Select-NovaHeavyTop $groups 8)
+    Write-Host ''
+    Write-Host ('   {0}{1}{2}{3}' -f 'ПРОГРАММА'.PadRight(26), 'ПРОЦЕССОР'.PadLeft(10), 'ПАМЯТЬ'.PadLeft(10), '   ЧТО ЭТО') -ForegroundColor DarkGray
+    for ($i = 0; $i -lt $top.Count; $i++) {
+        $g = $top[$i]
+        $name = $g.Name -replace '[\p{Cc}\p{Cf}]', ''
+        if ($g.Count -gt 1) { $name = '{0} ×{1}' -f $name, $g.Count }
+        if ($name.Length -gt 24) { $name = $name.Substring(0, 23) + '…' }
+        $color = 'White'
+        if ($g.Cpu -ge 25 -or $g.Mem -ge 3GB) { $color = 'Yellow' }
+        Write-Host ('{0,2} {1}{2}{3}   {4}' -f ($i + 1), $name.PadRight(26), ('{0:N0}%' -f $g.Cpu).PadLeft(10), (Format-NovaSize $g.Mem).PadLeft(10), (Get-NovaProcessHint $g.Name)) -ForegroundColor $color
+    }
+    [void](Show-NovaHealth (Get-NovaHeavyAdvice -Groups $groups -Memory (Get-NovaMemoryLoad)) -Title 'ИТОГ' -NoVerdict)
+    if (-not (Test-NovaInteractive)) { return 0 }
+    while ($true) {
+        Write-Host ''
+        $answer = (Read-Host '  Номер — закрыть программу, Enter — назад').Trim()
+        if (-not $answer) { return 0 }
+        $n = 0
+        if (-not [int]::TryParse($answer, [ref]$n) -or $n -lt 1 -or $n -gt $top.Count) { Write-Nova 'Нет такого номера.' warn; continue }
+        $group = $top[$n - 1]
+        $why = Get-NovaCloseProblem -Group $group
+        if ($why) { Write-Nova ('«{0}» — {1}.' -f $group.Name, $why) warn; continue }
+        if (-not (Confirm-NovaAction ('Закрыть «{0}»? Она сама спросит про несохранённое.' -f $group.Name))) { continue }
+        $left = Close-NovaProcessGroup -Group $group
+        if ($left -eq 0) { Write-Nova ('«{0}» закрыта.' -f $group.Name) ok; continue }
+        Write-Nova ('«{0}» ещё открыта (окон или процессов: {1}) — возможно, ждёт ответа «сохранить?».' -f $group.Name, $left) warn
+        if (Confirm-NovaAction 'Закрыть принудительно? Несохранённое в ней пропадёт.') {
+            $left = Close-NovaProcessGroup -Group $group -Force
+            if ($left -eq 0) { Write-Nova ('«{0}» закрыта.' -f $group.Name) ok } else { Write-Nova 'Закрыть не получилось — попробуй через Диспетчер задач.' warn }
+        }
+    }
+}
+
+# Интернет для игр: кабель или Wi‑Fi, пинг и его скачки до игровых сервисов, самый быстрый DNS.
+function Invoke-NovaNetFlow {
+    Write-Host ''
+    Write-Nova 'ИНТЕРНЕТ ДЛЯ ИГР' title
+    $conn = Get-NovaConnection
+    if ($conn) {
+        $how = 'кабель'
+        if ($conn.Wifi) { $how = 'Wi‑Fi' }
+        Write-Nova ('Подключение: {0} ({1})' -f $how, ($conn.Description -replace '[\p{Cc}\p{Cf}]', '')) info
+    }
+    Write-Nova 'Меряю пинг до игровых сервисов (около 15 секунд)...' dim
+    $results = @(foreach ($target in (Get-NovaNetTargets)) { [pscustomobject]@{ Name = $target.Name; Stats = (Measure-NovaPing -HostName $target.Host) } })
+    Write-Host ''
+    Write-Host ('   {0}{1}{2}{3}' -f 'СЕРВИС'.PadRight(24), 'ПИНГ'.PadLeft(9), 'СКАЧКИ'.PadLeft(9), 'ПОТЕРИ'.PadLeft(9)) -ForegroundColor DarkGray
+    foreach ($r in $results) {
+        if ($null -eq $r.Stats.Median) { Write-Host ('   {0}{1}' -f $r.Name.PadRight(24), '   нет ответа') -ForegroundColor DarkGray; continue }
+        $color = 'White'
+        if ($r.Stats.Median -gt 90 -or $r.Stats.Jitter -ge 15 -or $r.Stats.Loss -ge 20) { $color = 'Yellow' }
+        Write-Host ('   {0}{1}{2}{3}' -f $r.Name.PadRight(24), ('{0} мс' -f $r.Stats.Median).PadLeft(9), ('{0} мс' -f $r.Stats.Jitter).PadLeft(9), ('{0}%' -f $r.Stats.Loss).PadLeft(9)) -ForegroundColor $color
+    }
+    Write-Nova 'Это пинг до ближайших серверов сайтов. В игре он похожий, если серверы игры в том же регионе.' dim
+    [void](Show-NovaHealth (Get-NovaNetAdvice -Connection $conn -Results $results) -Title 'ИТОГ' -NoVerdict)
+    if (-not $conn) { return 1 }
+
+    # DNS: от него зависит, как быстро открываются сайты и как быстро игра находит свои серверы.
+    $dns = Get-NovaDnsCurrent -Index $conn.Index
+    Write-Host ''
+    Write-Nova 'DNS — «адресная книга» интернета' title
+    $current = $null
+    $currentText = 'от роутера'
+    if ($dns.Static) { $currentText = 'вписан вручную' }
+    if ($dns.Servers.Count -gt 0) {
+        $current = Measure-NovaDns -Server $dns.Servers[0]
+        $shown = 'нет ответа'
+        if ($null -ne $current.Median) { $shown = '{0} мс' -f $current.Median }
+        Write-Host ('   {0}{1}' -f ('Сейчас: {0} ({1})' -f $dns.Servers[0], $currentText).PadRight(42), $shown.PadLeft(10)) -ForegroundColor White
+    }
+    $providers = @(foreach ($p in (Get-NovaDnsProviders)) { [pscustomobject]@{ Name = $p.Name; Servers = $p.Servers; Stats = (Measure-NovaDns -Server $p.Servers[0]) } })
+    foreach ($p in $providers) {
+        $shown = 'нет ответа'
+        if ($null -ne $p.Stats.Median) { $shown = '{0} мс' -f $p.Stats.Median }
+        Write-Host ('   {0}{1}' -f ('{0} ({1})' -f $p.Name, $p.Servers[0]).PadRight(42), $shown.PadLeft(10)) -ForegroundColor Gray
+    }
+    $better = Select-NovaBetterDns -Current $current -Providers $providers
+    $backup = Get-NovaDnsBackup
+    if ($better) { Write-Nova ('{0} отвечает быстрее твоего DNS.' -f $better.Name) info } else { Write-Nova 'Твой DNS и так быстрый — менять не нужно.' ok }
+    if ($backup) { Write-Nova 'DNS уже менялся через Nova — его можно вернуть как было.' dim }
+    if (-not (Test-NovaInteractive)) { return 0 }
+    Write-Host ''
+    if ($better) { Write-Host ('  1  Поставить DNS {0} ({1})' -f $better.Name, ($better.Servers -join ', ')) -ForegroundColor White }
+    if ($backup) { Write-Host '  2  Вернуть DNS как было до Nova' -ForegroundColor White }
+    Write-Host '  0  Назад' -ForegroundColor White
+    $choice = (Read-Host '  Выбери пункт').Trim()
+    if ($choice -eq '1' -and $better) {
+        Set-NovaDns -Index $conn.Index -Servers $better.Servers
+        Write-Nova ('Готово: DNS {0}. Вернуть — здесь же, пункт 2.' -f $better.Name) ok
+    } elseif ($choice -eq '2' -and $backup) {
+        Restore-NovaDns
+        Write-Nova 'DNS вернулся как было.' ok
+    }
+    return 0
+}
+
+# Отчёт для поддержки: версия Windows, железо, проверка системы и конец лога — без имени, паролей и файлов.
+function Invoke-NovaReportFlow {
+    Write-Host ''
+    Write-Nova 'ОТЧЁТ ДЛЯ ПОДДЕРЖКИ' title
+    Write-Nova 'Собираю сведения о системе...' dim
+    $context = $null
+    try { $context = Import-NovaSettings } catch { $context = $null }
+    $checks = @(Get-NovaHealth -Context $context) + @(Get-NovaGameCheck)
+    $logFolder = Join-Path $dataDir 'logs'
+    $path = New-NovaSupportReport -Checks $checks -LogFolder $logFolder -CurrentLog $logPath
+    Write-Nova ('Готово: {0}' -f $path) ok
+    Write-Nova 'Внутри — версия Windows, железо, проверка системы и конец лога Nova. Имени пользователя, паролей и личных файлов там нет.' dim
+    Write-Nova ('Отправь этот файл на {0} и в двух словах опиши, что случилось.' -f (Get-NovaSupportEmail)) info
+    if (-not (Test-NovaInteractive)) { return 0 }
+    if (Confirm-NovaAction 'Открыть отчёт и посмотреть, что в нём?') {
+        if (-not (Start-NovaAsUser $path)) { Write-Nova ('Проводник не запущен — открой файл сам: {0}' -f $path) warn }
+    }
+    if (Confirm-NovaAction 'Написать письмо в поддержку?') {
+        if (-not (Start-NovaAsUser ('mailto:{0}?subject=Nova%20{1}' -f (Get-NovaSupportEmail), (Get-NovaVersion)))) { Write-Nova ('Напиши сам: {0}' -f (Get-NovaSupportEmail)) warn }
+    }
+    return 0
+}
+
 # Переезд на чистую Windows: сохранить свои программы перед переустановкой и вернуть после.
 function Invoke-NovaMoveFlow {
     Write-Host ''
@@ -775,6 +914,9 @@ function Start-NovaMenu {
         Write-Host ' 10  Автозагрузка: что запускается вместе с Windows' -ForegroundColor White
         Write-Host ' 11  Переезд на чистую Windows: сохранить и вернуть свои программы' -ForegroundColor White
         Write-Host ' 12  Есть ли новая версия Nova' -ForegroundColor White
+        Write-Host ' 13  Что тормозит прямо сейчас' -ForegroundColor White
+        Write-Host ' 14  Интернет для игр: пинг, Wi‑Fi и DNS' -ForegroundColor White
+        Write-Host ' 15  Отчёт для поддержки (файл на рабочий стол)' -ForegroundColor White
         Write-Host ('      Вопросы и ошибки: {0}' -f (Get-NovaSupportEmail)) -ForegroundColor DarkGray
         Write-Host '  0  Выход' -ForegroundColor White
         Write-Host ''
@@ -802,6 +944,9 @@ function Start-NovaMenu {
                 '10' { [void](Invoke-NovaStartupFlow) }
                 '11' { [void](Invoke-NovaMoveFlow); Wait-NovaKey }
                 '12' { [void](Invoke-NovaUpdateFlow); Wait-NovaKey }
+                '13' { [void](Invoke-NovaHeavyFlow); Wait-NovaKey }
+                '14' { [void](Invoke-NovaNetFlow); Wait-NovaKey }
+                '15' { [void](Invoke-NovaReportFlow); Wait-NovaKey }
                 '0' { return }
             }
         } catch {
@@ -847,6 +992,9 @@ try {
         'Clean' { Show-NovaBanner; $exitCode = Invoke-NovaCleanFlow }
         'Startup' { Show-NovaBanner; $exitCode = Invoke-NovaStartupFlow }
         'Update' { Show-NovaBanner; $exitCode = Invoke-NovaUpdateFlow }
+        'Heavy' { Show-NovaBanner; $exitCode = Invoke-NovaHeavyFlow }
+        'Net' { Show-NovaBanner; $exitCode = Invoke-NovaNetFlow }
+        'Report' { Show-NovaBanner; $exitCode = Invoke-NovaReportFlow }
     }
 } catch {
     Write-Nova ('Ошибка: {0}' -f $_.Exception.Message) err

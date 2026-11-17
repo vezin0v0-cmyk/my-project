@@ -74,6 +74,21 @@ jobs:
           ./src/Nova.ps1 -Mode Update
           if ($LASTEXITCODE -eq 2) { Write-Host '::warning::GitHub is not reachable, update check skipped'; exit 0 } elseif ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Что тормозит, интернет для игр, отчёт для поддержки
+        shell: powershell
+        run: |
+          ./tests/Test-Tools.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./src/Nova.ps1 -Mode Heavy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./src/Nova.ps1 -Mode Net
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./src/Nova.ps1 -Mode Report
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $report = Get-ChildItem -LiteralPath ([Environment]::GetFolderPath('Desktop')) -Filter 'Nova*.txt' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $report) { throw 'No support report on the desktop.' }
+          Get-Content -LiteralPath $report.FullName -Encoding UTF8 | Select-Object -First 12
+
       - name: Освободить место (без долгого DISM)
         shell: powershell
         run: ./src/Nova.ps1 -Mode Clean -Yes -Quick

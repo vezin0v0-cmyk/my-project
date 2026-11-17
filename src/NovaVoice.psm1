@@ -21,8 +21,9 @@ $script:Vosk = @{
         'libwinpthread-1.dll' = '92CAEB8A4EA281C674003462A233F3B445B685B0A6F93EB11254FEDA2DDA9CDE'
     }
 }
-$script:VoiceActions = @('shutdown', 'restart', 'cancel', 'minimizeAll', 'restoreAll', 'closeWindow', 'closeAll', 'lock', 'volumeUp', 'volumeDown', 'mute', 'playPause', 'nextTrack', 'prevTrack', 'time', 'date', 'battery', 'hello')
+$script:VoiceActions = @('shutdown', 'restart', 'cancel', 'minimizeAll', 'restoreAll', 'closeWindow', 'closeAll', 'lock', 'volumeUp', 'volumeDown', 'mute', 'playPause', 'nextTrack', 'prevTrack', 'time', 'date', 'battery', 'hello', 'timer', 'timerLeft')
 $script:Pending = $null
+$script:Timer = $null
 $script:Speaker = $null
 
 # Папка движка — личная: другие пользователи компьютера не могут туда ничего подложить.
@@ -368,6 +369,54 @@ function Get-NovaVoiceLinkProblem {
     return ''
 }
 
+# Числа словами для таймера — в женском роде, как говорят про минуты: «одну», «две», «двадцать одну».
+$script:NumUnits = @('', 'одну', 'две', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять')
+$script:NumTeens = @('десять', 'одиннадцать', 'двенадцать', 'тринадцать', 'четырнадцать', 'пятнадцать', 'шестнадцать', 'семнадцать', 'восемнадцать', 'девятнадцать')
+$script:NumTens = @('', '', 'двадцать', 'тридцать', 'сорок', 'пятьдесят')
+function ConvertTo-NovaVoiceNumberWords {
+    param([int]$Number)
+    if ($Number -lt 1 -or $Number -gt 59) { throw ('Число {0} таймер не знает.' -f $Number) }
+    if ($Number -lt 10) { return $script:NumUnits[$Number] }
+    if ($Number -lt 20) { return $script:NumTeens[$Number - 10] }
+    $tens = $script:NumTens[[int][math]::Floor($Number / 10)]
+    $units = $Number % 10
+    if ($units -eq 0) { return $tens }
+    return ('{0} {1}' -f $tens, $script:NumUnits[$units])
+}
+
+# Все длительности таймера: что сказать после «таймер на» и сколько это секунд.
+function Get-NovaVoiceTimerChoices {
+    $list = New-Object System.Collections.Generic.List[object]
+    $list.Add([pscustomobject]@{ Words = 'минуту'; Seconds = 60 })
+    for ($m = 1; $m -le 59; $m++) {
+        $list.Add([pscustomobject]@{ Words = ('{0} {1}' -f (ConvertTo-NovaVoiceNumberWords $m), (Get-NovaVoicePlural $m 'минуту' 'минуты' 'минут')); Seconds = $m * 60 })
+    }
+    foreach ($sec in @(10, 15, 20, 30, 40, 45)) { $list.Add([pscustomobject]@{ Words = ('{0} секунд' -f (ConvertTo-NovaVoiceNumberWords $sec)); Seconds = $sec }) }
+    $list.Add([pscustomobject]@{ Words = 'полчаса'; Seconds = 1800 })
+    $list.Add([pscustomobject]@{ Words = 'час'; Seconds = 3600 })
+    return $list.ToArray()
+}
+
+# «5 минут», «1 минута 30 секунд», «1 час» — для текста в окне и ответа вслух.
+function Get-NovaVoiceDurationText {
+    param([int]$Seconds)
+    if ($Seconds -lt 0) { $Seconds = 0 }
+    $h = [int][math]::Floor($Seconds / 3600); $m = [int][math]::Floor(($Seconds % 3600) / 60); $sec = $Seconds % 60
+    $parts = @()
+    if ($h -gt 0) { $parts += ('{0} {1}' -f $h, (Get-NovaVoicePlural $h 'час' 'часа' 'часов')) }
+    if ($m -gt 0) { $parts += ('{0} {1}' -f $m, (Get-NovaVoicePlural $m 'минута' 'минуты' 'минут')) }
+    if ($sec -gt 0 -or $parts.Count -eq 0) { $parts += ('{0} {1}' -f $sec, (Get-NovaVoicePlural $sec 'секунда' 'секунды' 'секунд')) }
+    return ($parts -join ' ')
+}
+
+function Get-NovaVoiceTimer { return $script:Timer }
+
+function Get-NovaVoiceTimerLeftText {
+    if ($null -eq $script:Timer) { return 'Таймер не запущен' }
+    $left = [int][math]::Ceiling(($script:Timer.Deadline - (Get-Date)).TotalSeconds)
+    return ('Осталось {0}' -f (Get-NovaVoiceDurationText $left))
+}
+
 function Read-NovaVoiceConfig {
     param([Parameter(Mandatory)][string]$Path)
     $doc = Read-NovaJson $Path
@@ -406,6 +455,14 @@ function Read-NovaVoiceConfig {
             if ($why) { $problems.Add(('voice.json: у «{0}» в run — {1}' -f $label, $why)) }
         }
         if ($problems.Count -gt $before) { continue }
+        if ($do -eq 'timer') {
+            # «таймер» — начало фразы: «таймер на пять минут», «таймер на полчаса» и так далее.
+            foreach ($choice in (Get-NovaVoiceTimerChoices)) {
+                $phrases = @($say | ForEach-Object { '{0} на {1}' -f $_, $choice.Words })
+                $commands.Add([pscustomobject]@{ Say = $phrases; Do = 'timer'; Run = ''; Keys = ''; Label = $phrases[0]; Seconds = $choice.Seconds })
+            }
+            continue
+        }
         $commands.Add([pscustomobject]@{ Say = $say; Do = $do; Run = $run; Keys = $keys; Label = $say[0] })
     }
     return [pscustomobject]@{ WakeWord = $wake; Delay = $delay; PushToTalk = $pushToTalk; PushKeys = $pushKeys; Speak = $speak; Commands = $commands.ToArray(); Problems = $problems.ToArray(); Fatal = $fatal }
@@ -579,8 +636,20 @@ function Invoke-NovaVoiceCommand {
             return ('перезагружу через {0} с — «{1}, отмена» отменит' -f $delay, $Config.WakeWord)
         }
         'cancel' {
+            if ($null -eq $script:Pending -and $null -ne $script:Timer) { $script:Timer = $null; return 'таймер отменён' }
             $script:Pending = $null
             return 'отменено'
+        }
+        'timer' {
+            $seconds = [int](Get-NovaProp $Command 'Seconds' 0)
+            if ($seconds -le 0) { return 'не поняла, на сколько поставить таймер' }
+            $text = Get-NovaVoiceDurationText $seconds
+            if (-not $DryRun) {
+                $script:Timer = [pscustomobject]@{ Deadline = (Get-Date).AddSeconds($seconds); Seconds = $seconds; Text = $text }
+                try { [Console]::Beep(660, 150) } catch { Write-Verbose 'Нет звука.' }
+                if ($Config.Speak) { [void](Invoke-NovaVoiceSpeak ('Таймер на {0}' -f $text)) }
+            }
+            return ('таймер на {0} — скажу, когда время выйдет. «{1}, сколько осталось» — узнать, «{1}, отмена» — отменить' -f $text, $Config.WakeWord)
         }
         'closeAll' {
             if (-not $DryRun) { Set-NovaVoicePending 'closeAll' $delay }
@@ -610,6 +679,7 @@ function Invoke-NovaVoiceCommand {
         'date' { Get-NovaVoiceDateText }
         'battery' { Get-NovaVoiceBatteryText }
         'hello' { 'Привет! Слушаю тебя' }
+        'timerLeft' { Get-NovaVoiceTimerLeftText }
         default { '' }
     }
     if ($answer -and -not $DryRun -and $Config.Speak) { [void](Invoke-NovaVoiceSpeak $answer) }
@@ -626,6 +696,14 @@ function Get-NovaVoicePending { return $script:Pending }
 
 # Отложенная команда: выполняем, когда вышло время и её не отменили.
 function Invoke-NovaVoicePending {
+    param($Config)
+    if ($null -ne $script:Timer -and (Get-Date) -ge $script:Timer.Deadline) {
+        $done = $script:Timer
+        $script:Timer = $null
+        try { foreach ($f in @(880, 988, 1175)) { [Console]::Beep($f, 220) } } catch { Write-Verbose 'Нет звука.' }
+        if ($Config -and $Config.Speak) { [void](Invoke-NovaVoiceSpeak 'Время вышло!') }
+        return ('время вышло! (таймер на {0})' -f $done.Text)
+    }
     if ($null -eq $script:Pending -or (Get-Date) -lt $script:Pending.Deadline) { return $null }
     $action = $script:Pending.Action
     $script:Pending = $null
@@ -742,7 +820,7 @@ function Start-NovaVoiceListener {
         while ($true) {
             $data = $mic.Read()
             if ($null -eq $data) {
-                $done = Invoke-NovaVoicePending
+                $done = Invoke-NovaVoicePending -Config $Config
                 if ($done) { Write-Nova $done ok }
                 Start-Sleep -Milliseconds 30
                 continue
