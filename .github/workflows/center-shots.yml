@@ -1,12 +1,13 @@
 name: Снимки Nova Центра для сайта
 
-# Когда меняется окно Nova Центр, свежие снимки его страниц кладутся в docs/img/center — для сайта
+# Когда меняется окно Nova Центр или Nova Голос, свежие снимки его страниц кладутся в docs/img/center — для сайта
 # и чтобы посмотреть, как окно выглядит, не скачивая артефакты. Коммит с [skip ci] — проверки не перезапускаются.
 on:
   push:
     branches: ['claude/hello-973j4n']
     paths:
       - 'src/NovaApp.ps1'
+      - 'src/NovaVoiceApp.ps1'
       - 'assets/**'
       - '.github/workflows/center-shots.yml'
   workflow_dispatch:
@@ -33,6 +34,8 @@ jobs:
         run: |
           $png = Join-Path $env:RUNNER_TEMP 'center'
           ./src/NovaApp.ps1 -Screenshot $png
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./src/NovaVoiceApp.ps1 -Screenshot $png
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Add-Type -AssemblyName System.Drawing
           $out = Join-Path (Get-Location) 'docs\img\center'

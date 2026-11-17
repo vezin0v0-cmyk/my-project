@@ -220,6 +220,8 @@ function Add-NovaVoiceAutostart {
     try {
         $link = $shell.CreateShortcut($path)
         $link.TargetPath = $Target
+        # Окно Nova Голос при входе в Windows открывается свёрнутым — слушает, но не мешает.
+        $link.Arguments = '-Minimized'
         $link.WorkingDirectory = Split-Path -Parent $Target
         $link.WindowStyle = 7
         $link.Description = 'Nova Голос — голосовые команды «Нова, …»'

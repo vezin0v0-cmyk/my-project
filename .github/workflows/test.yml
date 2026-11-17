@@ -200,7 +200,7 @@ jobs:
           $dir = Join-Path $env:RUNNER_TEMP 'user-download'
           Expand-Archive -LiteralPath $zip -DestinationPath $dir -Force
           $root = (Get-ChildItem -LiteralPath $dir -Directory | Select-Object -First 1).FullName
-          foreach ($f in @('Nova.cmd', 'NovaCenter.cmd', 'src\NovaApp.ps1', 'assets\nova.ico', 'NovaVoice.cmd', 'config.json', 'voice.json', 'CHANGELOG.md', 'src\Nova.ps1', 'src\Nova.psm1', 'src\NovaPlay.psm1', 'src\NovaTools.psm1', 'src\NovaVoiceStartup.cmd', 'assets')) {
+          foreach ($f in @('Nova.cmd', 'NovaCenter.cmd', 'src\NovaApp.ps1', 'src\NovaVoiceApp.ps1', 'assets\nova.ico', 'NovaVoice.cmd', 'config.json', 'voice.json', 'CHANGELOG.md', 'src\Nova.ps1', 'src\Nova.psm1', 'src\NovaPlay.psm1', 'src\NovaTools.psm1', 'src\NovaVoiceStartup.cmd', 'assets')) {
             if (-not (Test-Path -LiteralPath (Join-Path $root $f))) { throw "Missing in the download: $f" }
           }
           $mine = [regex]::Match((Get-Content -LiteralPath 'src/Nova.psm1' -Raw), "NovaVersion = '([0-9.]+)'").Groups[1].Value

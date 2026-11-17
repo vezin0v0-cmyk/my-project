@@ -1,5 +1,5 @@
 @echo off
-rem Nova Voice: voice commands like "Nova, minimize all windows". Runs without admin rights.
+rem Nova Voice: voice commands like "Nova, minimize all windows" in the Nova Voice window. Runs without admin rights.
 rem The file stays ASCII: messages are UTF-8 in base64 and printed by PowerShell.
 setlocal
 rem Work from our own folder, so nothing is picked up from a foreign current folder.
@@ -9,9 +9,14 @@ title Nova Voice
 set "PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 if exist "%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe" set "PS=%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
 
-if not exist "%~dp0src\NovaVoice.ps1" goto nofiles
+if not exist "%~dp0src\NovaVoiceApp.ps1" goto nofiles
+rem The window starts without a console. From autostart it opens minimized (-Minimized is the only thing passed on).
+rem The console version stays in src\NovaVoice.ps1.
 rem One line on purpose: an update may replace this file while it runs, and cmd.exe reads it line by line.
-"%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0src\NovaVoice.ps1" || pause & exit /b
+if /i "%~1"=="-Minimized" goto minimized
+start "" "%PS%" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0src\NovaVoiceApp.ps1" & exit /b
+:minimized
+start "" "%PS%" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0src\NovaVoiceApp.ps1" -Minimized & exit /b
 
 :nofiles
 set "NOVA_MSG=Tm92YSDQvdC1INC90LDRiNC70LAg0YHQstC+0Lgg0YTQsNC50LvRiyDRgNGP0LTQvtC8INGBIE5vdmFWb2ljZS5jbWQuCtCh0L3QsNGH0LDQu9CwINGA0LDRgdC/0LDQutGD0Lkg0LDRgNGF0LjQsjog0L/RgNCw0LLQvtC5INC60L3QvtC/0LrQvtC5INC/0L4g0LDRgNGF0LjQstGDIOKGkiDCq9CY0LfQstC70LXRh9GMINCy0YHRkeKApsK7LArQv9C+0YLQvtC8INC+0YLQutGA0L7QuSDRgNCw0YHQv9Cw0LrQvtCy0LDQvdC90YPRjiDQv9Cw0L/QutGDINC4INC30LDQv9GD0YHRgtC4IE5vdmFWb2ljZS5jbWQg0L7RgtGC0YPQtNCwLg=="
