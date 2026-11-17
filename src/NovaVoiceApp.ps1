@@ -712,6 +712,8 @@ if ($Screenshot) {
         $ui.CmdPanel.Visibility = 'Visible'
         Save-Shot '03-komandy'
         $ui.CmdPanel.Visibility = 'Collapsed'
+        # Первый запуск — ещё ничего не слышали и не делали.
+        $ui.HeardBox.Visibility = 'Collapsed'; $ui.Feed.Children.Clear(); $ui.FeedEmpty.Visibility = 'Visible'; $ui.FeedCount.Text = ''
         Set-VoiceState 'need-engine'
         Save-Shot '04-dvizhok'
         Set-VoiceState 'error' 'Не найден микрофон. Подключи его и нажми «Попробовать снова».'

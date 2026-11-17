@@ -143,6 +143,8 @@
   .shot img { display: block; width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line-2); box-shadow: 0 18px 50px rgba(0,0,0,.45); }
   .shot figcaption { color: var(--muted); font-size: 13px; margin-top: 6px; }
   @media (max-width: 760px) { .shots { grid-template-columns: 1fr; } .shot.big { grid-row: auto; } }
+  .voice-shots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 12px; max-width: 760px; }
+  @media (max-width: 760px) { .voice-shots { grid-template-columns: 1fr 1fr; } .voice-shots .shot:last-child { display: none; } }
   .card { padding: 0; }
   .card .body { padding: 18px 18px 20px; }
   .card h3 { margin: 0 0 8px; font-size: 19px; }
@@ -484,6 +486,12 @@
         <figure class="shot"><img src="img/center/nova-center-02-nastroyki.jpg" alt="Nova Центр: настройки Windows переключателями" width="1044" height="788" loading="lazy" decoding="async"><figcaption>Настройки переключателями</figcaption></figure>
         <figure class="shot"><img src="img/center/nova-center-04-igry.jpg" alt="Nova Центр: игры и режим игры" width="1044" height="788" loading="lazy" decoding="async"><figcaption>Игры и режим игры</figcaption></figure>
         <figure class="shot"><img src="img/center/nova-center-09-hod-raboty.jpg" alt="Nova Центр: ход работы прямо в окне" width="1044" height="788" loading="lazy" decoding="async"><figcaption>Ход работы — прямо в окне</figcaption></figure>
+      </div>
+      <p class="sub" style="margin-top:22px">Nova Голос — своё окно: шар дышит, пока Nova слушает, а ниже видно, что она услышала и что сделала. Пауза выключает микрофон, окно можно держать поверх игр.</p>
+      <div class="voice-shots reveal">
+        <figure class="shot"><img src="img/center/nova-voice-01-slushayu.jpg" alt="Nova Голос: шар слушает, лента сделанных команд" width="440" height="720" loading="lazy" decoding="async"><figcaption>«Нова, громче» — сделано</figcaption></figure>
+        <figure class="shot"><img src="img/center/nova-voice-03-komandy.jpg" alt="Nova Голос: список всех команд" width="440" height="720" loading="lazy" decoding="async"><figcaption>Все команды списком</figcaption></figure>
+        <figure class="shot"><img src="img/center/nova-voice-04-dvizhok.jpg" alt="Nova Голос: первый запуск — скачать движок распознавания" width="440" height="720" loading="lazy" decoding="async"><figcaption>Первый запуск</figcaption></figure>
       </div>
       <p class="sub" style="margin-top:22px">А так выглядит меню в консоли: сначала план, потом вопрос.</p>
       <div class="panel terminal reveal">
