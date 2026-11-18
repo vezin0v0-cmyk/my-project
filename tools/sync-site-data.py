@@ -55,10 +55,15 @@ def numbers() -> list:
 
 
 def build_data() -> str:
-    tweaks = json.loads((ROOT / "src" / "tweaks.json").read_text(encoding="utf-8"))["tweaks"]
+    tweaks_doc = json.loads((ROOT / "src" / "tweaks.json").read_text(encoding="utf-8"))
+    tweaks = tweaks_doc["tweaks"]
     config = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
     voice = json.loads((ROOT / "voice.json").read_text(encoding="utf-8"))
     data = {
+        "presets": [
+            {key: preset.get(key) for key in ("id", "name", "text", "tweaksOn", "removeApps", "keepApps", "installApps")}
+            for preset in tweaks_doc.get("presets", [])
+        ],
         "tweaks": [
             {key: tweak.get(key) for key in ("id", "category", "title", "description")}
             for tweak in tweaks

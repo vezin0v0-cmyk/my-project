@@ -4,7 +4,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-$script:NovaVersion = '0.9.0'
+$script:NovaVersion = '0.10.0'
 $script:Categories = [ordered]@{
     privacy     = 'ПРИВАТНОСТЬ'
     interface   = 'ИНТЕРФЕЙС'
@@ -1475,6 +1475,35 @@ function Test-NovaProtectedApp {
     foreach ($app in $script:ProtectedApps) { if ($Name -ieq $app) { return $true } }
     foreach ($prefix in $script:ProtectedAppPrefixes) { if ($Name.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { return $true } }
     return $false
+}
+
+# Какие приложения Nova уже удаляла — по журналам запусков (и отменённых тоже: удалённое отмена не возвращает).
+function Get-NovaRemovedAppNames {
+    $dir = Join-Path (Get-NovaDataDir) 'backups'
+    if (-not (Test-Path -LiteralPath $dir)) { return @() }
+    $names = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    $files = @(Get-ChildItem -LiteralPath $dir -Filter 'backup-*.json' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 60)
+    foreach ($file in $files) {
+        $doc = $null
+        try { $doc = Read-NovaJson $file.FullName } catch { $doc = $null }
+        foreach ($entry in @(Get-NovaProp $doc 'entries' @())) {
+            $name = [string](Get-NovaProp $entry 'name' '')
+            if ((Get-NovaProp $entry 'type' '') -eq 'appRemoved' -and (Test-NovaAppName $name)) { [void]$names.Add($name) }
+        }
+    }
+    return @($names)
+}
+
+# Что из удалённого Nova снова стоит у пользователя (обычно после большого обновления Windows)
+# и всё ещё отмечено «удалить» в config.json.
+function Select-NovaReturnedApps {
+    param([string[]]$Removed, [string[]]$Wanted, [string[]]$Installed)
+    $result = New-Object System.Collections.Generic.List[string]
+    foreach ($name in @($Removed)) {
+        $want = $name -and @($Wanted | Where-Object { $_ -ieq $name }).Count -gt 0
+        if ($want -and @($Installed | Where-Object { $_ -like $name }).Count -gt 0 -and -not $result.Contains($name)) { $result.Add($name) }
+    }
+    return $result.ToArray()
 }
 
 function Get-NovaAppPlan {

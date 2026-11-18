@@ -43,6 +43,7 @@
 
     "game-mode-on": true,
     "game-dvr-off": true,
+    "gamebar-off": false,
     "faster-menus": true,
     "no-startup-delay": true,
     "mouse-acceleration-off": false,
@@ -96,6 +97,10 @@
     "Microsoft.ZuneMusic": false,
     "Microsoft.GamingApp": false,
     "Microsoft.XboxGamingOverlay": false,
+    "Microsoft.XboxApp": false,
+    "Microsoft.XboxGameOverlay": false,
+    "Microsoft.XboxSpeechToTextOverlay": false,
+    "MicrosoftCorporationII.QuickAssist": false,
     "MicrosoftCorporationII.MicrosoftFamily": true,
     "Microsoft.Office.OneNote": true,
     "Microsoft.Wallet": true,

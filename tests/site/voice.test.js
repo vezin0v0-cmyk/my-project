@@ -93,7 +93,11 @@ function novaProblems(doc) {
       await register(p);
       // Готовые сборки в конструкторе
       await p.$eval('#builder', el => el.scrollIntoView());
-      check(T + ' presets shown', (await p.$$('#presets button')).length === 4);
+      check(T + ' presets shown', (await p.$$('#presets button')).length === 5);
+      await p.click('#presets [data-preset="atlas"]');
+      await p.waitForTimeout(150);
+      const atl = JSON.parse(await (async () => { await p.click('[data-show-config]'); await p.waitForSelector('.modal textarea'); const v = await p.$eval('.modal textarea', t => t.value); await p.click('.modal [data-close]'); return v; })());
+      check(T + ' atlas preset: Xbox removed, Game Bar off, media player kept', atl.removeApps['Microsoft.GamingApp'] === true && atl.removeApps['Microsoft.XboxGamingOverlay'] === true && atl.tweaks['xbox-services-off'] === true && atl.tweaks['gamebar-off'] === true && atl.removeApps['Microsoft.ZuneMusic'] === false && atl.tweaks['memory-integrity-off'] === false, atl);
       await p.click('#presets [data-preset="gaming"]');
       await p.waitForTimeout(150);
       const cfgText = await (async () => { await p.click('[data-show-config]'); await p.waitForSelector('.modal textarea'); const v = await p.$eval('.modal textarea', t => t.value); await p.click('.modal [data-close]'); return v; })();

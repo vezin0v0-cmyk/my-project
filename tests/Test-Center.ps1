@@ -121,6 +121,10 @@ function Assert-RunOk($Run, [string]$What) {
     $script:Done.Add(('ok  {0}: {1} строк в окне, {2:N0} с' -f $What, $Run.Lines.Count, $Run.Seconds))
 }
 
+# «Вернулось после обновлений»: только то, что Nova удаляла, что ещё отмечено «удалить» и что снова стоит.
+$ret = @(Select-NovaReturnedApps -Removed @('Microsoft.BingNews', 'Microsoft.GamingApp', 'Microsoft.Todos') -Wanted @('Microsoft.BingNews', 'Microsoft.Todos') -Installed @('Microsoft.BingNews', 'Microsoft.WindowsStore'))
+if (($ret -join ',') -ne 'Microsoft.BingNews') { throw ('Select-NovaReturnedApps: ожидалось Microsoft.BingNews, а получилось «{0}»' -f ($ret -join ',')) }
+
 $script:ConfigPath = Join-Path $root 'config.json'
 $configBackup = [IO.File]::ReadAllBytes($script:ConfigPath)
 $lnkPath = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Nova Центр.lnk'
@@ -273,6 +277,21 @@ try {
     Invoke-Id 'RunClose'
     Start-Sleep -Milliseconds 500
     $script:Done.Add('ok  «Остановить» посреди работы: Nova остановилась, окно написало «Остановлено»')
+
+    # 10в. «Как Atlas»: одна кнопка на главной — вопрос «Да» — вся сборка в config.json и применение.
+    Open-Page 'NavHome'
+    $atlasName = [string](Get-Id 'BtnAtlas').Current.Name
+    if ($atlasName -ne 'Сделать как Atlas') { throw ('На главной нет кнопки «Сделать как Atlas»: «{0}»' -f $atlasName) }
+    Invoke-Id 'BtnAtlas'
+    Confirm-Dialog 'сделать как Atlas'
+    Assert-RunOk (Wait-Run 'Как Atlas' 900) 'Как Atlas одной кнопкой'
+    $atlas = @((Read-NovaJson (Join-Path $root 'src\tweaks.json')).presets | Where-Object { $_.id -eq 'atlas' })[0]
+    $swA = Get-Switches (Read-Config)
+    $missed = @(@($atlas.tweaksOn | Where-Object { $swA[('tweaks.' + $_)] -ne 'True' }) + @($atlas.removeApps | Where-Object { $swA[('removeApps.' + $_)] -ne 'True' }))
+    if ($missed.Count) { throw ('«Как Atlas» не включил в config.json: {0}' -f ($missed -join ', ')) }
+    if (@($atlas.keepApps | Where-Object { $swA[('removeApps.' + $_)] -eq 'True' }).Count) { throw '«Как Atlas» отметил к удалению то, что надо оставить' }
+    if ($swA['tweaks.memory-integrity-off'] -eq 'True') { throw '«Как Atlas» выключил «Целостность памяти» — защиту не трогаем' }
+    $script:Done.Add(('ok  «Как Atlas»: {0} настроек и {1} приложений к удалению (Xbox тоже), применено из окна' -f @($atlas.tweaksOn).Count, @($atlas.removeApps).Count))
 
     # 11. Ярлык на рабочий стол.
     Open-Page 'NavTools'

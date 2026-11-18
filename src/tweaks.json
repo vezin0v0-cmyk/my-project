@@ -398,6 +398,17 @@
       ]
     },
     {
+      "id": "gamebar-off",
+      "category": "performance",
+      "title": "Без Xbox Game Bar",
+      "description": "Win+G больше не открывает Game Bar, и игры не зовут его при запуске. Нужен, если Game Bar удалён: иначе Windows может показывать окно «Нужно новое приложение, чтобы открыть ms-gamingoverlay». Запись клипов и игры из Game Pass без Game Bar не работают.",
+      "actions": [
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\GameBar", "name": "UseNexusForGameBarEnabled", "kind": "DWord", "value": 0 },
+        { "type": "registry", "path": "HKCU\\Software\\Microsoft\\GameBar", "name": "ShowStartupPanel", "kind": "DWord", "value": 0 },
+        { "type": "registry", "path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\GameDVR", "name": "AllowGameDVR", "kind": "DWord", "value": 0 }
+      ]
+    },
+    {
       "id": "faster-menus",
       "category": "performance",
       "title": "Меню открываются быстрее",
@@ -617,6 +628,18 @@
       "actions": [
         { "type": "oneDrive" }
       ]
+    }
+  ],
+  "presets": [
+    {
+      "id": "atlas",
+      "name": "Как Atlas",
+      "text": "Всё лишнее — вон, и Xbox тоже",
+      "_info": "Сборка «Как Atlas»: всё, что делает Nova по умолчанию, плюс жёсткие пункты; удаляются все приложения из списка, кроме keepApps. Защиту Windows (антивирус, брандмауэр, UAC, «Целостность памяти», обновления безопасности) сборка не выключает.",
+      "tweaksOn": ["telemetry-off", "ads-id-off", "tailored-off", "activity-history-off", "suggestions-off", "web-search-off", "copilot-off", "recall-off", "feedback-off", "update-sharing-off", "telemetry-tasks-off", "error-reporting-off", "sync-off", "input-data-off", "account-nags-off", "dark-theme", "show-extensions", "explorer-this-pc", "classic-context-menu", "search-icon-only", "task-view-hide", "widgets-off", "end-task-button", "sticky-keys-off", "context-menu-cleanup", "nova-wallpaper", "nova-accent", "nova-about", "game-mode-on", "game-dvr-off", "gamebar-off", "faster-menus", "no-startup-delay", "mouse-acceleration-off", "high-performance-power", "hibernation-off", "background-apps-off", "gpu-scheduling-on", "windowed-games-optimization", "game-priority", "power-throttling-off", "background-services-trim", "xbox-services-off", "security-updates-only", "no-forced-restart", "edge-quiet", "onedrive-remove"],
+      "removeApps": ["Microsoft.BingNews", "Microsoft.BingWeather", "Microsoft.BingSearch", "Microsoft.GetHelp", "Microsoft.Getstarted", "Microsoft.MicrosoftSolitaireCollection", "Microsoft.MicrosoftOfficeHub", "Microsoft.People", "Microsoft.PowerAutomateDesktop", "Microsoft.Todos", "Microsoft.WindowsFeedbackHub", "Microsoft.WindowsMaps", "Microsoft.549981C3F5F10", "Microsoft.Copilot", "Microsoft.Windows.DevHome", "Microsoft.MixedReality.Portal", "Microsoft.Microsoft3DViewer", "Microsoft.SkypeApp", "Clipchamp.Clipchamp", "MSTeams", "MicrosoftTeams", "Microsoft.OutlookForWindows", "Microsoft.YourPhone", "Microsoft.MicrosoftStickyNotes", "Microsoft.GamingApp", "Microsoft.XboxGamingOverlay", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay", "Microsoft.XboxSpeechToTextOverlay", "MicrosoftCorporationII.QuickAssist", "MicrosoftCorporationII.MicrosoftFamily", "Microsoft.Office.OneNote", "Microsoft.Wallet", "Microsoft.WindowsSoundRecorder", "MicrosoftWindows.CrossDevice", "microsoft.windowscommunicationsapps", "Microsoft.ZuneVideo", "Microsoft.BingFinance", "Microsoft.BingSports", "Microsoft.Messaging", "Microsoft.Print3D", "Microsoft.OneConnect", "Microsoft.MSPaint"],
+      "keepApps": ["Microsoft.ZuneMusic"],
+      "installApps": ["Microsoft.VCRedist.2015+.x64", "Microsoft.VCRedist.2015+.x86", "Microsoft.DirectX"]
     }
   ]
 }

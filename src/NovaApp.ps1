@@ -373,6 +373,31 @@ $xaml = @'
               </Border>
             </Border>
 
+            <Border x:Name="ReturnBar" CornerRadius="14" Background="#2A1F0B" BorderBrush="#6B5A20" BorderThickness="1" Padding="18,12" Margin="0,16,0,0" Visibility="Collapsed">
+              <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                  <Button x:Name="BtnReturnKeep" Style="{StaticResource Ghost}" Content="Оставить"/>
+                  <Button x:Name="BtnReturnRemove" Style="{StaticResource Primary}" Content="Убрать снова"/>
+                </StackPanel>
+                <TextBlock Style="{StaticResource Ico}" Text="&#xE7BA;" FontSize="20" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                <TextBlock x:Name="ReturnText" TextWrapping="Wrap" VerticalAlignment="Center" Foreground="#F3E3B0" Margin="0,0,12,0"/>
+              </DockPanel>
+            </Border>
+
+            <Border x:Name="AtlasCard" CornerRadius="16" Padding="24,20" Margin="0,16,0,0" BorderBrush="#7A6422" BorderThickness="1">
+              <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#2E2710" Offset="0"/><GradientStop Color="#161922" Offset="1"/></LinearGradientBrush>
+              </Border.Background>
+              <DockPanel>
+                <Button x:Name="BtnAtlas" DockPanel.Dock="Right" Style="{StaticResource Primary}" VerticalAlignment="Center" Content="Сделать как Atlas"/>
+                <TextBlock DockPanel.Dock="Left" Style="{StaticResource Ico}" Text="&#xE945;" FontSize="30" VerticalAlignment="Center" Margin="0,0,18,0"/>
+                <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
+                  <TextBlock Text="Как Atlas — убрать всё лишнее" FontSize="19" FontWeight="Bold"/>
+                  <TextBlock x:Name="AtlasText" Style="{StaticResource Sub}"/>
+                </StackPanel>
+              </DockPanel>
+            </Border>
+
             <TextBlock Text="Быстрые действия" FontSize="18" FontWeight="SemiBold" Margin="0,24,0,12"/>
             <UniformGrid Columns="4" Margin="0,0,-12,0">
               <Button x:Name="QApply" Style="{StaticResource Tile}"><StackPanel><TextBlock Style="{StaticResource Ico}" Text="&#xE768;"/><TextBlock Style="{StaticResource TileTitle}" Text="Применить настройки"/><TextBlock Style="{StaticResource TileText}" Text="Всё, что включено в «Настройках Windows»"/></StackPanel></Button>
@@ -584,7 +609,7 @@ $win.Width = [Math]::Max($win.MinWidth, [Math]::Min($win.Width, $work.Width - 40
 $win.Height = [Math]::Max($win.MinHeight, [Math]::Min($win.Height, $work.Height - 40))
 $ui = @{}
 foreach ($name in @('Root', 'LogoImg', 'VerText', 'BtnMin', 'BtnMax', 'BtnClose', 'SideStatus', 'NavAbout', 'NavHome', 'NavTweaks', 'NavApps', 'NavGames', 'NavVoice', 'NavTools', 'NavUpdate',
-        'Pages', 'PageHome', 'HeroImg', 'HealthChip', 'HealthText', 'SysText', 'QApply', 'QGame', 'QGameTitle', 'QGameText', 'QCheck', 'QClean', 'LSite', 'LCabinet', 'LGitHub', 'LMail', 'MailText', 'NewsVer', 'NewsList',
+        'Pages', 'PageHome', 'HeroImg', 'HealthChip', 'HealthText', 'SysText', 'ReturnBar', 'ReturnText', 'BtnReturnKeep', 'BtnReturnRemove', 'AtlasCard', 'AtlasText', 'BtnAtlas', 'QApply', 'QGame', 'QGameTitle', 'QGameText', 'QCheck', 'QClean', 'LSite', 'LCabinet', 'LGitHub', 'LMail', 'MailText', 'NewsVer', 'NewsList',
         'PageTweaks', 'TweaksTitle', 'TweaksSub', 'CatTabs', 'TweakList', 'PresetBar', 'DirtyText', 'BtnSave', 'BtnPreview', 'BtnApply',
         'PageGames', 'GameModeChip', 'GameModeState', 'BtnGameMode', 'GDriver', 'GReady', 'GHeavy', 'GNet', 'GFps', 'GVoice',
         'PageVoice', 'BtnVoiceOpen', 'BtnVoiceAuto', 'BtnVoiceEdit', 'VoiceList',
@@ -903,6 +928,7 @@ $appNames = @{  # те же названия, что в кабинете на с
     'Clipchamp.Clipchamp' = 'Clipchamp'; 'MSTeams' = 'Teams (новый)'; 'MicrosoftTeams' = 'Teams (старый)'
     'Microsoft.OutlookForWindows' = 'Outlook (новый)'; 'Microsoft.YourPhone' = 'Связь с телефоном'; 'Microsoft.MicrosoftStickyNotes' = 'Записки'
     'Microsoft.ZuneMusic' = 'Медиаплеер'; 'Microsoft.GamingApp' = 'Xbox'; 'Microsoft.XboxGamingOverlay' = 'Xbox Game Bar'
+    'Microsoft.XboxApp' = 'Xbox (старое приложение)'; 'Microsoft.XboxGameOverlay' = 'Xbox Game Bar (старый)'; 'Microsoft.XboxSpeechToTextOverlay' = 'Xbox: речь в текст'; 'MicrosoftCorporationII.QuickAssist' = 'Быстрая помощь'
     'MicrosoftCorporationII.MicrosoftFamily' = 'Семья (Microsoft Family)'; 'Microsoft.Office.OneNote' = 'OneNote (старый)'; 'Microsoft.Wallet' = 'Кошелёк'
     'Microsoft.WindowsSoundRecorder' = 'Диктофон'; 'MicrosoftWindows.CrossDevice' = 'Связь с устройствами'; 'microsoft.windowscommunicationsapps' = 'Почта и Календарь'
     'Microsoft.ZuneVideo' = 'Кино и ТВ'; 'Microsoft.BingFinance' = 'Финансы'; 'Microsoft.BingSports' = 'Спорт'
@@ -1101,6 +1127,22 @@ function Open-TweaksPage([string]$Mode) {
     Show-Page $ui.PageTweaks
 }
 
+$script:Atlas = @(@((Read-NovaJson $tweaksPath).presets) | Where-Object { $_ -and $_.id -eq 'atlas' }) | Select-Object -First 1
+
+# «Как Atlas»: переключатели всей сборки (недостающие в старом config.json дописываются при сохранении).
+# Возвращает, сколько переключателей поменялось.
+function Set-AtlasSwitches {
+    $a = $script:Atlas
+    if (-not $a) { return 0 }
+    $known = @{}; foreach ($t in $script:Tweaks) { $known[[string]$t.id] = $true }
+    $changed = 0
+    foreach ($id in @($a.tweaksOn)) { if ($known.ContainsKey([string]$id) -and -not $script:State.tweaks[[string]$id]) { Set-Switch 'tweaks' ([string]$id) $true; $changed++ } }
+    foreach ($name in @($a.removeApps)) { if (-not $script:State.removeApps[[string]$name]) { Set-Switch 'removeApps' ([string]$name) $true; $changed++ } }
+    foreach ($name in @($a.keepApps)) { if ($script:State.removeApps[[string]$name]) { Set-Switch 'removeApps' ([string]$name) $false; $changed++ } }
+    foreach ($name in @($a.installApps)) { if (-not $script:State.installApps[[string]$name]) { Set-Switch 'installApps' ([string]$name) $true; $changed++ } }
+    return $changed
+}
+
 foreach ($pr in $presets) {
     $b = New-Object Windows.Controls.Button
     $b.Style = $win.FindResource('Ghost'); $b.Content = $pr.Name; $b.Tag = $pr
@@ -1111,6 +1153,16 @@ foreach ($pr in $presets) {
             foreach ($k in $s.Tag.Tweaks.Keys) { if ($known.ContainsKey($k) -and [bool]$script:State.tweaks[$k] -ne $s.Tag.Tweaks[$k]) { Set-Switch 'tweaks' $k $s.Tag.Tweaks[$k]; $changed++ } }
             Update-CatTabs; Update-TweakList
             Show-Toast ('Сборка «{0}»: изменено пунктов — {1}' -f $s.Tag.Name, $changed)
+        })
+    [void]$ui.PresetBar.Children.Add($b)
+}
+if ($script:Atlas) {
+    $b = New-Object Windows.Controls.Button
+    $b.Style = $win.FindResource('Ghost'); $b.Content = 'Как Atlas'
+    $b.Add_Click({
+            $n = Set-AtlasSwitches
+            Update-CatTabs; Update-TweakList
+            Show-Toast ('Сборка «Как Atlas»: изменено пунктов — {0}. Приложения — на странице «Приложения»' -f $n)
         })
     [void]$ui.PresetBar.Children.Add($b)
 }
@@ -1310,6 +1362,60 @@ function Invoke-Apply {
     if ($script:Dirty -and -not (Save-Config)) { return }
     Start-NovaRun -Title 'Применяю настройки' -Icon ([string][char]0xE768) -Arguments '-Mode Apply -Yes' -OnDone { param($ok) Update-Health }
 }
+# «Сделать как Atlas»: одна кнопка — вопрос, вся сборка в config.json и применение.
+$ui.BtnAtlas.Add_Click({
+        $a = $script:Atlas
+        if (-not $a) { Show-Toast 'Сборка «Как Atlas» не нашлась в tweaks.json'; return }
+        $msg = ("Сделать как Atlas?`n`n" +
+            "• Удалить {0} предустановленных приложений — в том числе Xbox и Game Bar, Copilot, OneDrive, Teams, Cortana. Игры из Steam, Epic и Riot работают; игры из Game Pass и Microsoft Store (Minecraft, Forza) перестанут.`n" +
+            "• Выключить телеметрию, рекламу, Recall, службы Xbox и фоновые программы; питание — на максимум; большие обновления Windows — только по твоему выбору.`n" +
+            "• Антивирус, брандмауэр и обновления безопасности остаются.`n`n" +
+            "Перед изменениями Nova сделает точку восстановления. Настройки вернуть — «Отменить последний запуск»; удалённые приложения — из Microsoft Store.") -f @($a.removeApps).Count
+        if ([Windows.MessageBox]::Show($msg, 'Nova Центр', 'YesNo', 'Question') -ne 'Yes') { return }
+        [void](Set-AtlasSwitches)
+        if (-not (Save-Config)) { return }
+        Start-NovaRun -Title 'Как Atlas: убираю всё лишнее' -Icon ([string][char]0xE945) -Arguments '-Mode Apply -Yes' -OnDone {
+            param($ok)
+            Update-Health
+            Update-Returned
+            if ($ok) { $ui.RunResult.Text = '✓  Всё получилось — перезагрузи компьютер, чтобы всё вступило в силу' }
+        }
+    })
+
+# Приложения, которые Nova уже удаляла, а Windows вернула (обычно после большого обновления).
+$returnedScript = @'
+param([string]$Src, [string]$ConfigPath)
+$ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $Src 'Nova.psm1') -Force -DisableNameChecking
+$removed = @(Get-NovaRemovedAppNames)
+if ($removed.Count -eq 0) { return }
+$cfg = Read-NovaJson $ConfigPath
+$wanted = @()
+$sec = Get-NovaProp $cfg 'removeApps'
+if ($sec) { $wanted = @($sec.PSObject.Properties | Where-Object { $_.Value -is [bool] -and $_.Value } | ForEach-Object { $_.Name }) }
+$installed = @(Get-AppxPackage -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+Select-NovaReturnedApps -Removed $removed -Wanted $wanted -Installed $installed
+'@
+$script:Returned = @()
+function Show-Returned([string[]]$Names) {
+    $script:Returned = @($Names | Where-Object { $_ })
+    if ($script:Returned.Count -eq 0) { $ui.ReturnBar.Visibility = 'Collapsed'; return }
+    $titles = @($script:Returned | ForEach-Object { $(if ($appNames.ContainsKey($_)) { $appNames[$_] } else { $_ }) })
+    $ui.ReturnText.Text = ('Windows вернула то, что Nova уже удаляла: {0}. Обычно так бывает после большого обновления.' -f ($titles -join ', '))
+    $ui.ReturnBar.Visibility = 'Visible'
+}
+function Update-Returned {
+    Start-NovaBackground $returnedScript @($PSScriptRoot, $configPath) { param($out, $err) Show-Returned @(@($out) | ForEach-Object { [string]$_ }) }
+}
+$ui.BtnReturnRemove.Add_Click({
+        $ui.ReturnBar.Visibility = 'Collapsed'
+        Start-NovaRun -Title 'Убираю то, что вернулось' -Icon ([string][char]0xE74D) -Arguments '-Mode Apply -Yes' -OnDone { param($ok) Update-Returned }
+    })
+$ui.BtnReturnKeep.Add_Click({
+        foreach ($n in $script:Returned) { Set-Switch 'removeApps' $n $false }
+        if (Save-Config) { $ui.ReturnBar.Visibility = 'Collapsed'; Show-Toast 'Хорошо — эти приложения Nova больше не трогает' }
+    })
+
 $ui.BtnSave.Add_Click({ if (Save-Config) { Show-Toast 'Сохранено в config.json' } })
 $ui.BtnPreview.Add_Click({ if ($script:Dirty -and -not (Save-Config)) { return }; Start-NovaRun -Title 'Что изменится' -Icon ([string][char]0xE890) -Arguments '-Mode Preview' })
 $ui.BtnApply.Add_Click({ Invoke-Apply })
@@ -1410,6 +1516,9 @@ $ui.MailText.Inlines.Add((New-Object Windows.Documents.Run ('@' + $mailParts[1])
 $ui.SideStatus.Text = ('Nova {0} · всё можно вернуть' -f (Get-NovaVersion))
 $ui.AboutText.Text = ('Nova {0}. Вопросы, ошибки и идеи: {1}' -f (Get-NovaVersion), (Get-NovaSupportEmail))
 $ui.HealthText.Text = 'Проверяю систему…'; $ui.HealthChip.Background = Get-Brush '#22262F'; $ui.HealthText.Foreground = Get-Brush '#C9CEDA'
+if ($script:Atlas) {
+    $ui.AtlasText.Text = ('Удалит Xbox, Game Bar, Copilot, OneDrive, Teams и ещё — всего {0} приложений; выключит телеметрию, рекламу, службы Xbox и фоновые программы. Антивирус и обновления безопасности остаются. Настройки возвращаются одной кнопкой.' -f @($script:Atlas.removeApps).Count)
+} else { $ui.AtlasCard.Visibility = 'Collapsed' }
 foreach ($tile in @('QApply', 'QCheck', 'QClean', 'LSite', 'LCabinet', 'LGitHub', 'LMail', 'GDriver', 'GReady', 'GHeavy', 'GNet', 'GFps', 'GVoice', 'TClean', 'TUndo', 'TCheck', 'TStartup', 'TReport', 'TMenu', 'TShortcut')) { Set-TileName $ui[$tile] }
 Update-State
 Update-News
@@ -1419,6 +1528,7 @@ Update-UpdatePage $null
 $win.Opacity = 0
 $win.Add_ContentRendered({
         try { Update-Health } catch { Show-Health $null ('не запустилась: {0}' -f (Get-NovaErrorText $_)) }
+        try { Update-Returned } catch { Write-Verbose 'Проверка «что вернулось» не запустилась.' }
         $a = New-Object Windows.Media.Animation.DoubleAnimation -ArgumentList @([double]0, [double]1, (New-Object Windows.Duration ([TimeSpan]::FromMilliseconds(260))))
         $win.BeginAnimation([Windows.Window]::OpacityProperty, $a)
     })
