@@ -33,6 +33,23 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $configPath = Join-Path $projectRoot 'voice.json'
 Import-Module (Join-Path $PSScriptRoot 'Nova.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaVoice.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'NovaStartup.psm1') -Force -DisableNameChecking
+
+# Показать уже открытое окно — и развернуть, если оно свёрнуто (AppActivate свёрнутое не разворачивает).
+function Show-NovaOpenWindow([string]$Title) {
+    if (-not ('NovaWin.Activate' -as [type])) {
+        Add-Type -Namespace NovaWin -Name Activate -MemberDefinition @'
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
+[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+[DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+'@
+    }
+    $h = [NovaWin.Activate]::FindWindow([NullString]::Value, $Title)
+    if ($h -eq [IntPtr]::Zero) { return }
+    if ([NovaWin.Activate]::IsIconic($h)) { [void][NovaWin.Activate]::ShowWindow($h, 9) }
+    [void][NovaWin.Activate]::SetForegroundWindow($h)
+}
 
 # Снимки без записи — только внешний вид, ничего не слушаем и не выполняем.
 $looksOnly = [bool]$Screenshot -and -not $WavFile
@@ -72,7 +89,7 @@ if (-not $looksOnly) {
         $owned = $false
         try { $owned = $script:Single.WaitOne(0) } catch { $owned = $true }
         if (-not $owned) {
-            try { Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.Interaction]::AppActivate('Nova Голос') } catch { Write-Verbose 'Открытое окно не нашлось.' }
+            try { Show-NovaOpenWindow 'Nova Голос' } catch { Write-Verbose 'Открытое окно не нашлось.' }
             exit 0
         }
     }
@@ -491,9 +508,10 @@ $script:Rs = $null
 $script:Handle = $null
 
 $listenScript = @'
-param([string]$Src, [string]$ConfigPath, [string]$WavFile, $Queue)
+param([string]$Src, [string]$ConfigPath, [string]$WavFile, $Queue, $Control)
 $ErrorActionPreference = 'Stop'
 $global:NovaVoiceEvents = $Queue
+$global:NovaVoiceControl = $Control
 function global:Write-Host {
     [CmdletBinding()]
     param([Parameter(Position = 0, ValueFromRemainingArguments = $true)]$Object, [switch]$NoNewline, $Separator = ' ', [ConsoleColor]$ForegroundColor = [ConsoleColor]::Gray, [ConsoleColor]$BackgroundColor = [ConsoleColor]::Black)
@@ -532,30 +550,71 @@ try {
 
 function Start-Listening {
     Stop-Listening
+    $script:RetryTimer.Stop()
     $ui.CmdList.Children.Clear()
+    $script:Control = [hashtable]::Synchronized(@{ Paused = $false; Stop = $false })
     $rs = [runspacefactory]::CreateRunspace()
     $rs.ApartmentState = 'STA'
     $rs.Open()
     $ps = [powershell]::Create()
     $ps.Runspace = $rs
-    [void]$ps.AddScript($listenScript).AddArgument($PSScriptRoot).AddArgument($configPath).AddArgument([string]$WavFile).AddArgument($script:Queue)
+    [void]$ps.AddScript($listenScript).AddArgument($PSScriptRoot).AddArgument($configPath).AddArgument([string]$WavFile).AddArgument($script:Queue).AddArgument($script:Control)
     $script:Rs = $rs; $script:Ps = $ps
     $script:Handle = $ps.BeginInvoke()
     Set-VoiceState 'starting'
 }
 
-# Останавливает распознавание и отпускает микрофон.
+# Останавливает распознавание и отпускает микрофон: сначала просим поток выйти сам (так он освобождает
+# модель речи), и только если он занят дольше пары секунд (например, скачивает движок) — останавливаем.
 function Stop-Listening {
-    $ps = $script:Ps; $rs = $script:Rs
+    $ps = $script:Ps; $rs = $script:Rs; $handle = $script:Handle
     $script:Ps = $null; $script:Rs = $null; $script:Handle = $null
+    if ($script:Control) { $script:Control.Stop = $true }
     if ($ps) {
-        try { $ps.Stop() } catch { Write-Verbose 'Поток голоса уже остановлен.' }
+        $done = $false
+        if ($handle) { $done = $handle.AsyncWaitHandle.WaitOne(2500) }
+        if (-not $done) { try { $ps.Stop() } catch { Write-Verbose 'Поток голоса уже остановлен.' } }
         try { $ps.Dispose() } catch { Write-Verbose 'Поток голоса уже убран.' }
     }
     if ($rs) { try { $rs.Dispose() } catch { Write-Verbose 'Поток голоса уже закрыт.' } }
     # То, что поток успел прислать перед остановкой, больше не нужно.
     $item = $null
     while ($script:Queue.TryDequeue([ref]$item)) { }
+}
+
+# Пауза: микрофон закрыт, а поток (и таймеры в нём) живёт. Снова «Слушать» — микрофон открывается.
+function Switch-Pause {
+    if ($script:State -eq 'paused') {
+        if ($script:Ps -and $script:Control -and -not $script:Handle.IsCompleted) {
+            $script:Control.Paused = $false
+            Set-VoiceState 'starting'
+        } else {
+            Start-Listening
+        }
+    } elseif ($script:Control) {
+        $script:Control.Paused = $true
+        Set-VoiceState 'paused'
+    }
+}
+
+# Беда с микрофоном или движком. Окно свёрнуто (например, автозагрузка, а USB-микрофон ещё не готов) —
+# пробуем ещё раз через 10 секунд, до шести раз; не помогло — разворачиваем окно, чтобы человек увидел.
+$script:Retries = 0
+$script:RetryTimer = New-Object Windows.Threading.DispatcherTimer
+$script:RetryTimer.Interval = [TimeSpan]::FromSeconds(10)
+$script:RetryTimer.Add_Tick({ $script:RetryTimer.Stop(); Start-Listening })
+function Show-VoiceProblem([string]$Message) {
+    Stop-Listening
+    Set-VoiceState 'error' $Message
+    if ($win.WindowState -ne 'Minimized' -or $Screenshot) { return }
+    if ($script:Retries -lt 6) {
+        $script:Retries++
+        $ui.SubText.Text = $Message + ' Попробую ещё раз через 10 секунд.'
+        $script:RetryTimer.Start()
+    } else {
+        $win.WindowState = 'Normal'
+        [void]$win.Activate()
+    }
 }
 
 function Receive-VoiceEvent([string]$Item) {
@@ -576,7 +635,8 @@ function Receive-VoiceEvent([string]$Item) {
             if ($a -like '*сверни все окна*') { $script:Example = 'сверни все окна' }
         }
         'engine' { Set-VoiceState 'engine' }
-        'listen' { if ($a) { $script:Wake = $a }; $ui.CmdHint.Text = ('Начинай с «{0}». Свои фразы — в кабинете на сайте или в voice.json.' -f (Get-Upper $script:Wake)); Set-VoiceState 'listening' }
+        'listen' { if ($a) { $script:Wake = $a }; $script:Retries = 0; $ui.CmdHint.Text = ('Начинай с «{0}». Свои фразы — в кабинете на сайте или в voice.json.' -f (Get-Upper $script:Wake)); Set-VoiceState 'listening' }
+        'paused' { if ($script:State -ne 'paused') { Set-VoiceState 'paused' } }
         'heard' { Show-Heard $a; Invoke-OrbFlash 1.05 }
         'ignored' { Show-Heard $a -Ignored }
         'done' {
@@ -589,7 +649,7 @@ function Receive-VoiceEvent([string]$Item) {
             }
         }
         'fail' { Add-FeedCard 'err' ('«{0}»' -f $a) $b }
-        'error' { Stop-Listening; Set-VoiceState 'error' $a }
+        'error' { Show-VoiceProblem $a }
         'end' { Set-VoiceState 'done' }
     }
 }
@@ -605,14 +665,15 @@ function Invoke-VoicePump {
         try { [void]$ps.EndInvoke($script:Handle) } catch { $problem = $_.Exception.Message }
         if (-not $problem -and $ps.Streams.Error.Count -gt 0) { $problem = $ps.Streams.Error[0].Exception.Message }
         Stop-Listening
-        if ($script:State -notin @('error', 'done', 'paused')) {
-            Set-VoiceState 'error' $(if ($problem) { Get-NovaPlainText $problem 300 } else { 'Голос остановился. Нажми «Попробовать снова».' })
+        if ($script:State -notin @('error', 'done')) {
+            Show-VoiceProblem $(if ($problem) { Get-NovaPlainText $problem 300 } else { 'Голос остановился. Нажми «Попробовать снова».' })
         }
     }
 }
 $pump = New-Object Windows.Threading.DispatcherTimer
 $pump.Interval = [TimeSpan]::FromMilliseconds(120)
-$pump.Add_Tick({ try { Invoke-VoicePump } catch { Set-VoiceState 'error' (Get-NovaPlainText $_.Exception.Message 300) } })
+# Разбор сломался — не оставляем микрофон слушать за надписью «Не получилось».
+$pump.Add_Tick({ try { Invoke-VoicePump } catch { Show-VoiceProblem (Get-NovaPlainText $_.Exception.Message 300) } })
 
 #endregion
 
@@ -622,14 +683,16 @@ $ui.BtnMin.Add_Click({ $win.WindowState = 'Minimized' })
 $ui.BtnClose.Add_Click({ $win.Close() })
 $ui.BtnPin.Add_Checked({ $win.Topmost = $true })
 $ui.BtnPin.Add_Unchecked({ $win.Topmost = $false })
-$ui.BtnPause.Add_Click({
-        if ($script:State -eq 'paused') { Start-Listening } else { Stop-Listening; Set-VoiceState 'paused' }
-    })
+$ui.BtnPause.Add_Click({ Switch-Pause })
 $ui.BtnAction.Add_Click({ Start-Listening })
 $ui.BtnCommands.Add_Click({ $ui.CmdPanel.Visibility = 'Visible' })
 $ui.BtnCmdClose.Add_Click({ $ui.CmdPanel.Visibility = 'Collapsed' })
 $ui.BtnOwn.Add_Click({ if (-not (Start-NovaAsUser 'https://vezin0v0-cmyk.github.io/my-project/docs/app.html#voice')) { Write-Verbose 'Ссылка не открылась.' } })
-$win.Add_Closing({ $pump.Stop(); Stop-Listening })
+$win.Add_Closing({
+        param($s, $e)
+        if ($script:State -eq 'engine' -and [Windows.MessageBox]::Show('Движок распознавания ещё скачивается. Закрыть? В следующий раз скачивание начнётся заново.', 'Nova Голос', 'YesNo', 'Question') -ne 'Yes') { $e.Cancel = $true; return }
+        $pump.Stop(); $script:RetryTimer.Stop(); Stop-Listening
+    })
 $win.Dispatcher.Add_UnhandledException({
         param($s, $e)
         $e.Handled = $true
@@ -727,7 +790,14 @@ if ($Screenshot) {
 
 $pump.Start()
 # Loaded — и когда окно открывается свёрнутым (автозагрузка).
-$win.Add_Loaded({ if (Test-NovaVoiceEngine) { Start-Listening } else { Set-VoiceState 'need-engine' } })
+$win.Add_Loaded({
+        if (Test-NovaVoiceEngine) { Start-Listening; return }
+        Set-VoiceState 'need-engine'
+        # Свёрнутым (из автозагрузки) скачать движок некому — показываем окно.
+        if ($win.WindowState -eq 'Minimized') { $win.WindowState = 'Normal' }
+    })
+# Ярлык автозапуска из 0.8 — без -Minimized; подправляем, чтобы окно при входе открывалось свёрнутым.
+try { [void](Update-NovaVoiceAutostart -Target (Join-Path $projectRoot 'NovaVoice.cmd')) } catch { Write-Verbose 'Ярлык автозапуска не подправился.' }
 [void]$win.ShowDialog()
 Stop-Listening
 if ($script:Single) { try { $script:Single.ReleaseMutex() } catch { Write-Verbose 'Отметка «окно открыто» уже снята.' } }

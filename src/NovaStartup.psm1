@@ -301,6 +301,21 @@ function Add-NovaVoiceAutostart {
     return $path
 }
 
+# Ярлык автозапуска из Nova 0.8 открывал голос без -Minimized: теперь окно открывалось бы при каждом входе
+# развёрнутым. Подправляем такой ярлык на месте — имя то же, отметка «выключено» в Диспетчере задач сохраняется.
+function Update-NovaVoiceAutostart {
+    param(
+        [Parameter(Mandatory)][string]$Target,
+        [string]$Folder = [Environment]::GetFolderPath('Startup')
+    )
+    $path = Get-NovaVoiceAutostartPath $Folder
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
+    $link = Read-NovaShortcut -Path $path
+    if ($link.Target -ine $Target -or $link.Arguments -eq '-Minimized') { return $false }
+    New-NovaShortcut -Path $path -Target $Target -Arguments '-Minimized' -WorkingDirectory (Split-Path -Parent $Target) -Description 'Nova Голос — голосовые команды «Нова, …»' -ShowCmd 7
+    return $true
+}
+
 # Тот ли это пользователь, что сидит за компьютером. Если Nova открыли с паролем другого администратора,
 # папка «Автозагрузка» была бы его, а не твоя.
 function Test-NovaDesktopUser {

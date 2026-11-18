@@ -140,6 +140,18 @@ try {
     if ((Get-NovaShortcutTarget $ruLink) -ne $voiceCmd) { throw 'Get-NovaShortcutTarget не читает ярлык с русским путём' }
     Write-Host 'ok  ярлык с русскими буквами в пути сохраняется и читается'
 
+    # Ярлык из Nova 0.8 (без -Minimized) подправляется на месте, а отметка «выключено» в Диспетчере задач остаётся.
+    $oldLink = Get-NovaVoiceAutostartPath $folder
+    New-NovaShortcut -Path $oldLink -Target $voiceCmd -WorkingDirectory $root -ShowCmd 7
+    Set-NovaRegValue -Path $vkey -Name 'Nova Voice.lnk' -Kind 'Binary' -Value ([byte[]](@(3) + @(0) * 11))
+    if (-not (Update-NovaVoiceAutostart -Target $voiceCmd -Folder $folder)) { throw 'старый ярлык голоса не подправился' }
+    if ((Read-NovaShortcut -Path $oldLink).Arguments -ne '-Minimized') { throw 'старый ярлык голоса остался без -Minimized' }
+    if ((& $state) -ne 'disabled') { throw ('подправленный ярлык потерял отметку «выключено»: {0}' -f (& $state)) }
+    if (Update-NovaVoiceAutostart -Target $voiceCmd -Folder $folder) { throw 'правильный ярлык голоса переписывается зря' }
+    Remove-NovaRegValue -Path $vkey -Name 'Nova Voice.lnk'
+    [void](Add-NovaVoiceAutostart -Target $voiceCmd -Folder $folder -ApprovedKey $vkey)
+    Write-Host 'ok  ярлык голоса из 0.8 подправлен: окно при входе открывается свёрнутым, выключатель на месте'
+
     # Выключили в Диспетчере задач: Nova это видит, а повторное включение снимает отметку.
     Set-NovaRegValue -Path $vkey -Name 'Nova Voice.lnk' -Kind 'Binary' -Value ([byte[]](@(3) + @(0) * 11))
     if ((& $state) -ne 'disabled') { throw 'выключение в Диспетчере задач не замечено' }

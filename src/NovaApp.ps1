@@ -70,7 +70,20 @@ $owned = $false
 # Прошлое окно закрылось аварийно — отметка «брошена», она теперь наша.
 try { $owned = $script:Single.WaitOne(0) } catch { $owned = $true }
 if (-not $owned -and -not $Screenshot) {
-    try { Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.Interaction]::AppActivate('Nova Центр') } catch { Write-Verbose 'Открытое окно не нашлось.' }
+    # Показать уже открытое окно — и развернуть, если оно свёрнуто (AppActivate свёрнутое не разворачивает).
+    try {
+        Add-Type -Namespace NovaWin -Name Activate -MemberDefinition @'
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
+[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+[DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+'@
+        $h = [NovaWin.Activate]::FindWindow([NullString]::Value, 'Nova Центр')
+        if ($h -ne [IntPtr]::Zero) {
+            if ([NovaWin.Activate]::IsIconic($h)) { [void][NovaWin.Activate]::ShowWindow($h, 9) }
+            [void][NovaWin.Activate]::SetForegroundWindow($h)
+        }
+    } catch { Write-Verbose 'Открытое окно не нашлось.' }
     exit 0
 }
 function Close-NovaSingle { try { $script:Single.ReleaseMutex() } catch { Write-Verbose 'Отметка «окно открыто» уже снята.' } }

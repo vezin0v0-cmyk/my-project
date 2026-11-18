@@ -200,6 +200,11 @@ try {
         }
         Show-NovaVoiceGames -Config $config
         Write-Host ''
+        # Окно Nova Голос и консоль не слушают вдвоём — иначе каждая команда выполнялась бы дважды.
+        $single = New-Object Threading.Mutex($false, 'Local\NovaVoice')
+        $owned = $false
+        try { $owned = $single.WaitOne(0) } catch { $owned = $true }
+        if (-not $owned) { throw 'Nova Голос уже слушает в своём окне — второй раз не запускаю, иначе команды выполнялись бы дважды.' }
         Start-NovaVoiceListener -Config $config
     }
 } catch {

@@ -123,9 +123,14 @@ function Save-NovaVerifiedZip {
         if ((Get-FileHash -LiteralPath $temp -Algorithm SHA256).Hash -ne $Sha256) {
             throw ('Скачанный {0} не совпал с оригиналом (контрольная сумма). Файл удалён.' -f $What)
         }
+        # Сначала во временную папку, потом целиком на место: прерванная распаковка (закрыли окно, выключили
+        # компьютер) не оставит полмодели, которую Nova считала бы установленной.
+        $staging = $Destination + '.nova-new'
+        if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
+        New-Item -ItemType Directory -Path $staging -Force | Out-Null
+        Expand-Archive -LiteralPath $temp -DestinationPath $staging -Force
         if (Test-Path -LiteralPath $Destination) { Remove-Item -LiteralPath $Destination -Recurse -Force }
-        New-Item -ItemType Directory -Path $Destination -Force | Out-Null
-        Expand-Archive -LiteralPath $temp -DestinationPath $Destination -Force
+        [IO.Directory]::Move($staging, $Destination)
     } finally {
         Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
     }
@@ -249,8 +254,10 @@ namespace NovaVoice {
         void Queue(int i) {
             var h = new WaveHdr { Data = buffers[i], Length = (uint)bufferSize };
             Marshal.StructureToPtr(h, headers[i], false);
-            waveInPrepareHeader(handle, headers[i], hdrSize);
-            waveInAddBuffer(handle, headers[i], hdrSize);
+            int r = waveInPrepareHeader(handle, headers[i], hdrSize);
+            if (r != 0) throw new InvalidOperationException("waveInPrepareHeader " + r);
+            r = waveInAddBuffer(handle, headers[i], hdrSize);
+            if (r != 0) throw new InvalidOperationException("waveInAddBuffer " + r);
         }
 
         // Следующий заполненный кусок звука или null, если его ещё нет.
@@ -890,71 +897,128 @@ function Send-NovaVoiceCommandList {
     }
 }
 
+# Открывает микрофон. Ошибки Windows (номера) — словами.
+function Open-NovaVoiceMic {
+    try {
+        return (New-Object -TypeName NovaVoice.Mic -ArgumentList 8, 3200)
+    } catch {
+        $code = -1
+        if ([string]$_.Exception.Message -match 'waveIn\w+ (\d+)') { $code = [int]$Matches[1] }
+        $why = switch ($code) {
+            2 { 'микрофон не найден' }
+            4 { 'микрофон занят другой программой' }
+            6 { 'нет драйвера микрофона' }
+            32 { 'микрофон не умеет 16 кГц моно' }
+            default { 'Windows не дала его открыть' }
+        }
+        throw ('Микрофон не открылся: {0} (код {1}). Проверь, что он подключён и разрешён: «Параметры → Конфиденциальность → Микрофон».' -f $why, $code)
+    }
+}
+
+# Таймеры и отложенное выключение: проверяются и пока Nova слушает, и на паузе.
+function Invoke-NovaVoiceTick {
+    param($Config)
+    $done = Invoke-NovaVoicePending -Config $Config
+    if ($done) { Write-Nova $done ok; Send-NovaVoiceEvent 'done' @($done, '') }
+}
+
+# Что делать с распознанной фразой.
+function Invoke-NovaVoiceHeard {
+    param([string]$Text, $Config)
+    $commands = @(Resolve-NovaVoiceText -Text $Text -Config $Config)
+    if ($commands.Count -eq 0) {
+        if ($Text -notmatch '^(\[unk\]\s*)+$') {
+            Write-Nova ('слышу «{0}» — без «{1}» не выполняю' -f $Text, $Config.WakeWord) dim
+            Send-NovaVoiceEvent 'ignored' $Text
+        }
+        return
+    }
+    Send-NovaVoiceEvent 'heard' $Text
+    foreach ($command in $commands) {
+        try {
+            $result = Invoke-NovaVoiceCommand -Command $command -Config $Config
+            Write-Nova ('«{0}» → {1}' -f $command.Label, $result) ok
+            Send-NovaVoiceEvent 'done' @($command.Label, $result)
+        } catch {
+            Write-Nova ('«{0}»: {1}' -f $command.Label, $_.Exception.Message) err
+            Send-NovaVoiceEvent 'fail' @($command.Label, $_.Exception.Message)
+        }
+    }
+}
+
 # Слушает микрофон, пока окно открыто.
+# Окно Nova Голос управляет им через $global:NovaVoiceControl: Paused — микрофон закрыт, но таймеры идут;
+# Stop — выйти и всё освободить. В консоли этого нет: слушает, пока окно открыто (Ctrl+C — выход).
+# OpenMic и SilenceSeconds — для проверки без настоящего микрофона.
 function Start-NovaVoiceListener {
-    param([Parameter(Mandatory)]$Config)
+    param([Parameter(Mandatory)]$Config, [scriptblock]$OpenMic = { Open-NovaVoiceMic }, [double]$SilenceSeconds = 4)
     Initialize-NovaVoiceNative
-    if ([NovaVoice.Mic]::waveInGetNumDevs() -eq 0) { throw 'Не найден микрофон. Подключи его и запусти снова.' }
+    if (-not $PSBoundParameters.ContainsKey('OpenMic') -and [NovaVoice.Mic]::waveInGetNumDevs() -eq 0) { throw 'Не найден микрофон. Подключи его и запусти снова.' }
     $r = New-NovaVoiceRecognizer $Config
     if ($r.UnknownOwn.Count -gt 0) {
         Write-Nova ('Модель не знает слова: {0}. Фразы с ними не сработают — замени их в voice.json.' -f ($r.UnknownOwn -join ', ')) warn
     }
+    $control = $global:NovaVoiceControl
     $mic = $null
+    $first = $true
+    $holding = $false
+    $lastSound = [DateTime]::UtcNow
     try {
-        $mic = New-Object -TypeName NovaVoice.Mic -ArgumentList 8, 3200
-        $holding = $false
-        Write-Nova ('Слушаю. Скажи, например: «{0}, сверни все окна». Закрыть — Ctrl+C или крестик окна.' -f $Config.WakeWord) ok
-        if ($Config.PushToTalk) { Write-Nova ('Команды слышу, только пока зажато: {0}.' -f $Config.PushToTalk) info }
-        if ($Config.Speak -and -not (Get-NovaVoiceSpeaker)) {
-            Write-Nova 'На вопросы вроде «который час» отвечаю текстом: русский голос для ответа вслух ставится вместе с русским языком Windows.' dim
-        }
-        Send-NovaVoiceEvent 'listen' $Config.WakeWord
-        while ($true) {
-            $data = $mic.Read()
-            if ($null -eq $data) {
-                $done = Invoke-NovaVoicePending -Config $Config
-                if ($done) { Write-Nova $done ok; Send-NovaVoiceEvent 'done' @($done, '') }
-                Start-Sleep -Milliseconds 30
-                continue
-            }
-            if ($data.Length -eq 0) { continue }
-            # Режим «говорю, только пока держу клавишу»: без клавиши звук сразу выбрасываем.
-            $text = $null
-            if ($Config.PushKeys -and -not [NovaVoice.Win]::Held($Config.PushKeys)) {
-                if (-not $holding) { continue }
-                # Клавишу отпустили: забираем то, что успели сказать, и дальше не слушаем.
-                $holding = $false
-                $text = Get-NovaVoiceResultText ([NovaVoice.Vosk]::vosk_recognizer_final_result($r.Rec))
+        while (-not ($null -ne $control -and $control.Stop)) {
+            if ($null -ne $control -and $control.Paused) {
+                # Пауза: микрофон закрыт (Nova ничего не слышит), а таймеры и отложенное выключение идут дальше.
+                if ($mic) { $mic.Dispose(); $mic = $null; Send-NovaVoiceEvent 'paused' '' }
+                Invoke-NovaVoiceTick -Config $Config
+                Start-Sleep -Milliseconds 120
             } else {
-                if ($Config.PushKeys) { $holding = $true }
-                if ([NovaVoice.Vosk]::vosk_recognizer_accept_waveform($r.Rec, $data, $data.Length) -eq 0) { continue }
-                $text = Get-NovaVoiceResultText ([NovaVoice.Vosk]::vosk_recognizer_result($r.Rec))
-            }
-            if (-not $text -or $text -eq '[unk]') { continue }
-            $commands = @(Resolve-NovaVoiceText -Text $text -Config $Config)
-            if ($commands.Count -eq 0) {
-                if ($text -notmatch '^(\[unk\]\s*)+$') {
-                    Write-Nova ('слышу «{0}» — без «{1}» не выполняю' -f $text, $Config.WakeWord) dim
-                    Send-NovaVoiceEvent 'ignored' $text
+                if (-not $mic) {
+                    $mic = & $OpenMic
+                    $lastSound = [DateTime]::UtcNow
+                    if ($first) {
+                        Write-Nova ('Слушаю. Скажи, например: «{0}, сверни все окна». Закрыть — Ctrl+C или крестик окна.' -f $Config.WakeWord) ok
+                        if ($Config.PushToTalk) { Write-Nova ('Команды слышу, только пока зажато: {0}.' -f $Config.PushToTalk) info }
+                        if ($Config.Speak -and -not (Get-NovaVoiceSpeaker)) {
+                            Write-Nova 'На вопросы вроде «который час» отвечаю текстом: русский голос для ответа вслух ставится вместе с русским языком Windows.' dim
+                        }
+                        $first = $false
+                    }
+                    Send-NovaVoiceEvent 'listen' $Config.WakeWord
                 }
-                continue
-            }
-            Send-NovaVoiceEvent 'heard' $text
-            foreach ($command in $commands) {
-                try {
-                    $result = Invoke-NovaVoiceCommand -Command $command -Config $Config
-                    Write-Nova ('«{0}» → {1}' -f $command.Label, $result) ok
-                    Send-NovaVoiceEvent 'done' @($command.Label, $result)
-                } catch {
-                    Write-Nova ('«{0}»: {1}' -f $command.Label, $_.Exception.Message) err
-                    Send-NovaVoiceEvent 'fail' @($command.Label, $_.Exception.Message)
+                $data = $mic.Read()
+                if ($null -eq $data) {
+                    Invoke-NovaVoiceTick -Config $Config
+                    # Микрофон присылает звук всегда, даже тишину. Если его нет несколько секунд — микрофон отключили.
+                    if (([DateTime]::UtcNow - $lastSound).TotalSeconds -gt $SilenceSeconds) { throw 'Микрофон перестал присылать звук — возможно, его отключили. Подключи его и попробуй снова.' }
+                    Start-Sleep -Milliseconds 30
+                } else {
+                    $lastSound = [DateTime]::UtcNow
+                    if ($data.Length -gt 0) {
+                        # Режим «говорю, только пока держу клавишу»: без клавиши звук сразу выбрасываем.
+                        $text = $null
+                        if ($Config.PushKeys -and -not [NovaVoice.Win]::Held($Config.PushKeys)) {
+                            if ($holding) {
+                                # Клавишу отпустили: забираем то, что успели сказать, и дальше не слушаем.
+                                $holding = $false
+                                $text = Get-NovaVoiceResultText ([NovaVoice.Vosk]::vosk_recognizer_final_result($r.Rec))
+                            }
+                        } else {
+                            if ($Config.PushKeys) { $holding = $true }
+                            if ([NovaVoice.Vosk]::vosk_recognizer_accept_waveform($r.Rec, $data, $data.Length) -ne 0) {
+                                $text = Get-NovaVoiceResultText ([NovaVoice.Vosk]::vosk_recognizer_result($r.Rec))
+                            }
+                        }
+                        if ($text -and $text -ne '[unk]') { Invoke-NovaVoiceHeard -Text $text -Config $Config }
+                    }
                 }
             }
         }
     } finally {
         if ($mic) { $mic.Dispose() }
         if ($script:Speaker) { $script:Speaker.Dispose(); $script:Speaker = $null }
-        Remove-NovaVoiceRecognizer $r
+        # Прямые вызовы .NET: если поток останавливают, функции PowerShell в finally уже не запускаются,
+        # а модель речи (десятки МБ) иначе осталась бы в памяти.
+        [NovaVoice.Vosk]::vosk_recognizer_free($r.Rec)
+        [NovaVoice.Vosk]::vosk_model_free($r.Model)
     }
 }
 

@@ -251,4 +251,92 @@ $missed = @($failed | Where-Object { $expected[$_] -ne '' })
 if ($falseTriggers.Count -gt 0) { throw ('Ложное срабатывание на: {0}' -f ($falseTriggers -join ', ')) }
 if ($missed.Count -gt 1) { throw ('Не распознаны команды: {0}' -f ($missed -join ', ')) }
 if ($missed.Count -eq 1) { Write-Host ('::warning::Синтетическая запись не распознана: {0}' -f $missed[0]) }
+
+# Слушатель целиком — как в окне Nova Голос: свой поток, «пульт» (пауза, остановка) и очередь событий.
+# Настоящего микрофона на сервере нет — «микрофон» отдаёт запись кусками по 0,1 с, потом тишину.
+$listenOk = @($expected.Keys | Where-Object { $expected[$_] -in @('volumeUp', 'minimizeAll') -and $failed -notcontains $_ } | Sort-Object)
+if ($listenOk.Count -eq 0) { throw 'Нет распознанной записи для проверки слушателя' }
+$listenWav = Join-Path $root ('tests\voice\{0}.wav' -f $listenOk[0])
+$listenScript = @'
+param([string]$Src, [string]$ConfigPath, [string]$Wav, $Queue, $Control, $Stats, [double]$Silence, [bool]$Mute)
+$ErrorActionPreference = 'Stop'
+$global:NovaVoiceEvents = $Queue
+$global:NovaVoiceControl = $Control
+function global:Write-Host { param([Parameter(Position = 0, ValueFromRemainingArguments = $true)]$Object, [switch]$NoNewline, $Separator = ' ', [ConsoleColor]$ForegroundColor = 'Gray', $BackgroundColor) }
+Import-Module (Join-Path $Src 'Nova.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $Src 'NovaVoice.psm1') -Force -DisableNameChecking
+$config = Read-NovaVoiceConfig -Path $ConfigPath -Games @()
+$bytes = [IO.File]::ReadAllBytes($Wav)
+$chunks = New-Object System.Collections.Generic.List[object]
+for ($pos = 44; $pos -lt $bytes.Length; $pos += 3200) { $n = [Math]::Min(3200, $bytes.Length - $pos); $c = New-Object byte[] $n; [Array]::Copy($bytes, $pos, $c, 0, $n); $chunks.Add($c) }
+$open = {
+    $Stats.Opened++
+    $src = [pscustomobject]@{ Chunks = $(if ($Stats.Opened -eq 1) { $chunks } else { @() }); I = 0; Stats = $Stats; Mute = $Mute }
+    $src | Add-Member -MemberType ScriptMethod -Name Read -Value {
+        Start-Sleep -Milliseconds 15
+        if ($this.Mute) { return $null }
+        if ($this.I -lt @($this.Chunks).Count) { $c = $this.Chunks[$this.I]; $this.I++; return , $c }
+        return , (New-Object byte[] 3200)
+    }
+    $src | Add-Member -MemberType ScriptMethod -Name Dispose -Value { $this.Stats.Disposed++ }
+    return $src
+}.GetNewClosure()
+Start-NovaVoiceListener -Config $config -OpenMic $open -SilenceSeconds $Silence
+'@
+function Start-TestListener([bool]$Mute, [double]$Silence) {
+    $t = @{ Queue = New-Object 'System.Collections.Concurrent.ConcurrentQueue[string]'; Control = [hashtable]::Synchronized(@{ Paused = $false; Stop = $false }); Stats = [hashtable]::Synchronized(@{ Opened = 0; Disposed = 0 }) }
+    $t.Rs = [runspacefactory]::CreateRunspace(); $t.Rs.ApartmentState = 'STA'; $t.Rs.Open()
+    $t.Ps = [powershell]::Create(); $t.Ps.Runspace = $t.Rs
+    [void]$t.Ps.AddScript($listenScript).AddArgument((Join-Path $root 'src')).AddArgument((Join-Path $root 'voice.json')).AddArgument($listenWav).AddArgument($t.Queue).AddArgument($t.Control).AddArgument($t.Stats).AddArgument($Silence).AddArgument($Mute)
+    $t.Handle = $t.Ps.BeginInvoke()
+    $t.Seen = New-Object System.Collections.Generic.List[string]
+    return $t
+}
+function Wait-Event($T, [string]$Kind, [double]$Seconds) {
+    $until = [DateTime]::UtcNow.AddSeconds($Seconds)
+    $item = $null
+    while ([DateTime]::UtcNow -lt $until) {
+        while ($T.Queue.TryDequeue([ref]$item)) { $T.Seen.Add($item) }
+        $hit = @($T.Seen | Where-Object { $_ -like ($Kind + "`t*") -or $_ -eq $Kind })
+        if ($hit.Count) { return $hit[-1] }
+        if ($T.Handle.IsCompleted) { break }
+        Start-Sleep -Milliseconds 100
+    }
+    $why = ''
+    if ($T.Handle.IsCompleted) { try { [void]$T.Ps.EndInvoke($T.Handle) } catch { $why = $_.Exception.Message } }
+    throw ('Слушатель: не дождался события «{0}». События: {1} {2}' -f $Kind, ($T.Seen -join ' | '), $why)
+}
+
+$t = Start-TestListener $false 4
+[void](Wait-Event $t 'listen' 60)
+$heard = Wait-Event $t 'heard' 30
+$done = Wait-Event $t 'done' 30
+Write-Host ('ok  слушатель: {0} → {1}' -f ($heard -split "`t")[1], (($done -split "`t") -join ' / '))
+# Пауза: микрофон закрывается, поток живёт. Снова «слушать» — микрофон открывается заново.
+$t.Control.Paused = $true
+[void](Wait-Event $t 'paused' 10)
+if ($t.Stats.Disposed -ne 1) { throw ('на паузе микрофон не закрылся (закрыт раз: {0})' -f $t.Stats.Disposed) }
+$t.Seen.Clear()
+$t.Control.Paused = $false
+[void](Wait-Event $t 'listen' 10)
+if ($t.Stats.Opened -ne 2) { throw ('после паузы микрофон не открылся заново (открыт раз: {0})' -f $t.Stats.Opened) }
+# Остановка по просьбе окна: поток выходит сам и всё отпускает.
+$t.Control.Stop = $true
+if (-not $t.Handle.AsyncWaitHandle.WaitOne(10000)) { throw 'слушатель не остановился по просьбе окна за 10 с' }
+[void]$t.Ps.EndInvoke($t.Handle)
+if ($t.Ps.Streams.Error.Count) { throw ('слушатель записал ошибку: {0}' -f $t.Ps.Streams.Error[0]) }
+if ($t.Stats.Disposed -ne 2) { throw ('после остановки микрофон не закрылся (закрыт раз: {0})' -f $t.Stats.Disposed) }
+$t.Ps.Dispose(); $t.Rs.Dispose()
+Write-Host 'ok  слушатель: пауза закрывает микрофон и не теряет поток, остановка всё отпускает'
+
+# Микрофон замолчал совсем (выдернули) — понятная ошибка, а не вечное «Слушаю».
+$t = Start-TestListener $true 1
+if (-not $t.Handle.AsyncWaitHandle.WaitOne(60000)) { throw 'слушатель с молчащим микрофоном не остановился' }
+$why = ''
+try { [void]$t.Ps.EndInvoke($t.Handle) } catch { $why = $_.Exception.Message }
+if ($why -notlike '*перестал присылать звук*') { throw ('молчащий микрофон: ожидалась понятная ошибка, а пришло «{0}»' -f $why) }
+if ($t.Stats.Disposed -ne 1) { throw 'после ошибки микрофон не закрылся' }
+$t.Ps.Dispose(); $t.Rs.Dispose()
+Write-Host 'ok  слушатель: выдернутый микрофон — «Микрофон перестал присылать звук», микрофон закрыт'
+
 Write-Host 'ТЕСТ ГОЛОСОВЫХ КОМАНД ПРОЙДЕН'
