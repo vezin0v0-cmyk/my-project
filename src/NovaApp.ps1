@@ -37,6 +37,7 @@ Import-Module (Join-Path $PSScriptRoot 'Nova.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaTools.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaPlay.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'NovaStartup.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'NovaVoice.psm1') -Force -DisableNameChecking
 
 # Права администратора — как у меню Nova. Окно перезапускается с ними; консоль при этом скрыта.
 if (-not (Test-NovaAdmin)) {
@@ -1181,22 +1182,21 @@ function Update-News {
     for ($i = 0; $i -lt [Math]::Min(5, $rel.Items.Count); $i++) { Add-ReleaseItem $ui.NewsList $rel $i }
 }
 
-$voiceLabels = @{
-    shutdown = 'выключит компьютер через 15 секунд'; restart = 'перезагрузит'; cancel = 'отменит'; minimizeAll = 'свернёт все окна'; restoreAll = 'вернёт окна'; closeWindow = 'закроет окно впереди'
-    closeAll = 'закроет все окна'; lock = 'заблокирует компьютер'; volumeUp = 'громче'; volumeDown = 'тише'; mute = 'выключит или включит звук'; playPause = 'пауза или продолжить'
-    nextTrack = 'следующий трек'; prevTrack = 'предыдущий трек'; time = 'скажет, который час'; date = 'скажет дату'; battery = 'скажет заряд'; hello = 'поздоровается'
-    timer = 'таймер: «… на пять минут»'; timerLeft = 'сколько осталось'; game = 'запустит игру: «… доту», «… игру» — последнюю'; gameMode = 'включит режим игры'; gameModeOff = 'выключит режим игры'
-}
+# Подписи команд — те же, что в окне Nova Голос (Get-NovaVoiceDoLabel). Таймер и игры здесь одной строкой-шаблоном.
+$voiceTemplates = @{ timer = 'таймер: «… на пять минут» — от десяти секунд до часа'; game = 'запустит игру: «… доту», «… игру» — последнюю, в которую играл' }
 function Update-VoiceList {
     $ui.VoiceList.Children.Clear()
     $doc = $null
     try { $doc = Read-NovaJson (Join-Path $projectRoot 'voice.json') } catch { $doc = $null }
     if (-not $doc) { [void]$ui.VoiceList.Children.Add((New-Text 'voice.json не найден.' 14 '#FFC940')); return }
     $wake = [string](Get-NovaProp $doc 'wakeWord' 'нова')
+    if ($wake) { $wake = $wake.Substring(0, 1).ToUpperInvariant() + $wake.Substring(1) }
+    $delay = 15
+    try { $delay = [int](Get-NovaProp $doc 'delaySeconds' 15) } catch { $delay = 15 }
     foreach ($c in @(Get-NovaProp $doc 'commands' @())) {
         $say = @(Get-NovaProp $c 'say' @()) | ForEach-Object { '«{0}, {1}»' -f $wake, $_ }
         $what = ''
-        if (Get-NovaProp $c 'do') { $d = [string]$c.do; $what = $(if ($voiceLabels.ContainsKey($d)) { $voiceLabels[$d] } else { $d }) }
+        if (Get-NovaProp $c 'do') { $d = [string]$c.do; $what = $(if ($voiceTemplates.ContainsKey($d)) { $voiceTemplates[$d] } else { Get-NovaVoiceDoLabel $d $delay }) }
         elseif (Get-NovaProp $c 'run') { $what = 'откроет ' + (Get-NovaPlainText ([string]$c.run) 80) }
         elseif (Get-NovaProp $c 'keys') { $what = 'нажмёт ' + (Get-NovaPlainText ([string]$c.keys) 40) }
         $card = New-Object Windows.Controls.Border

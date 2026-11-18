@@ -854,11 +854,12 @@ function Send-NovaVoiceEvent {
     $queue.Enqueue(($parts -join "`t"))
 }
 
-# Что делает встроенное действие — словами, для списка команд.
+# Что делает встроенное действие — словами, для списка команд (один текст для окна Nova Голос и Nova Центра).
 function Get-NovaVoiceDoLabel {
-    param([string]$Do)
+    param([string]$Do, [int]$Delay = 15)
     $labels = @{
-        shutdown = 'выключит компьютер (можно отменить)'; restart = 'перезагрузит (можно отменить)'; cancel = 'отменит выключение'; minimizeAll = 'свернёт все окна'
+        shutdown = ('выключит компьютер через {0} с (можно отменить)' -f $Delay); restart = ('перезагрузит через {0} с (можно отменить)' -f $Delay)
+        cancel = 'отменит выключение или перезагрузку'; minimizeAll = 'свернёт все окна'
         restoreAll = 'вернёт окна'; closeWindow = 'закроет окно впереди'; closeAll = 'закроет все окна'; lock = 'заблокирует компьютер'
         volumeUp = 'громче'; volumeDown = 'тише'; mute = 'выключит или включит звук'; playPause = 'пауза или продолжить'
         nextTrack = 'следующий трек'; prevTrack = 'предыдущий трек'; time = 'скажет, который час'; date = 'скажет дату'
@@ -882,7 +883,7 @@ function Send-NovaVoiceCommandList {
         $what = ''
         if ($command.Do -eq 'game' -and $command.Game) { $what = 'запустит ' + $command.Game.Name }
         elseif ($command.Do -eq 'game') { $what = 'запустит последнюю игру' }
-        elseif ($command.Do) { $what = Get-NovaVoiceDoLabel $command.Do }
+        elseif ($command.Do) { $what = Get-NovaVoiceDoLabel $command.Do $Config.Delay }
         elseif ($command.Run) { $what = 'откроет ' + $command.Run }
         elseif ($command.Keys) { $what = 'нажмёт ' + $command.Keys }
         Send-NovaVoiceEvent 'cmd' @(('{0}, {1}' -f $Config.WakeWord, $command.Say[0]), $what)
