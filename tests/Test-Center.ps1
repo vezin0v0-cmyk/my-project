@@ -282,6 +282,7 @@ try {
     Open-Page 'NavHome'
     $atlasName = [string](Get-Id 'BtnAtlas').Current.Name
     if ($atlasName -ne 'Сделать как Atlas') { throw ('На главной нет кнопки «Сделать как Atlas»: «{0}»' -f $atlasName) }
+    $stateBefore = Get-Name 'StateText'
     Invoke-Id 'BtnAtlas'
     Confirm-Dialog 'сделать как Atlas'
     Assert-RunOk (Wait-Run 'Как Atlas' 900) 'Как Atlas одной кнопкой'
@@ -293,9 +294,9 @@ try {
     if ($swA['tweaks.memory-integrity-off'] -eq 'True') { throw '«Как Atlas» выключил «Целостность памяти» — защиту не трогаем' }
     $script:Done.Add(('ok  «Как Atlas»: {0} настроек и {1} приложений к удалению (Xbox тоже), применено из окна' -f @($atlas.tweaksOn).Count, @($atlas.removeApps).Count))
     # Строка состояния на главной — по самой Windows: что на месте, что нет.
-    $state = Wait-Until { $x = Get-Name 'StateText'; if ($x) { $x } } 120 'строка «Настройки Nova на месте» на главной'
+    # Nova пересчитывает её в фоне после работы — ждём новую строку, а не ту, что была до «Как Atlas».
+    $state = Wait-Until { $x = Get-Name 'StateText'; if ($x -and $x -ne $stateBefore -and ($x -like 'Настройки Nova на месте*' -or $x -like 'Не на месте*')) { $x } } 180 'строка «Настройки Nova на месте» на главной после «Как Atlas»'
     Write-Host ('состояние на главной: {0}' -f $state)
-    if ($state -notlike 'Настройки Nova на месте*' -and $state -notlike 'Не на месте*') { throw ('После «Как Atlas» строка состояния странная: «{0}»' -f $state) }
     $script:Done.Add(('ok  строка состояния после «Как Atlas»: {0}' -f $state))
 
     # 11. Ярлык на рабочий стол.
