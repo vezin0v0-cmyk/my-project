@@ -1,0 +1,7 @@
+# Windows-файлы: .cmd хранится с переводами строк CRLF как есть, иначе cmd.exe может ошибаться.
+*.cmd -text
+*.ps1 text eol=crlf
+*.psm1 text eol=crlf
+*.json text eol=lf
+*.md text eol=lf
+*.html text eol=lf

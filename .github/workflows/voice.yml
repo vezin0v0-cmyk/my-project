@@ -1,0 +1,51 @@
+name: Голосовые команды (Vosk)
+
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'voice.json'
+      - 'NovaVoice.cmd'
+      - 'tests/Test-Voice.ps1'
+      - 'tests/voice/**'
+      - '.github/workflows/voice.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  voice:
+    name: Vosk на Windows
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Голосовые команды на записях
+        shell: powershell
+        run: ./tests/Test-Voice.ps1
+
+      - name: Окно Nova Голос (запись распознаётся в окне, снимки состояний)
+        shell: powershell
+        env:
+          NOVA_ALLOW_SHARED_FOLDER: '1'
+        # Only ASCII inside: GitHub saves this script without BOM, and Windows PowerShell 5.1 would misread Cyrillic.
+        run: |
+          $shots = Join-Path $env:RUNNER_TEMP 'voice-window'
+          ./src/NovaVoiceApp.ps1 -Screenshot $shots
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./src/NovaVoiceApp.ps1 -WavFile ./tests/voice/game-mode.wav -Screenshot $shots
+          if ($LASTEXITCODE -ne 0) { throw 'The voice window did not finish the recording.' }
+          $files = @(Get-ChildItem -LiteralPath $shots -Filter 'nova-voice-*.png')
+          $files | ForEach-Object { '{0}  {1:N0} bytes' -f $_.Name, $_.Length }
+          if ($files.Count -lt 6) { throw 'Not every state of the voice window was drawn.' }
+          # What the window showed after the recording (UTF-8 report). Cyrillic only as \u escapes here.
+          $report = [IO.File]::ReadAllText((Join-Path $shots 'nova-voice-zapis.txt'), [Text.Encoding]::UTF8)
+          if ($report -notmatch 'state: done') { throw 'The voice window did not reach the done state.' }
+          if ($report -notmatch 'heard: .*\u0440\u0435\u0436\u0438\u043c \u0438\u0433\u0440\u044b') { throw 'The window did not show the recognized phrase.' }
+          if ($report -notmatch 'feed: .*\u0432\u043a\u043b\u044e\u0447\u0430\u044e \u0440\u0435\u0436\u0438\u043c') { throw 'The feed has no game mode command.' }
+          if ($report -notmatch 'commands: ([1-9][0-9]+)') { throw 'The command list in the window is empty.' }
+          Write-Host 'voice window: recording recognized, feed and command list filled'

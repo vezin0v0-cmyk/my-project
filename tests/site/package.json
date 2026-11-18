@@ -1,0 +1,11 @@
+{
+  "name": "nova-site-tests",
+  "private": true,
+  "description": "Проверки сайта Nova в настоящем браузере (Chromium через Playwright). Supabase имитируется, в интернет проверки не ходят.",
+  "scripts": {
+    "test": "node run-all.js"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
