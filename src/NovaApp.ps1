@@ -373,6 +373,14 @@ $xaml = @'
               </Border>
             </Border>
 
+            <Border x:Name="StateBar" CornerRadius="14" Background="#13261A" BorderBrush="#25503A" BorderThickness="1" Padding="18,12" Margin="0,16,0,0" Visibility="Collapsed">
+              <DockPanel>
+                <Button x:Name="BtnStateApply" DockPanel.Dock="Right" Style="{StaticResource Primary}" VerticalAlignment="Center" Content="Применить" Visibility="Collapsed"/>
+                <TextBlock x:Name="StateIcon" Style="{StaticResource Ico}" Text="&#xE73E;" Foreground="#7CE0A3" FontSize="20" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                <TextBlock x:Name="StateText" TextWrapping="Wrap" VerticalAlignment="Center" Foreground="#CDEBD8" Margin="0,0,12,0"/>
+              </DockPanel>
+            </Border>
+
             <Border x:Name="ReturnBar" CornerRadius="14" Background="#2A1F0B" BorderBrush="#6B5A20" BorderThickness="1" Padding="18,12" Margin="0,16,0,0" Visibility="Collapsed">
               <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
@@ -609,7 +617,7 @@ $win.Width = [Math]::Max($win.MinWidth, [Math]::Min($win.Width, $work.Width - 40
 $win.Height = [Math]::Max($win.MinHeight, [Math]::Min($win.Height, $work.Height - 40))
 $ui = @{}
 foreach ($name in @('Root', 'LogoImg', 'VerText', 'BtnMin', 'BtnMax', 'BtnClose', 'SideStatus', 'NavAbout', 'NavHome', 'NavTweaks', 'NavApps', 'NavGames', 'NavVoice', 'NavTools', 'NavUpdate',
-        'Pages', 'PageHome', 'HeroImg', 'HealthChip', 'HealthText', 'SysText', 'ReturnBar', 'ReturnText', 'BtnReturnKeep', 'BtnReturnRemove', 'AtlasCard', 'AtlasText', 'BtnAtlas', 'QApply', 'QGame', 'QGameTitle', 'QGameText', 'QCheck', 'QClean', 'LSite', 'LCabinet', 'LGitHub', 'LMail', 'MailText', 'NewsVer', 'NewsList',
+        'Pages', 'PageHome', 'HeroImg', 'HealthChip', 'HealthText', 'SysText', 'StateBar', 'StateIcon', 'StateText', 'BtnStateApply', 'ReturnBar', 'ReturnText', 'BtnReturnKeep', 'BtnReturnRemove', 'AtlasCard', 'AtlasText', 'BtnAtlas', 'QApply', 'QGame', 'QGameTitle', 'QGameText', 'QCheck', 'QClean', 'LSite', 'LCabinet', 'LGitHub', 'LMail', 'MailText', 'NewsVer', 'NewsList',
         'PageTweaks', 'TweaksTitle', 'TweaksSub', 'CatTabs', 'TweakList', 'PresetBar', 'DirtyText', 'BtnSave', 'BtnPreview', 'BtnApply',
         'PageGames', 'GameModeChip', 'GameModeState', 'BtnGameMode', 'GDriver', 'GReady', 'GHeavy', 'GNet', 'GFps', 'GVoice',
         'PageVoice', 'BtnVoiceOpen', 'BtnVoiceAuto', 'BtnVoiceEdit', 'VoiceList',
@@ -1360,7 +1368,7 @@ $ui.NavAbout.Add_Checked({ Show-Page $ui.PageAbout })
 
 function Invoke-Apply {
     if ($script:Dirty -and -not (Save-Config)) { return }
-    Start-NovaRun -Title 'Применяю настройки' -Icon ([string][char]0xE768) -Arguments '-Mode Apply -Yes' -OnDone { param($ok) Update-Health }
+    Start-NovaRun -Title 'Применяю настройки' -Icon ([string][char]0xE768) -Arguments '-Mode Apply -Yes' -OnDone { param($ok) Update-Health; Update-AppliedState; Update-Returned }
 }
 # «Сделать как Atlas»: одна кнопка — вопрос, вся сборка в config.json и применение.
 $ui.BtnAtlas.Add_Click({
@@ -1377,6 +1385,7 @@ $ui.BtnAtlas.Add_Click({
         Start-NovaRun -Title 'Как Atlas: убираю всё лишнее' -Icon ([string][char]0xE945) -Arguments '-Mode Apply -Yes' -OnDone {
             param($ok)
             Update-Health
+            Update-AppliedState
             Update-Returned
             if ($ok) { $ui.RunResult.Text = '✓  Всё получилось — перезагрузи компьютер, чтобы всё вступило в силу' }
         }
@@ -1396,6 +1405,53 @@ if ($sec) { $wanted = @($sec.PSObject.Properties | Where-Object { $_.Value -is [
 $installed = @(Get-AppxPackage -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
 Select-NovaReturnedApps -Removed $removed -Wanted $wanted -Installed $installed
 '@
+# Применено ли то, что включено в config.json, — по самой Windows, а не по памяти Nova.
+# Так видно, что после перезагрузки всё на месте (изменения записаны в Windows, Nova запускать не нужно),
+# а если Windows что-то откатила — что именно.
+$stateScript = @'
+param([string]$Src, [string]$ConfigPath, [string]$TweaksPath)
+$ErrorActionPreference = 'Stop'
+foreach ($m in @('Nova.psm1', 'NovaTools.psm1', 'NovaPlay.psm1', 'NovaStartup.psm1')) { Import-Module (Join-Path $Src $m) -Force -DisableNameChecking }
+$context = Get-NovaContext -ConfigPath $ConfigPath -TweaksPath $TweaksPath
+$active = @(Get-NovaPlan -Context $context | Where-Object { $_.Enabled -and $_.Applicable })
+$pending = @($active | Where-Object { $_.NeedsChange } | ForEach-Object { [string]$_.Title })
+$wanted = @(Get-NovaEnabledNames (Get-NovaProp $context.Config 'removeApps') | Where-Object { (Test-NovaAppName $_) -and -not (Test-NovaProtectedApp $_) })
+$installed = @(Get-AppxPackage -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+$apps = @($wanted | Where-Object { $n = $_; @($installed | Where-Object { $_ -like $n }).Count -gt 0 })
+$dir = Join-Path (Get-NovaDataDir) 'backups'
+$last = @(Get-ChildItem -LiteralPath $dir -Filter 'backup-*.json' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '*.restored.json' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1)
+$when = ''
+if ($last.Count) { $when = $last[0].LastWriteTime.ToString('dd.MM HH:mm') }
+[pscustomobject]@{ Total = $active.Count; Pending = $pending; Apps = $apps; Applied = [bool]$last.Count; When = $when }
+'@
+function Show-AppliedState([object]$S, [string]$Problem) {
+    if (-not $S) { $ui.StateBar.Visibility = 'Collapsed'; return }
+    $pending = @($S.Pending); $apps = @($S.Apps)
+    $ui.StateBar.Visibility = 'Visible'
+    if ($pending.Count -eq 0 -and $apps.Count -eq 0 -and $S.Applied) {
+        $ui.StateBar.Background = Get-Brush '#13261A'; $ui.StateBar.BorderBrush = Get-Brush '#25503A'
+        $ui.StateIcon.Text = [string][char]0xE73E; $ui.StateIcon.Foreground = Get-Brush '#7CE0A3'; $ui.StateText.Foreground = Get-Brush '#CDEBD8'
+        $ui.StateText.Text = ('Настройки Nova на месте ✓ — {0} из {0}, применено {1}. После перезагрузки ничего запускать не нужно: изменения записаны в саму Windows.' -f $S.Total, $S.When)
+        $ui.BtnStateApply.Visibility = 'Collapsed'
+        return
+    }
+    $ui.StateBar.Background = Get-Brush '#2A1F0B'; $ui.StateBar.BorderBrush = Get-Brush '#6B5A20'
+    $ui.StateIcon.Text = [string][char]0xE7BA; $ui.StateIcon.Foreground = Get-Brush '#FFC940'; $ui.StateText.Foreground = Get-Brush '#F3E3B0'
+    $parts = @()
+    if ($pending.Count) { $parts += ('настроек: {0} ({1}{2})' -f $pending.Count, (($pending | Select-Object -First 3) -join ', '), $(if ($pending.Count -gt 3) { ', …' } else { '' })) }
+    if ($apps.Count) { $parts += ('приложений: {0}' -f $apps.Count) }
+    if ($S.Applied) {
+        $ui.StateText.Text = ('Не на месте — {0}. Так бывает, если включил новые пункты или Windows что-то откатила после обновления.' -f ($parts -join '; '))
+    } else {
+        $ui.StateText.Text = ('Nova ещё ничего не меняла. Включено к применению — {0}. Нажми «Применить» или «Сделать как Atlas».' -f ($parts -join '; '))
+    }
+    $ui.BtnStateApply.Visibility = 'Visible'
+}
+function Update-AppliedState {
+    Start-NovaBackground $stateScript @($PSScriptRoot, $configPath, $tweaksPath) { param($out, $err) Show-AppliedState (@($out) | Select-Object -Last 1) $err }
+}
+$ui.BtnStateApply.Add_Click({ Invoke-Apply })
+
 $script:Returned = @()
 function Show-Returned([string[]]$Names) {
     $script:Returned = @($Names | Where-Object { $_ })
@@ -1409,7 +1465,7 @@ function Update-Returned {
 }
 $ui.BtnReturnRemove.Add_Click({
         $ui.ReturnBar.Visibility = 'Collapsed'
-        Start-NovaRun -Title 'Убираю то, что вернулось' -Icon ([string][char]0xE74D) -Arguments '-Mode Apply -Yes' -OnDone { param($ok) Update-Returned }
+        Start-NovaRun -Title 'Убираю то, что вернулось' -Icon ([string][char]0xE74D) -Arguments '-Mode Apply -Yes' -OnDone { param($ok) Update-Returned; Update-AppliedState }
     })
 $ui.BtnReturnKeep.Add_Click({
         foreach ($n in $script:Returned) { Set-Switch 'removeApps' $n $false }
@@ -1434,7 +1490,7 @@ $ui.GFps.Add_Click({ Start-NovaConsole '-Mode Fps -PauseAtEnd' })
 $ui.GVoice.Add_Click({ $ui.NavVoice.IsChecked = $true })
 $ui.TUndo.Add_Click({
         if ([Windows.MessageBox]::Show('Вернуть всё, как было до последнего запуска Nova?', 'Nova Центр', 'YesNo', 'Question') -ne 'Yes') { return }
-        Start-NovaRun -Title 'Возвращаю как было' -Icon ([string][char]0xE7A7) -Arguments '-Mode Undo -Yes' -OnDone { param($ok) Update-Health }
+        Start-NovaRun -Title 'Возвращаю как было' -Icon ([string][char]0xE7A7) -Arguments '-Mode Undo -Yes' -OnDone { param($ok) Update-Health; Update-AppliedState }
     })
 $ui.TStartup.Add_Click({ Start-NovaConsole '-Mode Menu'; Show-Toast 'Открываю меню Nova — выбери пункт 10' })
 $ui.TReport.Add_Click({ Start-NovaRun -Title 'Отчёт для поддержки' -Icon ([string][char]0xE8A5) -Arguments '-Mode Report' })
@@ -1529,6 +1585,7 @@ $win.Opacity = 0
 $win.Add_ContentRendered({
         try { Update-Health } catch { Show-Health $null ('не запустилась: {0}' -f (Get-NovaErrorText $_)) }
         try { Update-Returned } catch { Write-Verbose 'Проверка «что вернулось» не запустилась.' }
+        try { Update-AppliedState } catch { Write-Verbose 'Проверка «на месте ли настройки» не запустилась.' }
         $a = New-Object Windows.Media.Animation.DoubleAnimation -ArgumentList @([double]0, [double]1, (New-Object Windows.Duration ([TimeSpan]::FromMilliseconds(260))))
         $win.BeginAnimation([Windows.Window]::OpacityProperty, $a)
     })

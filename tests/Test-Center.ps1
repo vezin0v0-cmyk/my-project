@@ -292,6 +292,11 @@ try {
     if (@($atlas.keepApps | Where-Object { $swA[('removeApps.' + $_)] -eq 'True' }).Count) { throw '«Как Atlas» отметил к удалению то, что надо оставить' }
     if ($swA['tweaks.memory-integrity-off'] -eq 'True') { throw '«Как Atlas» выключил «Целостность памяти» — защиту не трогаем' }
     $script:Done.Add(('ok  «Как Atlas»: {0} настроек и {1} приложений к удалению (Xbox тоже), применено из окна' -f @($atlas.tweaksOn).Count, @($atlas.removeApps).Count))
+    # Строка состояния на главной — по самой Windows: что на месте, что нет.
+    $state = Wait-Until { $x = Get-Name 'StateText'; if ($x) { $x } } 120 'строка «Настройки Nova на месте» на главной'
+    Write-Host ('состояние на главной: {0}' -f $state)
+    if ($state -notlike 'Настройки Nova на месте*' -and $state -notlike 'Не на месте*') { throw ('После «Как Atlas» строка состояния странная: «{0}»' -f $state) }
+    $script:Done.Add(('ok  строка состояния после «Как Atlas»: {0}' -f $state))
 
     # 11. Ярлык на рабочий стол.
     Open-Page 'NavTools'
